@@ -834,13 +834,22 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         if ((u.hp ?? 0) <= 0) return;
         // Show for ALL units on my team (not just ownerId match - produced units have different ownerId)
         if (!myTeam || u.team !== myTeam) return;
+        let sx: number, sy: number;
         const override = this.localUnitTargetOverride.get(unitId);
-        if (!override) return;
+        if (override) {
+          sx = override.x;
+          sy = override.y;
+        } else if (u.aiState === "walking" && Number.isFinite(u.targetX) && Number.isFinite(u.targetY)) {
+          sx = Number(u.targetX);
+          sy = Number(u.targetY);
+        } else {
+          // Neither an override nor a server-commanded walk is occurring
+          return;
+        }
+
         const rs = this.localUnitRenderState.get(unitId);
         const ux = Number(rs?.x ?? u.x);
         const uy = Number(rs?.y ?? u.y);
-        const sx = override.x;
-        const sy = override.y;
         if (Math.hypot(sx - ux, sy - uy) < TILE_SIZE * 0.4) return; // Arrived — hide
         // Target slot: orange ring + cross
         g.lineStyle(2, 0xff8800, 0.9);
