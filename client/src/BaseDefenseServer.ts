@@ -416,14 +416,18 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
               const ox = Number(otherS?.x ?? otherU.x);
               const oy = Number(otherS?.y ?? otherU.y);
               const oRad = this.localUnitBodyRadius(otherU);
-              const vx = Number(otherS?.vx ?? 0);
-              const vy = Number(otherS?.vy ?? 0);
-              // Only avoid stationary units
-              if (Math.hypot(vx, vy) < 5) {
-                if (Math.hypot(base.x - ox, base.y - oy) < unitRadius + oRad + 2) {
-                  occupied = true;
-                  break;
-                }
+              // Avoid all existing units (we will let Ghost Mode handle collision ignoring if near)
+              if (Math.hypot(base.x - ox, base.y - oy) < unitRadius + oRad + 2) {
+                occupied = true;
+                break;
+              }
+            }
+          }
+          if (!occupied) {
+            for (const prevSlot of slots) {
+              if (Math.hypot(base.x - prevSlot.x, base.y - prevSlot.y) < unitRadius + prevSlot.r) {
+                occupied = true;
+                break;
               }
             }
           }
