@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <title>Bomber Boys (1000 Players)</title>
+    <script>
+      window.addEventListener("error", function(e) {
+        fetch("/log", { method: "POST", body: "[CLIENT-ERROR] " + e.message + " @ " + e.filename + ":" + e.lineno });
+      });
+      window.addEventListener("unhandledrejection", function(e) {
+        fetch("/log", { method: "POST", body: "[CLIENT-PROMISE] " + (e.reason && e.reason.stack ? e.reason.stack : (e.reason && e.reason.message ? e.reason.message : String(e.reason))) });
+      });
+    </script>
     <style>
       html, body {
         margin: 0;

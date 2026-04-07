@@ -6,7 +6,7 @@ import { BaseDefenseScene } from "./BaseDefenseScene";
 import { BaseDefenseScene_Advanced } from "./BaseDefenseAdvanced";
 
 const config: Phaser.Types.Core.GameConfig = {
-  type: Phaser.WEBGL,
+  type: Phaser.AUTO,
   width: window.innerWidth,
   height: window.innerHeight,
   scale: {
