@@ -639,7 +639,9 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
           s.jamRefX = s.x;
           s.jamRefY = s.y;
           this.localUnitJamTicks.set(uid, 0);
-          this.localUnitGhostMode?.delete(uid);
+          // We DO NOT cancel ghost mode here. If a unit was jammed enough to become a ghost,
+          // let it glide smoothly all the way to its destination slot before re-solidifying.
+          // Otherwise, it rapidly toggles solid->ghost->solid and explodes units apart violently.
         } else {
           const ticks = (this.localUnitJamTicks.get(uid) ?? 0) + 1;
           this.localUnitJamTicks.set(uid, ticks);

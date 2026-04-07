@@ -1179,7 +1179,10 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const vy = Number(rs?.vy ?? 0);
           const speed = Math.hypot(vx, vy);
           // Only rotate from velocity if moving meaningfully — prevents spin on spawn (vx/vy both 0)
-          const movingFast = speed > 14;
+          // Also NEVER rotate from velocity if the server considers the unit "idle" (arrived at destination)
+          // to prevent tiny physics collision bumps from flipping the unit sprite wildly.
+          const isIdle = String(u.aiState || "") === "idle";
+          const movingFast = !isIdle && (speed > 14);
 
           if (isLocalOwned && movingFast) {
             // Local prediction while driving
