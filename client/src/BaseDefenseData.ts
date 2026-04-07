@@ -35,7 +35,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   unitEntities: { [id: string]: Phaser.GameObjects.Arc | Phaser.GameObjects.Image | Phaser.GameObjects.Sprite } = {};
   unitFacing = new Map<string, number>();
   // Hysteresis: tracks (tentativeDir, frameCount) to prevent rapid texture flipping.
-  // Tank texture only switches after the same new direction appears 2+ consecutive frames.
+  // Tank texture only switches after the same new direction appears 5+ consecutive frames.
   unitDirVote = new Map<string, { dir: number; count: number }>();
 
   unitSelectionRings: { [id: string]: Phaser.GameObjects.Rectangle } = {};

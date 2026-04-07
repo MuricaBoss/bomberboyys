@@ -1185,12 +1185,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const vy = Number(rs?.vy ?? 0);
           const speed = Math.hypot(vx, vy);
           const isIdle = String(u.aiState || "") === "idle";
-          const movingFast = !isIdle && (speed > 14);
-
           const committedDir = this.unitFacing.get(id);
-          if (isLocalOwned && movingFast) {
+          const moving = (speed > 1) || (String(u.aiState || "") === "walking");
+
+          if (isLocalOwned && moving) {
             dir = this.angleToDir8(Math.atan2(vy, vx));
-          } else if (committedDir !== undefined && !movingFast && !atkTargetId) {
+          } else if (committedDir !== undefined && !moving && !atkTargetId) {
             dir = committedDir; // Hold last stable direction when idle/stopping
           } else if (typeof u.dir === "number" && u.dir >= 0 && u.dir < 8) {
             dir = u.dir;
@@ -1206,7 +1206,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               const atkX = Number(atkTarget.x) - ux;
               const atkY = Number(atkTarget.y) - uy;
               if (Math.hypot(atkX, atkY) > 0.5) dir = this.angleToDir8(Math.atan2(atkY, atkX));
-            } else if (movingFast) {
+            } else if (moving) {
               dir = this.angleToDir8(Math.atan2(vy, vx));
             }
           }
@@ -1219,7 +1219,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             const vote = this.unitDirVote.get(id);
             if (vote && vote.dir === dir) {
               vote.count += 1;
-              if (vote.count >= 50) {
+              if (vote.count >= 5) {
                 this.unitFacing.set(id, dir);
                 this.unitDirVote.delete(id);
               } else {
@@ -1248,7 +1248,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             const vote = this.unitDirVote.get(id);
             if (vote && vote.dir === dir) {
               vote.count += 1;
-              if (vote.count >= 50) {
+              if (vote.count >= 5) {
                 this.unitFacing.set(id, dir);
                 this.unitDirVote.delete(id);
               } else {
