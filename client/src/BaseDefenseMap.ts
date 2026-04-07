@@ -1003,18 +1003,18 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
   }
 
   localFormationSpacingForIds(unitIds: string[]) {
-    if (!this.room?.state?.units) return TILE_SIZE * 0.8;
+    if (!this.room?.state?.units) return TILE_SIZE * 1.5;
     let maxRadius = TILE_SIZE * 0.42;
     for (const id of unitIds) {
       const unit = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
       if (!unit || (unit.hp ?? 0) <= 0) continue;
       maxRadius = Math.max(maxRadius, this.localFormationRadiusForUnit(unit));
     }
-    return Math.max(TILE_SIZE * 0.8, maxRadius * 2 + 2);
+    return Math.max(TILE_SIZE * 1.4, maxRadius * 2.8 + 16);
   }
 
   localFormationSlot(centerX: number, centerY: number, gridIndex: number, _totalUnits: number, spacing: number) {
-    const sp = Math.max(TILE_SIZE * 0.8, spacing);
+    const sp = Math.max(TILE_SIZE * 1.4, spacing);
     
     let x = 0, y = 0;
     let dx = 1, dy = 0;

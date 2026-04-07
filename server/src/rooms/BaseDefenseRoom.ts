@@ -458,7 +458,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
             for (let i = 1; i < distGrid; i++) {
               const testX = Math.floor(sgx + (egx - sgx) * (i / distGrid));
               const testY = Math.floor(sgy + (egy - sgy) * (i / distGrid));
-              if (this.isTileBlocked(testX, testY, id, unit.team)) {
+              if (this.isTileBlocked(testX, testY, id, unit.team, egx, egy)) {
                 blocked = true;
                 break;
               }
@@ -996,7 +996,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     return Math.round(deg / 45) % 8;
   }
 
-  isTileBlocked(gx: number, gy: number, ignoreUnitId?: string, team?: string) {
+  isTileBlocked(gx: number, gy: number, ignoreUnitId?: string, team?: string, targetGX?: number, targetGY?: number) {
     if (gx < 0 || gy < 0 || gx >= this.state.mapWidth || gy >= this.state.mapHeight) return true;
     if (this.tileAt(gx, gy) !== 0) return true;
     for (const [id, s] of this.state.structures) {
@@ -1013,6 +1013,13 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     
     // Check for friendly units blocking the path
     if (team) {
+      // GHOST MODE: if we are close to the target slot, we ignore our own units
+      if (targetGX !== undefined && targetGY !== undefined) {
+        if (Math.hypot(gx - targetGX, gy - targetGY) <= 3) {
+           return false;
+        }
+      }
+
       for (const [uid, u] of this.state.units) {
         if (uid === ignoreUnitId || (u.hp ?? 0) <= 0 || u.team !== team) continue;
         const ugx = Math.floor(Number(u.x) / TILE_SIZE);
@@ -1056,7 +1063,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
       for (const n of neighbors) {
         if (n.x < 0 || n.x >= this.state.mapWidth || n.y < 0 || n.y >= this.state.mapHeight) continue;
         if (closedSet.has(`${n.x},${n.y}`)) continue;
-        if (this.isTileBlocked(n.x, n.y, ignoreUnitId, team)) {
+        if (this.isTileBlocked(n.x, n.y, ignoreUnitId, team, egx, egy)) {
           // Allow the final destination to be occupied to prevent target unreachability,
           // but completely avoid routing through occupied intermediate tiles.
           if (n.x !== egx || n.y !== egy) continue;
