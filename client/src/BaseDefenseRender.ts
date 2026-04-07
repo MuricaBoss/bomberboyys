@@ -816,10 +816,6 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
   }
 
   drawFormationPreview(now: number) {
-    if (!this.phaserHudEnabled) {
-      if (this.formationPreviewGraphics) this.formationPreviewGraphics.clear().setVisible(false);
-      return;
-    }
     if (!this.formationPreviewGraphics) {
       this.formationPreviewGraphics = this.add.graphics().setDepth(19);
     }
@@ -836,8 +832,8 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     if (this.localUnitTargetOverride.size > 0 && this.room?.state?.units?.forEach) {
       this.room.state.units.forEach((u: any, unitId: string) => {
         if ((u.hp ?? 0) <= 0) return;
+        // Show for ALL units on my team (not just ownerId match - produced units have different ownerId)
         if (!myTeam || u.team !== myTeam) return;
-        if (String(u.ownerId || "") !== this.currentPlayerId) return;
         const override = this.localUnitTargetOverride.get(unitId);
         if (!override) return;
         const rs = this.localUnitRenderState.get(unitId);
