@@ -1146,7 +1146,24 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           }
           this.unitEntities[id] = e;
 
-
+          // ----- AUTOMATIC CLIENT RALLY POINT -----
+          if (isLocalOwned && String(u.aiState || "") === "idle" && (u.hp ?? 0) > 0) {
+            // New unit just popped out of our factory. Tell it to move to a clear slot nearby!
+            // We use a fixed point slightly below the exit so the grid spiral naturally fills space
+            // downwards without random detours.
+            const tgtX = u.x;
+            const tgtY = u.y + 60;
+            
+            // Temporarily trick the client into running the full collision-aware movement dispatch for this unit
+            const tmpSelected = new Set(this.selectedUnitIds);
+            this.selectedUnitIds = new Set([id]);
+            // @ts-ignore
+            if (typeof this.issueLocalUnitMoveCommand === "function") {
+              // @ts-ignore
+              this.issueLocalUnitMoveCommand(tgtX, tgtY);
+            }
+            this.selectedUnitIds = tmpSelected;
+          }
         }
 
         // 1. Synchronize Position (Interpolation)
