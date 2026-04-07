@@ -552,21 +552,8 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     let navX = Number(wp?.x ?? tx);
     let navY = Number(wp?.y ?? ty);
 
-    // If jammed, try a perpendicular detour to get around blocking units
-    const jamTicks = this.localUnitJamTicks.get(id) ?? 0;
-    if (jamTicks > 30) {
-      const toNavX = navX - s.x;
-      const toNavY = navY - s.y;
-      const toNavLen = Math.hypot(toNavX, toNavY);
-      if (toNavLen > 1) {
-        const perpX = -toNavY / toNavLen;
-        const perpY = toNavX / toNavLen;
-        const detourMag = Math.min(TILE_SIZE * 2, (jamTicks - 30) * 0.8);
-        const side = (jamTicks % 60 < 30) ? 1 : -1;
-        navX += perpX * detourMag * side;
-        navY += perpY * detourMag * side;
-      }
-    }
+    // Soft repulsion between units (calculated later in this method) will naturally push units
+    // apart without forcing them into a massive synchronized detour spiral.
 
     const toTX = navX - s.x;
     const toTY = navY - s.y;
