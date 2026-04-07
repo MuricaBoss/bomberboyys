@@ -26,6 +26,9 @@ import {
 import { BaseDefenseScene_Hud } from "./BaseDefenseHud";
 
 export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
+  public tankTrailState = new Map<string, any>();
+  protected unitAutoRallied?: Set<string>;
+
   constructor() {
     super("BaseDefenseScene_Advanced");
   }
@@ -1147,7 +1150,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           this.unitEntities[id] = e;
 
           // ----- AUTOMATIC CLIENT RALLY POINT -----
-          if (isLocalOwned && String(u.aiState || "") === "idle" && (u.hp ?? 0) > 0) {
+          if (isLocalOwned && String(u.aiState || "") === "idle" && (u.hp ?? 0) > 0 && !this.unitAutoRallied?.has(id)) {
+            if (!this.unitAutoRallied) this.unitAutoRallied = new Set();
+            this.unitAutoRallied.add(id);
             // New unit just popped out of our factory. Tell it to move to a clear slot nearby!
             // We use a fixed point slightly below the exit so the grid spiral naturally fills space
             // downwards without random detours.
