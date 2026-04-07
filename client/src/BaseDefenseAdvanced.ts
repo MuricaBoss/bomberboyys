@@ -1221,9 +1221,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             if (vote && vote.dir === dir) {
               vote.count += 1;
               // Commit AFTER 2nd consecutive frame of the same candidate,
-              // OR immediately if moving very fast (clearly committed direction)
-              const speed = Math.hypot(Number(rs?.vx ?? 0), Number(rs?.vy ?? 0));
-              if (vote.count >= 20 || speed > 60) {
+              // Commit AFTER 50 consecutive frames of the same candidate
+              if (vote.count >= 50) {
                 this.unitFacing.set(id, dir);
                 this.unitDirVote.delete(id);
               }
@@ -1253,9 +1252,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           if (dir !== committedDir) {
             const vote = this.unitDirVote.get(id);
             if (vote && vote.dir === dir) {
-              vote.count += 1;
-              const speed = Math.hypot(Number(rs?.vx ?? 0), Number(rs?.vy ?? 0));
-              if (vote.count >= 20 || speed > 60) {
+              // Commit AFTER 50 consecutive frames of the same candidate
+              if (vote.count >= 50) {
                 this.unitFacing.set(id, dir);
                 this.unitDirVote.delete(id);
               }

@@ -639,10 +639,11 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
           s.jamRefX = s.x;
           s.jamRefY = s.y;
           this.localUnitJamTicks.set(uid, 0);
+          this.localUnitGhostMode?.delete(uid);
         } else {
           const ticks = (this.localUnitJamTicks.get(uid) ?? 0) + 1;
           this.localUnitJamTicks.set(uid, ticks);
-          if (ticks > 120) {
+          if (ticks > 40) {
             if (!this.localUnitGhostMode) this.localUnitGhostMode = new Set<string>();
             this.localUnitGhostMode.add(uid);
           }
