@@ -458,7 +458,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
             for (let i = 1; i < distGrid; i++) {
               const testX = Math.floor(sgx + (egx - sgx) * (i / distGrid));
               const testY = Math.floor(sgy + (egy - sgy) * (i / distGrid));
-              if (this.isTileBlocked(testX, testY)) {
+              if (this.isTileBlocked(testX, testY, id, unit.team)) {
                 blocked = true;
                 break;
               }
@@ -466,7 +466,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
           }
 
           if (blocked) {
-            path = this.findPathGrid(sgx, sgy, egx, egy);
+            path = this.findPathGrid(sgx, sgy, egx, egy, id, unit.team);
             if (path) this.unitPaths.set(id, path);
           }
         }
@@ -676,9 +676,15 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     const producerType = type === "soldier" ? "barracks" : "war_factory";
     const producer = this.findOwnedReadyStructure(ownerId, producerType, now);
     if (!producer) return;
-    const radius = this.getUnitBodyRadius(type);
-    const exitPoint = this.findProducedUnitExitPoint(producer, String(player.team || "A"), radius, now);
-    if (!exitPoint) return;
+    
+    // Just find a simple fixed exit point adjacent to the producer
+    const footprint = this.getStructureFootprint(String(producer.type || ""));
+    const halfH = Math.floor(footprint.height / 2);
+    const centerGX = Math.floor(Number(producer.x) / TILE_SIZE);
+    const centerGY = Math.floor(Number(producer.y) / TILE_SIZE);
+    
+    // Default exit: right under the building
+    const exitPoint = { x: centerGX * TILE_SIZE + TILE_SIZE / 2, y: (centerGY + halfH + 1) * TILE_SIZE + TILE_SIZE / 2 };
     const startPoint = this.getProducedUnitStartPoint(producer, exitPoint);
 
     const unit = new BaseUnit();
@@ -689,9 +695,9 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     unit.homeStructureId = producer.id;
     unit.x = startPoint.x;
     unit.y = startPoint.y;
-    unit.targetX = exitPoint.x;
-    unit.targetY = exitPoint.y;
-    unit.aiState = "walking";
+    unit.targetX = startPoint.x;
+    unit.targetY = startPoint.y;
+    unit.aiState = "idle";
     this.unitPaths.delete(unit.id);
     unit.manualUntil = now + PRODUCED_UNIT_EXIT_GRACE_MS;
     unit.hp = type === "tank" ? 150 : 60;
@@ -990,7 +996,8 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     return Math.round(deg / 45) % 8;
   }
 
-  isTileBlocked(gx: number, gy: number): boolean {
+  isTileBlocked(gx: number, gy: number, ignoreUnitId?: string, team?: string) {
+    if (gx < 0 || gy < 0 || gx >= this.state.mapWidth || gy >= this.state.mapHeight) return true;
     if (this.tileAt(gx, gy) !== 0) return true;
     for (const [id, s] of this.state.structures) {
       if (s.hp <= 0) continue;
@@ -1003,10 +1010,23 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
         if (gx === sgx && gy === sgy) return true;
       }
     }
+    
+    // Check for friendly units blocking the path
+    if (team) {
+      for (const [uid, u] of this.state.units) {
+        if (uid === ignoreUnitId || (u.hp ?? 0) <= 0 || u.team !== team) continue;
+        const ugx = Math.floor(Number(u.x) / TILE_SIZE);
+        const ugy = Math.floor(Number(u.y) / TILE_SIZE);
+        if (ugx === gx && ugy === gy) {
+          return true; // Path is blocked by a friendly unit
+        }
+      }
+    }
+    
     return false;
   }
 
-  findPathGrid(sgx: number, sgy: number, egx: number, egy: number): { x: number, y: number }[] | null {
+  findPathGrid(sgx: number, sgy: number, egx: number, egy: number, ignoreUnitId?: string, team?: string): { x: number, y: number }[] | null {
     if (sgx === egx && sgy === egy) return null;
     const openSet: any[] = [{ x: sgx, y: sgy, g: 0, f: Math.abs(egx-sgx) + Math.abs(egy-sgy), parent: null }];
     const closedSet = new Set<string>();
@@ -1036,7 +1056,11 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
       for (const n of neighbors) {
         if (n.x < 0 || n.x >= this.state.mapWidth || n.y < 0 || n.y >= this.state.mapHeight) continue;
         if (closedSet.has(`${n.x},${n.y}`)) continue;
-        if (this.isTileBlocked(n.x, n.y)) continue;
+        if (this.isTileBlocked(n.x, n.y, ignoreUnitId, team)) {
+          // Allow the final destination to be occupied to prevent target unreachability,
+          // but completely avoid routing through occupied intermediate tiles.
+          if (n.x !== egx || n.y !== egy) continue;
+        }
 
         const g = current.g + 1;
         const f = g + Math.abs(egx - n.x) + Math.abs(egy - n.y);
