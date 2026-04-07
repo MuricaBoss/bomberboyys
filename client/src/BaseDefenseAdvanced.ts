@@ -1193,6 +1193,33 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
         // 3. Update Visuals
         if (isTank) {
+          // --- Hysteresis: only change tank texture after 2 consecutive frames of same direction ---
+          // This prevents single-frame velocity spikes (spawn jitter, collision pushes) from
+          // causing rapid texture flipping (the "spinning" visual bug).
+          const committedDir = this.unitFacing.get(id) ?? dir;
+          if (dir !== committedDir) {
+            const vote = this.unitDirVote.get(id);
+            if (vote && vote.dir === dir) {
+              vote.count += 1;
+              // Commit AFTER 2nd consecutive frame of the same candidate,
+              // OR immediately if moving very fast (clearly committed direction)
+              const speed = Math.hypot(Number(rs?.vx ?? 0), Number(rs?.vy ?? 0));
+              if (vote.count >= 2 || speed > 60) {
+                this.unitFacing.set(id, dir);
+                this.unitDirVote.delete(id);
+              }
+              // else: keep old committed dir this frame
+              dir = this.unitFacing.get(id)!;
+            } else {
+              // Start a new vote for this candidate direction
+              this.unitDirVote.set(id, { dir, count: 1 });
+              dir = committedDir; // Hold old dir this frame
+            }
+          } else {
+            // Direction matches committed — reset any pending vote
+            this.unitDirVote.delete(id);
+          }
+
           const tankTextureKey = this.getTankTextureKeyByDir(dir);
           const tank = e as Phaser.GameObjects.Image;
           if (tank.texture?.key !== tankTextureKey) tank.setTexture(tankTextureKey);
@@ -1202,6 +1229,26 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           else if (isFriendly) tank.clearTint();
           else tank.setTint(0xff2222);
         } else if (isSoldier) {
+          // Same direction hysteresis for soldiers — prevents animKey flipping on spawn/traffic
+          const committedDir = this.unitFacing.get(id) ?? dir;
+          if (dir !== committedDir) {
+            const vote = this.unitDirVote.get(id);
+            if (vote && vote.dir === dir) {
+              vote.count += 1;
+              const speed = Math.hypot(Number(rs?.vx ?? 0), Number(rs?.vy ?? 0));
+              if (vote.count >= 2 || speed > 60) {
+                this.unitFacing.set(id, dir);
+                this.unitDirVote.delete(id);
+              }
+              dir = this.unitFacing.get(id)!;
+            } else {
+              this.unitDirVote.set(id, { dir, count: 1 });
+              dir = committedDir;
+            }
+          } else {
+            this.unitDirVote.delete(id);
+          }
+
           const soldier = e as Phaser.GameObjects.Sprite;
           soldier.setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y);
           soldier.setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE);
@@ -1347,6 +1394,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         this.destroyGroundShadow(this.unitShadowEntities[id]);
         delete this.unitShadowEntities[id];
         this.unitFacing.delete(id);
+        this.unitDirVote.delete(id);
         this.tankTrailState.delete(id);
         this.unitClientPathCache.delete(id);
         this.localUnitRenderState.delete(id);
