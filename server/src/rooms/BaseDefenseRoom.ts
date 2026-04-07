@@ -1029,6 +1029,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
 
       for (const [uid, u] of this.state.units) {
         if (uid === ignoreUnitId || (u.hp ?? 0) <= 0 || u.team !== team) continue;
+        if (u.aiState !== "idle") continue; // Do not detour around moving friendlies
         const ugx = Math.floor(Number(u.x) / TILE_SIZE);
         const ugy = Math.floor(Number(u.y) / TILE_SIZE);
         if (ugx === gx && ugy === gy) {
