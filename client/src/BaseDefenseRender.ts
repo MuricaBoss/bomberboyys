@@ -828,6 +828,53 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
 
     this.reflowFormationAssignments(now);
 
+    // --- Always-on slot+path debug: shows orange circle at target slot + path line for each owned unit ---
+    const me = this.room?.state?.players?.get
+      ? this.room.state.players.get(this.currentPlayerId)
+      : this.room?.state?.players?.[this.currentPlayerId];
+    const myTeam = me?.team;
+    if (this.localUnitTargetOverride.size > 0 && this.room?.state?.units?.forEach) {
+      this.room.state.units.forEach((u: any, unitId: string) => {
+        if ((u.hp ?? 0) <= 0) return;
+        if (!myTeam || u.team !== myTeam) return;
+        if (String(u.ownerId || "") !== this.currentPlayerId) return;
+        const override = this.localUnitTargetOverride.get(unitId);
+        if (!override) return;
+        const rs = this.localUnitRenderState.get(unitId);
+        const ux = Number(rs?.x ?? u.x);
+        const uy = Number(rs?.y ?? u.y);
+        const sx = override.x;
+        const sy = override.y;
+        if (Math.hypot(sx - ux, sy - uy) < TILE_SIZE * 0.4) return; // Arrived — hide
+        // Target slot: orange ring + cross
+        g.lineStyle(2, 0xff8800, 0.9);
+        g.strokeCircle(sx, sy, TILE_SIZE * 0.28);
+        g.fillStyle(0xff8800, 0.1);
+        g.fillCircle(sx, sy, TILE_SIZE * 0.28);
+        const cs = 5;
+        g.lineStyle(1.5, 0xff8800, 0.85);
+        g.beginPath(); g.moveTo(sx - cs, sy); g.lineTo(sx + cs, sy); g.strokePath();
+        g.beginPath(); g.moveTo(sx, sy - cs); g.lineTo(sx, sy + cs); g.strokePath();
+        // Path to slot
+        const cache = this.unitClientPathCache.get(unitId);
+        if (cache && cache.cells.length > 0) {
+          g.lineStyle(1.2, 0xffaa33, 0.45);
+          g.beginPath();
+          g.moveTo(ux, uy);
+          for (let ci = cache.idx; ci < cache.cells.length; ci++) {
+            const c = cache.cells[ci];
+            g.lineTo(c.x * TILE_SIZE + TILE_SIZE / 2, c.y * TILE_SIZE + TILE_SIZE / 2);
+          }
+          g.lineTo(sx, sy);
+          g.strokePath();
+        } else {
+          g.lineStyle(1.2, 0xffaa33, 0.38);
+          g.beginPath(); g.moveTo(ux, uy); g.lineTo(sx, sy); g.strokePath();
+        }
+      });
+    }
+    // --- End slot+path debug overlay ---
+
     if (this.formationPreviewSlots.length === 0 || now > this.formationPreviewUntil) return;
 
     // Fade out in the last 1.5s
