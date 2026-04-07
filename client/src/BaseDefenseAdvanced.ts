@@ -1210,6 +1210,15 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               dir = this.angleToDir8(Math.atan2(vy, vx));
             }
           }
+
+          if (isLocalOwned && !moving && !atkTargetId) {
+            const vote = this.unitDirVote.get(id);
+            if (vote) {
+              this.unitFacing.set(id, vote.dir);
+              this.unitDirVote.delete(id);
+              dir = vote.dir;
+            }
+          }
         }
 
         // 3. Update Visuals
