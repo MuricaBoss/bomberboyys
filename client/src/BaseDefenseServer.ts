@@ -26,6 +26,8 @@ import {
 import { BaseDefenseScene_Map } from "./BaseDefenseMap";
 
 export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
+  recentAssignedSlots = new Map<string, { x: number; y: number; r: number; at: number }>();
+
   createLocalBaseDefenseRoom() {
     const state: any = {
       mode: "base_defense",
@@ -432,6 +434,19 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
             }
           }
           if (!occupied) {
+            const now = Date.now();
+            for (const [rid, rslot] of this.recentAssignedSlots.entries()) {
+              if (now - rslot.at > 15000) {
+                this.recentAssignedSlots.delete(rid);
+                continue;
+              }
+              if (Math.hypot(base.x - rslot.x, base.y - rslot.y) < unitRadius + rslot.r + 2) {
+                occupied = true;
+                break;
+              }
+            }
+          }
+          if (!occupied) {
             slot = base;
             break;
           }
@@ -475,6 +490,7 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
         usedUnits.add(bestId);
         assignments.set(bestId, { x: slots[si].x, y: slots[si].y });
         priorityOrder.push({ id: bestId, slot: { x: slots[si].x, y: slots[si].y } });
+        this.recentAssignedSlots.set(bestId, { x: slots[si].x, y: slots[si].y, r: slots[si].r, at: Date.now() });
       }
     }
 

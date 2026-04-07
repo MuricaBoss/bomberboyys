@@ -445,6 +445,13 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
       
       if (unit.aiState === "walking") {
         let path = this.unitPaths.get(id);
+        
+        // Routinely challenge the path so units can discover straight empty routes or recalculate blocked paths
+        if (path && Math.random() < 0.05) {
+          this.unitPaths.delete(id);
+          path = undefined;
+        }
+
         if (!path) {
           const sgx = Math.floor(unit.x / TILE_SIZE);
           const sgy = Math.floor(unit.y / TILE_SIZE);
@@ -1035,7 +1042,10 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
 
   findPathGrid(sgx: number, sgy: number, egx: number, egy: number, ignoreUnitId?: string, team?: string): { x: number, y: number }[] | null {
     if (sgx === egx && sgy === egy) return null;
-    const openSet: any[] = [{ x: sgx, y: sgy, g: 0, f: Math.abs(egx-sgx) + Math.abs(egy-sgy), parent: null }];
+    const dxInit = Math.abs(egx-sgx);
+    const dyInit = Math.abs(egy-sgy);
+    const hInit = dxInit + dyInit + (1.4 - 2) * Math.min(dxInit, dyInit);
+    const openSet: any[] = [{ x: sgx, y: sgy, g: 0, f: hInit, parent: null }];
     const closedSet = new Set<string>();
     let count = 0;
 
@@ -1056,21 +1066,33 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
       closedSet.add(key);
 
       const neighbors = [
-        { x: current.x + 1, y: current.y }, { x: current.x - 1, y: current.y },
-        { x: current.x, y: current.y + 1 }, { x: current.x, y: current.y - 1 }
+        { x: current.x + 1, y: current.y, d: false }, { x: current.x - 1, y: current.y, d: false },
+        { x: current.x, y: current.y + 1, d: false }, { x: current.x, y: current.y - 1, d: false },
+        { x: current.x + 1, y: current.y + 1, d: true }, { x: current.x - 1, y: current.y - 1, d: true },
+        { x: current.x + 1, y: current.y - 1, d: true }, { x: current.x - 1, y: current.y + 1, d: true }
       ];
 
       for (const n of neighbors) {
         if (n.x < 0 || n.x >= this.state.mapWidth || n.y < 0 || n.y >= this.state.mapHeight) continue;
         if (closedSet.has(`${n.x},${n.y}`)) continue;
+        
+        // Prevent corner cutting: if diagonal, check if adjacent straight tiles are blocked
+        if (n.d) {
+          if (this.isTileBlocked(current.x, n.y, ignoreUnitId, team, egx, egy)) continue;
+          if (this.isTileBlocked(n.x, current.y, ignoreUnitId, team, egx, egy)) continue;
+        }
+
         if (this.isTileBlocked(n.x, n.y, ignoreUnitId, team, egx, egy)) {
           // Allow the final destination to be occupied to prevent target unreachability,
           // but completely avoid routing through occupied intermediate tiles.
           if (n.x !== egx || n.y !== egy) continue;
         }
 
-        const g = current.g + 1;
-        const f = g + Math.abs(egx - n.x) + Math.abs(egy - n.y);
+        const g = current.g + (n.d ? 1.4 : 1);
+        const dx = Math.abs(egx - n.x);
+        const dy = Math.abs(egy - n.y);
+        const h = dx + dy + (1.4 - 2) * Math.min(dx, dy);
+        const f = g + h;
         const existing = openSet.find(o => o.x === n.x && o.y === n.y);
         if (!existing) {
           openSet.push({ ...n, g, f, parent: current });
