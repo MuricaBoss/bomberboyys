@@ -367,9 +367,9 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       const speedNow = Math.hypot(vx, vy);
       const movingNow = speedNow > 10 || Math.hypot(tx - s.x, ty - s.y) > TILE_SIZE * 0.2;
       if (movingNow) hasMoving = true;
-      const dir = Math.hypot(vx, vy) > 0.1
+      const dir = (this as any).unitFacing?.get(id) ?? (Math.hypot(vx, vy) > 0.1
         ? this.angleToDir8(Math.atan2(vy, vx))
-        : (this.unitFacing.get(id) ?? 0);
+        : 0);
       const prev = this.lastUnitPoseState.get(id);
       const changed = !prev
         || Math.hypot(prev.x - s.x, prev.y - s.y) > 1.35

@@ -1183,17 +1183,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const vx = Number(rs?.vx ?? 0);
           const vy = Number(rs?.vy ?? 0);
           const speed = Math.hypot(vx, vy);
-          // Only rotate from velocity if moving meaningfully — prevents spin on spawn (vx/vy both 0)
-          // Also NEVER rotate from velocity if the server considers the unit "idle" (arrived at destination)
-          // to prevent tiny physics collision bumps from flipping the unit sprite wildly.
           const isIdle = String(u.aiState || "") === "idle";
           const movingFast = !isIdle && (speed > 14);
 
           if (isLocalOwned && movingFast) {
-            // Local prediction while driving
             dir = this.angleToDir8(Math.atan2(vy, vx));
           } else if (typeof u.dir === "number" && u.dir >= 0 && u.dir < 8) {
-            // Authoritative server direction
             dir = u.dir;
           } else {
             const lastShot = this.unitLastShotDir.get(id);
@@ -1208,42 +1203,31 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               const atkY = Number(atkTarget.y) - uy;
               if (Math.hypot(atkX, atkY) > 0.5) dir = this.angleToDir8(Math.atan2(atkY, atkX));
             } else if (movingFast) {
-              // Remote unit moving — derive from velocity
               dir = this.angleToDir8(Math.atan2(vy, vx));
             }
-            // NOTE: Removed the "face destination while idle" fallback — it caused units to
-            // spin toward the slot they just arrived at, producing the anim flicker / spin-on-spawn
-            // bug especially under traffic. Dir is held from last actual movement instead.
           }
-          this.unitFacing.set(id, dir);
         }
 
         // 3. Update Visuals
         if (isTank) {
-          // --- Hysteresis: only change tank texture after 2 consecutive frames of same direction ---
-          // This prevents single-frame velocity spikes (spawn jitter, collision pushes) from
-          // causing rapid texture flipping (the "spinning" visual bug).
           const committedDir = this.unitFacing.get(id) ?? dir;
           if (dir !== committedDir) {
             const vote = this.unitDirVote.get(id);
             if (vote && vote.dir === dir) {
               vote.count += 1;
-              // Commit AFTER 2nd consecutive frame of the same candidate,
-              // Commit AFTER 50 consecutive frames of the same candidate
               if (vote.count >= 50) {
                 this.unitFacing.set(id, dir);
                 this.unitDirVote.delete(id);
+              } else {
+                dir = committedDir;
               }
-              // else: keep old committed dir this frame
-              dir = this.unitFacing.get(id)!;
             } else {
-              // Start a new vote for this candidate direction
               this.unitDirVote.set(id, { dir, count: 1 });
-              dir = committedDir; // Hold old dir this frame
+              dir = committedDir;
             }
           } else {
-            // Direction matches committed — reset any pending vote
             this.unitDirVote.delete(id);
+            dir = committedDir;
           }
 
           const tankTextureKey = this.getTankTextureKeyByDir(dir);
@@ -1255,23 +1239,24 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           else if (isFriendly) tank.clearTint();
           else tank.setTint(0xff2222);
         } else if (isSoldier) {
-          // Same direction hysteresis for soldiers — prevents animKey flipping on spawn/traffic
           const committedDir = this.unitFacing.get(id) ?? dir;
           if (dir !== committedDir) {
             const vote = this.unitDirVote.get(id);
             if (vote && vote.dir === dir) {
-              // Commit AFTER 50 consecutive frames of the same candidate
+              vote.count += 1;
               if (vote.count >= 50) {
                 this.unitFacing.set(id, dir);
                 this.unitDirVote.delete(id);
+              } else {
+                dir = committedDir;
               }
-              dir = this.unitFacing.get(id)!;
             } else {
               this.unitDirVote.set(id, { dir, count: 1 });
               dir = committedDir;
             }
           } else {
             this.unitDirVote.delete(id);
+            dir = committedDir;
           }
 
           const soldier = e as Phaser.GameObjects.Sprite;

@@ -912,7 +912,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       g.strokePath();
     }
 
-    // Draw path lines from each unit to its assigned slot
+
     for (const [unitId, slotPos] of this.formationPreviewAssignments.entries()) {
       const rs = this.localUnitRenderState.get(unitId);
       const u = this.room?.state?.units?.get ? this.room.state.units.get(unitId) : this.room?.state?.units?.[unitId];
