@@ -1127,7 +1127,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             ? (isFriendly ? 0x8ea7bf : 0xd24d2e)
             : (isFriendly ? 0x6ec4ff : 0xff4f1a);
         const radius = isHarvester ? TILE_SIZE * 0.18 : isTank ? TILE_SIZE * 0.3 : TILE_SIZE * 0.22;
-        let dir = this.unitFacing.get(id) ?? 0;
+        let dir = this.unitFacing.get(id) ?? (typeof u.dir === "number" ? u.dir : 0);
+        if (!this.unitFacing.has(id)) this.unitFacing.set(id, dir);
         if (
           !e
           || (isTank && !(e instanceof Phaser.GameObjects.Image))
@@ -1186,8 +1187,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const isIdle = String(u.aiState || "") === "idle";
           const movingFast = !isIdle && (speed > 14);
 
+          const committedDir = this.unitFacing.get(id);
           if (isLocalOwned && movingFast) {
             dir = this.angleToDir8(Math.atan2(vy, vx));
+          } else if (committedDir !== undefined && !movingFast && !atkTargetId) {
+            dir = committedDir; // Hold last stable direction when idle/stopping
           } else if (typeof u.dir === "number" && u.dir >= 0 && u.dir < 8) {
             dir = u.dir;
           } else {

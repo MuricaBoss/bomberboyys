@@ -740,8 +740,27 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
 
         const overlap = yieldDist - dist;
         const awayStrength = (dist < minDist ? 0.9 : 0.5) * overlap;
-        pushX += (dx / dist) * awayStrength;
-        pushY += (dy / dist) * awayStrength;
+        let lPX = (dx / dist) * awayStrength;
+        let lPY = (dy / dist) * awayStrength;
+
+        // --- Formation Fanning ---
+        // If a friendly unit is blocking our path directly ahead, add a lateral push
+        // to encourage fanning out into a row instead of staying in a single-file queue.
+        if (moving && toTLen > 1) {
+          const aheadX = toTX / toTLen;
+          const aheadY = toTY / toTLen;
+          const dot = aheadX * (-dx / dist) + aheadY * (-dy / dist);
+          if (dot > 0.45) { // Roughly in front
+            const latX = -aheadY;
+            const latY = aheadX;
+            const side = (id < oid) ? 1 : -1;
+            const fanForce = awayStrength * 1.25;
+            lPX += latX * side * fanForce;
+            lPY += latY * side * fanForce;
+          }
+        }
+        pushX += lPX;
+        pushY += lPY;
         yieldingPairs += 1;
       });
       if (yieldingPairs > 0 && Math.hypot(pushX, pushY) > 0.01) {

@@ -369,7 +369,7 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       if (movingNow) hasMoving = true;
       const dir = (this as any).unitFacing?.get(id) ?? (Math.hypot(vx, vy) > 0.1
         ? this.angleToDir8(Math.atan2(vy, vx))
-        : 0);
+        : (u.dir ?? 0));
       const prev = this.lastUnitPoseState.get(id);
       const changed = !prev
         || Math.hypot(prev.x - s.x, prev.y - s.y) > 1.35
