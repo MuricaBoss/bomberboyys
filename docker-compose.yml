@@ -1,0 +1,16 @@
+services:
+  server:
+    build: ./server
+    container_name: bomber-server
+    restart: unless-stopped
+    ports:
+      - "2567:2567"
+
+  client:
+    build: ./client
+    container_name: bomber-client
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "4173:4173"

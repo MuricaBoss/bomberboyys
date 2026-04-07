@@ -1,0 +1,21 @@
+{
+  "name": "client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/bump-build-number.mjs && tsc && vite build && node scripts/write-version.mjs",
+    "build:ci": "tsc && vite build && node scripts/write-version.mjs",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.40.0",
+    "typescript": "~5.9.3",
+    "vite": "^8.0.1"
+  },
+  "dependencies": {
+    "colyseus.js": "^0.16.22",
+    "phaser": "^3.90.0"
+  }
+}

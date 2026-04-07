@@ -1,0 +1,11 @@
+isomuna.fi {
+  encode gzip zstd
+
+  handle_path /bb-ws* {
+    reverse_proxy 127.0.0.1:2567
+  }
+
+  handle_path /bb* {
+    reverse_proxy 127.0.0.1:4173
+  }
+}
