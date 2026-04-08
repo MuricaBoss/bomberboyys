@@ -448,15 +448,23 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         rs.vy = 0;
       } else if (dist > 0.1) {
         const corr = 1 - Math.exp(-delta * 0.012);
-        const newX = rs.x + (serverX - rs.x) * corr;
-        const newY = rs.y + (serverY - rs.y) * corr;
+        let moveX = (serverX - rs.x) * corr;
+        let moveY = (serverY - rs.y) * corr;
         
-        // Calculate implied velocity for the animation/direction logic
-        rs.vx = (newX - rs.x) / dt;
-        rs.vy = (newY - rs.y) / dt;
+        // Build 150/151 fix: Prevent endless asymptotic sliding at the very end
+        // which causes vibration/erratic angles by keeping speed > 1.
+        if (dist < 1.0) {
+          moveX = serverX - rs.x;
+          moveY = serverY - rs.y;
+          rs.vx = 0;
+          rs.vy = 0;
+        } else {
+          rs.vx = moveX / dt;
+          rs.vy = moveY / dt;
+        }
         
-        rs.x = newX;
-        rs.y = newY;
+        rs.x = rs.x + moveX;
+        rs.y = rs.y + moveY;
       } else {
         rs.vx = 0;
         rs.vy = 0;
