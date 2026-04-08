@@ -1294,9 +1294,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           if (tank.texture?.key !== tankTextureKey) tank.setTexture(tankTextureKey);
           tank.setOrigin(0.5, RTS_TANK_ORIGIN_Y);
           tank.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
+          // Build 156: No longer coloring enemies red; only clear tint (friendly and enemy) or grey (dead)
           if (u.hp <= 0) tank.setTint(0x444444);
-          else if (isFriendly) tank.clearTint();
-          else tank.setTint(0xff2222);
+          else tank.clearTint();
         } else if (isSoldier) {
           const committedDir = this.unitFacing.get(id) ?? dir;
           if (dir !== committedDir) {
@@ -1326,9 +1326,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const isShooting = !moving && this.unitAttackTarget.has(id);
           const animKey = this.getSoldierAnimKey(isShooting ? "shoot" : moving ? "run" : "idle", dir);
           if (soldier.anims.currentAnim?.key !== animKey) soldier.anims.play(animKey, true);
+          
           if (u.hp <= 0) soldier.setTint(0x444444);
-          else if (isFriendly) soldier.clearTint();
-          else soldier.setTint(0xff2222);
+          else soldier.clearTint();
         } else if ("setRadius" in e) {
           (e as Phaser.GameObjects.Arc).setRadius(radius);
           (e as Phaser.GameObjects.Arc).setFillStyle(u.hp <= 0 ? 0x444444 : baseColor, 1);
@@ -1399,9 +1399,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           if (!enemyIcon) {
             enemyIcon = this.add.graphics();
             enemyIcon.fillStyle(0xff0000, 0.9);
-            enemyIcon.fillCircle(0, 0, 4.5);
+            enemyIcon.fillCircle(0, 0, 5); // Build 156: Consistent 5px radius
             enemyIcon.lineStyle(1.5, 0xffffff, 0.7);
-            enemyIcon.strokeCircle(0, 0, 4.5);
+            enemyIcon.strokeCircle(0, 0, 5);
             enemyIcon.setDepth(20);
             this.unitEnemyIcons.set(id, enemyIcon);
           }
@@ -1544,8 +1544,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               if (e.texture?.key !== artSpec.key) e.setTexture(artSpec.key);
               if (e.originY !== artSpec.originY) e.setOrigin(0.5, artSpec.originY);
               if (Math.abs(e.displayWidth - artSpec.size) > 0.1) e.setDisplaySize(artSpec.size, artSpec.size);
-              if (isFriendly) { if (e.isTinted) e.clearTint(); }
-              else { if (!e.isTinted) e.setTint(0xffd0d0); }
+              // Build 156: No longer coloring enemy structures red
+              e.clearTint();
             }
             
             if (e.visible !== visible) e.setVisible(visible);
@@ -1597,7 +1597,27 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               if (isCriticalUpdate) this.applyWorldDepth(hp, e.y, WORLD_DEPTH_HP_OFFSET);
               if (!hp.visible) hp.setVisible(true);
             }
-            if (showHp) seenStructureHp.add(id); // Build 101: Keep label alive between syncs
+            if (showHp) seenStructureHp.add(id);
+
+            // Build 156: Red dot indicator for enemy buildings
+            const shouldShowEnemyIcon = !isFriendly && visible && (s.hp ?? 0) > 0;
+            let enemyIcon = this.structureEnemyIcons.get(id);
+            if (shouldShowEnemyIcon) {
+              if (!enemyIcon) {
+                enemyIcon = this.add.graphics();
+                enemyIcon.fillStyle(0xff0000, 0.9);
+                enemyIcon.fillCircle(0, 0, 5);
+                enemyIcon.lineStyle(1.5, 0xffffff, 0.7);
+                enemyIcon.strokeCircle(0, 0, 5);
+                enemyIcon.setDepth(20);
+                this.structureEnemyIcons.set(id, enemyIcon);
+              }
+              enemyIcon.setVisible(true);
+              const topY = artSpec ? this.getStructureTopY(e as any) : s.y - TILE_SIZE * 0.5;
+              enemyIcon.setPosition(e.x, topY - 14);
+            } else if (enemyIcon) {
+              enemyIcon.setVisible(false);
+            }
           });
         } catch (err) {
           console.error("[BaseDefense] Error in structures loop:", err);
