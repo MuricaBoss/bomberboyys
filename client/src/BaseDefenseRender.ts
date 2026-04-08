@@ -428,7 +428,8 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     }
     const dt = Math.max(0.001, Math.min(0.05, delta / 1000));
     if (!isLocalOwned) {
-      // Full client-side physics simulation for enemy units — same quality as owned units
+      // Build 152: Reverted to Simulation-based movement for remote units (highly preferred by user)
+      // but with an aiState guard to prevent walking through walls/vibrating at stops.
       let rs = this.localUnitRenderState.get(id);
       if (!rs) {
         rs = { x: Number(u.x), y: Number(u.y), vx: 0, vy: 0, lastAt: performance.now() };
@@ -437,44 +438,53 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       const serverX = Number(u.x);
       const serverY = Number(u.y);
       const dist = Math.hypot(serverX - rs.x, serverY - rs.y);
-      // Build 150: Simply track the server position smoothly.
-      // Remote units predicting movement towards u.targetX/Y caused rubber-banding
-      // when the simulation arrived before the server position caught up.
+
       if (dist > TILE_SIZE * 3) {
-        // Hard snap if diverged too much
+        // Teleport if too far
         rs.x = serverX;
         rs.y = serverY;
         rs.vx = 0;
         rs.vy = 0;
-      } else if (dist > 0.1) {
-        const corr = 1 - Math.exp(-delta * 0.012);
-        let moveX = (serverX - rs.x) * corr;
-        let moveY = (serverY - rs.y) * corr;
-        
-        // Build 150/151 fix: Prevent endless asymptotic sliding at the very end
-        // which causes vibration/erratic angles by keeping speed > 1.
-        if (dist < 1.0) {
-          moveX = serverX - rs.x;
-          moveY = serverY - rs.y;
-          rs.vx = 0;
-          rs.vy = 0;
-        } else {
-          rs.vx = moveX / dt;
-          rs.vy = moveY / dt;
-        }
-        
-        rs.x = rs.x + moveX;
-        rs.y = rs.y + moveY;
       } else {
-        rs.vx = 0;
-        rs.vy = 0;
-        rs.x = serverX;
-        rs.y = serverY;
+        // Simulate movement toward target using speed
+        const tx = Number(u.targetX ?? u.x);
+        const ty = Number(u.targetY ?? u.y);
+        const toTX = tx - rs.x;
+        const toTY = ty - rs.y;
+        const toTLen = Math.hypot(toTX, toTY);
+        const speed = Number(u.speed || 0);
+
+        // Only simulate velocity if the server says the unit is actually moving (walking).
+        // This prevents the unit from 'fighting' walls locally when the server has already stopped it.
+        const isWalking = String(u.aiState || "") === "walking";
+        const desiredVX = (isWalking && toTLen > TILE_SIZE * 0.1) ? (toTX / toTLen) * speed : 0;
+        const desiredVY = (isWalking && toTLen > TILE_SIZE * 0.1) ? (toTY / toTLen) * speed : 0;
+
+        const accel = isWalking ? 12 : 18;
+        const blend = 1 - Math.exp(-accel * dt);
+        rs.vx += (desiredVX - rs.vx) * blend;
+        rs.vy += (desiredVY - rs.vy) * blend;
+
+        // Step forward
+        rs.x += rs.vx * dt;
+        rs.y += rs.vy * dt;
+
+        // server correction — pull toward actual server position
+        const errX = serverX - rs.x;
+        const errY = serverY - rs.y;
+        const err = Math.hypot(errX, errY);
+        if (err > 0.1) {
+          // Gentler correction if moving, stronger if idle
+          const corr = isWalking ? (1 - Math.exp(-delta * 0.005)) : (1 - Math.exp(-delta * 0.015));
+          rs.x += errX * corr;
+          rs.y += errY * corr;
+        }
       }
 
       e.x = rs.x;
       e.y = rs.y;
       rs.lastAt = performance.now();
+      // Early return to skip collision/repulsion logic for remote units
       return;
     }
 
