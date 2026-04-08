@@ -437,52 +437,31 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       const serverX = Number(u.x);
       const serverY = Number(u.y);
       const dist = Math.hypot(serverX - rs.x, serverY - rs.y);
+      // Build 150: Simply track the server position smoothly.
+      // Remote units predicting movement towards u.targetX/Y caused rubber-banding
+      // when the simulation arrived before the server position caught up.
       if (dist > TILE_SIZE * 3) {
-        // Teleport if too far
-        e.x = serverX;
-        e.y = serverY;
-        rs.x = serverX;
-        rs.y = serverY;
-        rs.vx = 0;
-        rs.vy = 0;
-        rs.lastAt = performance.now();
-        return;
-      }
-
-      // Simulate movement toward target using speed — exactly like owned units
-      const tx = Number(u.targetX ?? u.x);
-      const ty = Number(u.targetY ?? u.y);
-      const toTX = tx - rs.x;
-      const toTY = ty - rs.y;
-      const toTLen = Math.hypot(toTX, toTY);
-      const speed = Number(u.speed || 0);
-
-      const desiredVX = (toTLen > TILE_SIZE * 0.1) ? (toTX / toTLen) * speed : 0;
-      const desiredVY = (toTLen > TILE_SIZE * 0.1) ? (toTY / toTLen) * speed : 0;
-
-      const accel = 12;
-      const blend = 1 - Math.exp(-accel * dt);
-      rs.vx += (desiredVX - rs.vx) * blend;
-      rs.vy += (desiredVY - rs.vy) * blend;
-
-      // Step forward
-      rs.x += rs.vx * dt;
-      rs.y += rs.vy * dt;
-
-      // Gentle server correction — pull toward actual server position
-      const errX = serverX - rs.x;
-      const errY = serverY - rs.y;
-      const err = Math.hypot(errX, errY);
-      if (err > TILE_SIZE * 1.5) {
         // Hard snap if diverged too much
         rs.x = serverX;
         rs.y = serverY;
         rs.vx = 0;
         rs.vy = 0;
-      } else if (err > 0.5) {
-        const corr = 1 - Math.exp(-delta * 0.006);
-        rs.x += errX * corr;
-        rs.y += errY * corr;
+      } else if (dist > 0.1) {
+        const corr = 1 - Math.exp(-delta * 0.012);
+        const newX = rs.x + (serverX - rs.x) * corr;
+        const newY = rs.y + (serverY - rs.y) * corr;
+        
+        // Calculate implied velocity for the animation/direction logic
+        rs.vx = (newX - rs.x) / dt;
+        rs.vy = (newY - rs.y) / dt;
+        
+        rs.x = newX;
+        rs.y = newY;
+      } else {
+        rs.vx = 0;
+        rs.vy = 0;
+        rs.x = serverX;
+        rs.y = serverY;
       }
 
       e.x = rs.x;
