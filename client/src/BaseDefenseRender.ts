@@ -537,18 +537,16 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         ty = override.y;
       }
       const distToSlot = Math.hypot(override.x - s.x, override.y - s.y);
-      if (distToSlot <= TILE_SIZE * 0.7) {
-        // Arrived at slot — snap and hold position permanently
+      if (distToSlot <= TILE_SIZE * 0.38) {
+        // Build 155: Tightened threshold (12px) for snappier arrival and reduced jitter.
         if (!this.unitSlotLocked.has(String(id))) {
-          // Compute arrival direction from velocity BEFORE it is zeroed out.
           const velSpeed = Math.hypot(s.vx, s.vy);
           let arrivalDir: number | null = null;
-          if (velSpeed > 0.5) {
+          if (velSpeed > 0.2) {
             arrivalDir = this.angleToDir8(Math.atan2(s.vy, s.vx));
           } else if (distToSlot > 0.5) {
             arrivalDir = this.angleToDir8(Math.atan2(override.y - s.y, override.x - s.x));
           } else {
-            // Fallback to existing direction to prevent East-flips (atan2(0,0)=0)
             arrivalDir = (u.dir !== undefined) ? u.dir : 1; 
           }
           
@@ -557,7 +555,6 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
           }
           this.unitSlotLocked.add(String(id));
           
-          // Build 153: Send a "Final Pose" immediately upon arrival to sync server state
           const committedDir = this.unitFacing.get(id) ?? arrivalDir ?? (u.dir || 1);
           this.room.send("unit_client_pose_batch", { 
             poses: [{ unitId: id, x: override.x, y: override.y, dir: committedDir, tx: override.x, ty: override.y, final: true }] 
