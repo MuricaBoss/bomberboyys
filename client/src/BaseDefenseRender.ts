@@ -428,8 +428,8 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     }
     const dt = Math.max(0.001, Math.min(0.05, delta / 1000));
     if (!isLocalOwned) {
-      // Build 152: Reverted to Simulation-based movement for remote units (highly preferred by user)
-      // but with an aiState guard to prevent walking through walls/vibrating at stops.
+      // Build 154: Leash-Regulated Simulation (Hybrid)
+      // Combines the predictive 'intent' of Build 149 with the server-tethering of Build 150.
       let rs = this.localUnitRenderState.get(id);
       if (!rs) {
         rs = { x: Number(u.x), y: Number(u.y), vx: 0, vy: 0, lastAt: performance.now() };
@@ -437,16 +437,20 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       }
       const serverX = Number(u.x);
       const serverY = Number(u.y);
-      const dist = Math.hypot(serverX - rs.x, serverY - rs.y);
+      const distToServer = Math.hypot(serverX - rs.x, serverY - rs.y);
 
-      if (dist > TILE_SIZE * 3) {
-        // Teleport if too far
+      if (distToServer > TILE_SIZE * 3) {
+        rs.x = serverX;
+        rs.y = serverY;
+        rs.vx = 0;
+        rs.vy = 0;
+      } else if (distToServer < 1.0 && String(u.aiState || "") !== "walking") {
+        // Snap precisely if near destination and idle
         rs.x = serverX;
         rs.y = serverY;
         rs.vx = 0;
         rs.vy = 0;
       } else {
-        // Simulate movement toward target using speed
         const tx = Number(u.targetX ?? u.x);
         const ty = Number(u.targetY ?? u.y);
         const toTX = tx - rs.x;
@@ -454,37 +458,45 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         const toTLen = Math.hypot(toTX, toTY);
         const speed = Number(u.speed || 0);
 
-        // Only simulate velocity if the server says the unit is actually moving (walking).
-        // This prevents the unit from 'fighting' walls locally when the server has already stopped it.
         const isWalking = String(u.aiState || "") === "walking";
-        const desiredVX = (isWalking && toTLen > TILE_SIZE * 0.1) ? (toTX / toTLen) * speed : 0;
-        const desiredVY = (isWalking && toTLen > TILE_SIZE * 0.1) ? (toTY / toTLen) * speed : 0;
+        
+        // Regulation: If we are ahead of the server, slow down. If behind, speed up.
+        // Dot product of (server - simulation) and (target - simulation)
+        // Positive dot means server is 'ahead' of us or in same direction; negative means we overshot.
+        const dx = serverX - rs.x;
+        const dy = serverY - rs.y;
+        const dot = (dx * toTX + dy * toTY);
+        
+        let multiplier = 1.0;
+        if (isWalking) {
+          if (dot < -5) multiplier = 0.45; // Overshot! Slow way down.
+          else if (distToServer > 20) multiplier = 1.35; // Lagging! Catch up.
+          else if (distToServer > 8) multiplier = 1.15;
+        }
 
-        const accel = isWalking ? 12 : 18;
+        const desiredVX = (isWalking && toTLen > 2) ? (toTX / toTLen) * speed * multiplier : 0;
+        const desiredVY = (isWalking && toTLen > 2) ? (toTY / toTLen) * speed * multiplier : 0;
+
+        const accel = isWalking ? 12 : 20;
         const blend = 1 - Math.exp(-accel * dt);
         rs.vx += (desiredVX - rs.vx) * blend;
         rs.vy += (desiredVY - rs.vy) * blend;
 
-        // Step forward
         rs.x += rs.vx * dt;
         rs.y += rs.vy * dt;
 
-        // server correction — pull toward actual server position
-        const errX = serverX - rs.x;
-        const errY = serverY - rs.y;
-        const err = Math.hypot(errX, errY);
-        if (err > 0.1) {
-          // Gentler correction if moving, stronger if idle
-          const corr = isWalking ? (1 - Math.exp(-delta * 0.005)) : (1 - Math.exp(-delta * 0.015));
-          rs.x += errX * corr;
-          rs.y += errY * corr;
+        // server correction — always pull gently toward actual server position
+        if (distToServer > 0.1) {
+          const corrPower = isWalking ? 0.006 : 0.016;
+          const corr = 1 - Math.exp(-delta * corrPower);
+          rs.x += (serverX - rs.x) * corr;
+          rs.y += (serverY - rs.y) * corr;
         }
       }
 
       e.x = rs.x;
       e.y = rs.y;
       rs.lastAt = performance.now();
-      // Early return to skip collision/repulsion logic for remote units
       return;
     }
 
