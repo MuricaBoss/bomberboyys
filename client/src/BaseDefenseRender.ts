@@ -530,6 +530,11 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       const distToSlot = Math.hypot(override.x - s.x, override.y - s.y);
       if (distToSlot <= TILE_SIZE * 0.7) {
         // Arrived at slot — snap and hold position permanently
+        if (Math.hypot(s.vx, s.vy) > 0.1) {
+          const arrivalAngle = Math.atan2(override.y - s.y, override.x - s.x);
+          const arrivalDir = (this as any).angleToDir8(arrivalAngle);
+          this.unitFacing.set(String(id), arrivalDir);
+        }
         this.localUnitGhostMode?.delete(String(id));
         if (Number(u.manualUntil || 0) > 0) u.manualUntil = 0;
         s.x = override.x;
@@ -542,6 +547,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         // Override stays active until a new command clears it
         return;
       }
+
     }
     const wp = this.getClientUnitWaypoint(
       id,

@@ -1188,27 +1188,39 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const committedDir = this.unitFacing.get(id);
           const moving = (speed > 1) || (String(u.aiState || "") === "walking");
 
-          if (isLocalOwned && moving) {
-            dir = this.angleToDir8(Math.atan2(vy, vx));
-          } else if (committedDir !== undefined && !moving && !atkTargetId) {
-            dir = committedDir; // Hold last stable direction when idle/stopping
-          } else if (typeof u.dir === "number" && u.dir >= 0 && u.dir < 8) {
-            dir = u.dir;
+          if (isLocalOwned) {
+            // AUTHORITATIVE LOCAL UNIT
+            if (moving) {
+              dir = this.angleToDir8(Math.atan2(vy, vx));
+            } else if (committedDir !== undefined) {
+              dir = committedDir; // Preferred: snapped or idle direction
+            } else if (typeof u.dir === "number") {
+              dir = u.dir;
+            }
           } else {
-            const lastShot = this.unitLastShotDir.get(id);
-            const atkTarget = atkTargetId
-              ? (this.room?.state?.units?.get ? this.room.state.units.get(atkTargetId) : this.room?.state?.units?.[atkTargetId])
-              : null;
+            // REMOTE NETWORK UNIT
+            if (typeof u.dir === "number" && u.dir >= 0 && u.dir < 8) {
+              dir = u.dir; // Always trust the owner's broadcasted direction
+            } else if (moving) {
+              dir = this.angleToDir8(Math.atan2(vy, vx));
+            } else if (committedDir !== undefined) {
+              dir = committedDir;
+            }
+          }
 
-            if (lastShot && (Date.now() - lastShot.at) < 800) {
-              dir = lastShot.dir;
-            } else if (atkTarget && (atkTarget.hp ?? 0) > 0) {
+          // Override if attacking
+          if (atkTargetId) {
+            const atkTarget = (this.room?.state?.units?.get ? this.room.state.units.get(atkTargetId) : this.room?.state?.units?.[atkTargetId]);
+            if (atkTarget && (atkTarget.hp ?? 0) > 0) {
               const atkX = Number(atkTarget.x) - ux;
               const atkY = Number(atkTarget.y) - uy;
               if (Math.hypot(atkX, atkY) > 0.5) dir = this.angleToDir8(Math.atan2(atkY, atkX));
-            } else if (moving) {
-              dir = this.angleToDir8(Math.atan2(vy, vx));
             }
+          }
+
+          const lastShot = this.unitLastShotDir.get(id);
+          if (lastShot && (Date.now() - lastShot.at) < 800) {
+            dir = lastShot.dir;
           }
 
           if (isLocalOwned && !moving && !atkTargetId) {
