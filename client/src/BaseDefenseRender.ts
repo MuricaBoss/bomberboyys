@@ -530,11 +530,23 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       const distToSlot = Math.hypot(override.x - s.x, override.y - s.y);
       if (distToSlot <= TILE_SIZE * 0.7) {
         // Arrived at slot — snap and hold position permanently
-        if (Math.hypot(s.vx, s.vy) > 0.1) {
-          const arrivalAngle = Math.atan2(override.y - s.y, override.x - s.x);
-          const arrivalDir = (this as any).angleToDir8(arrivalAngle);
-          this.unitFacing.set(String(id), arrivalDir);
+        // Build 148: Lock orientation using live velocity/position at moment of arrival
+        if (!this.unitSlotLocked.has(String(id))) {
+          // Compute arrival direction from velocity BEFORE it is zeroed out.
+          // If velocity is too small (decelerated), fall back to position→slot vector.
+          const velSpeed = Math.hypot(s.vx, s.vy);
+          let arrivalDir: number | null = null;
+          if (velSpeed > 0.5) {
+            arrivalDir = this.angleToDir8(Math.atan2(s.vy, s.vx));
+          } else if (distToSlot > 0.5) {
+            arrivalDir = this.angleToDir8(Math.atan2(override.y - s.y, override.x - s.x));
+          }
+          if (arrivalDir !== null) {
+            this.unitFacing.set(String(id), arrivalDir);
+          }
+          this.unitSlotLocked.add(String(id));
         }
+
         this.localUnitGhostMode?.delete(String(id));
         if (Number(u.manualUntil || 0) > 0) u.manualUntil = 0;
         s.x = override.x;
@@ -546,8 +558,13 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         s.lastAt = performance.now();
         // Override stays active until a new command clears it
         return;
+      } else {
+        // Moving - ensure lock is cleared
+        this.unitSlotLocked.delete(String(id));
       }
-
+    } else {
+      // No override - ensure lock is cleared if unit is moving normally
+      this.unitSlotLocked.delete(String(id));
     }
     const wp = this.getClientUnitWaypoint(
       id,

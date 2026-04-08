@@ -1127,8 +1127,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             ? (isFriendly ? 0x8ea7bf : 0xd24d2e)
             : (isFriendly ? 0x6ec4ff : 0xff4f1a);
         const radius = isHarvester ? TILE_SIZE * 0.18 : isTank ? TILE_SIZE * 0.3 : TILE_SIZE * 0.22;
-        let dir = this.unitFacing.get(id) ?? (typeof u.dir === "number" ? u.dir : 0);
-        if (!this.unitFacing.has(id)) this.unitFacing.set(id, dir);
+        let dir = this.unitFacing.get(id) ?? (typeof u.dir === "number" ? u.dir : 1);
+        // Build 147: Force Southeast default if dir is 0 and it's a fresh unit
+        if (!this.unitFacing.has(id)) {
+            if (dir === 0) dir = 1;
+            this.unitFacing.set(id, dir);
+        }
         if (
           !e
           || (isTank && !(e instanceof Phaser.GameObjects.Image))
@@ -1137,7 +1141,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         ) {
           if (e) e.destroy();
           if (isTank) {
-            e = this.add.image(u.x, u.y, this.getTankTextureKeyByDir(this.unitFacing.get(id) ?? 0))
+            e = this.add.image(u.x, u.y, this.getTankTextureKeyByDir(this.unitFacing.get(id) ?? 1))
               .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
               .setDepth(16);
           } else if (isSoldier) {
@@ -1190,7 +1194,13 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
           if (isLocalOwned) {
             // AUTHORITATIVE LOCAL UNIT
-            if (moving) {
+            // Build 148: If slot-locked, preserve the arrival heading set during snap.
+            // Server aiState may still be 'walking' even though vx/vy are zeroed,
+            // and atan2(0,0) = 0 would incorrectly flip to East.
+            const isSlotLocked = this.unitSlotLocked.has(String(id));
+            if (isSlotLocked && committedDir !== undefined) {
+              dir = committedDir;
+            } else if (moving) {
               dir = this.angleToDir8(Math.atan2(vy, vx));
             } else if (committedDir !== undefined) {
               dir = committedDir; // Preferred: snapped or idle direction
@@ -1221,6 +1231,16 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const lastShot = this.unitLastShotDir.get(id);
           if (lastShot && (Date.now() - lastShot.at) < 800) {
             dir = lastShot.dir;
+          }
+
+          // Build 147: Maintain 2-step history of unique directions
+          if (moving) {
+            const history = this.unitDirSnapshot.get(id) || [1]; // Start with Southeast default
+            if (history.length === 0 || history[0] !== dir) {
+              history.unshift(dir);
+              if (history.length > 2) history.pop();
+              this.unitDirSnapshot.set(id, history);
+            }
           }
 
           if (isLocalOwned && !moving && !atkTargetId) {

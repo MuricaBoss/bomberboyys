@@ -76,7 +76,7 @@ export class BaseUnit extends Schema {
   @type("number") cargoMax: number = 0;
   @type("string") aiState: string = "idle";
   @type("number") manualUntil: number = 0;
-  @type("number") dir: number = 0; // 0-7 for 8 directions
+  @type("number") dir: number = 1; // Default to 1 (Southeast) for 8 directions
 }
 
 export class BaseDefenseState extends Schema {
