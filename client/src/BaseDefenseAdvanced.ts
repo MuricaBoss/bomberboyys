@@ -1151,7 +1151,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           this.unitEntities[id] = e;
 
           // ----- AUTOMATIC CLIENT RALLY POINT -----
-          if (isLocalOwned && String(u.aiState || "") === "idle" && (u.hp ?? 0) > 0 && !this.unitAutoRallied?.has(id)) {
+          if (isLocalOwned && (u.hp ?? 0) > 0 && !this.unitAutoRallied?.has(id)) {
             if (!this.unitAutoRallied) this.unitAutoRallied = new Set();
             this.unitAutoRallied.add(id);
             // New unit just popped out of our factory. Tell it to move to a clear slot nearby!
@@ -1223,15 +1223,18 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
         // 3. Update Visuals
         if (isTank) {
+          const moving = (Math.hypot(Number(rs?.vx ?? 0), Number(rs?.vy ?? 0)) > 1) || (String(u.aiState || "") === "walking");
           const committedDir = this.unitFacing.get(id) ?? dir;
           if (dir !== committedDir) {
-            const vote = this.unitDirVote.get(id);
-            if (vote && vote.dir === dir) {
+            const vote = this.unitDirVote.get(id) || { dir, count: 0 };
+            if (vote.dir === dir) {
               vote.count += 1;
-              if (vote.count >= 5) {
+              const threshold = moving ? 2 : 5;
+              if (vote.count >= threshold) {
                 this.unitFacing.set(id, dir);
                 this.unitDirVote.delete(id);
               } else {
+                this.unitDirVote.set(id, vote);
                 dir = committedDir;
               }
             } else {
