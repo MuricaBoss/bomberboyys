@@ -1119,7 +1119,16 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         const isHarvester = u.type === "harvester";
         const isFriendly = !!myTeam && u.team === myTeam;
         const isLocalOwned = isFriendly && String(u.ownerId || "") === this.currentPlayerId;
-        const inCamera = this.cameras.main.worldView.contains(u.x, u.y);
+        // Build 149: Use render-state position + generous margin to prevent sprite edge-flicker.
+        // worldView.contains() is an exact-point test — a 64px tank anchored at its centre
+        // can be well inside the view while its server-position is already outside it.
+        const rsForCull = this.localUnitRenderState.get(id);
+        const cullX = rsForCull?.x ?? Number(u.x);
+        const cullY = rsForCull?.y ?? Number(u.y);
+        const CULL_MARGIN = 96;
+        const wv = this.cameras.main.worldView;
+        const inCamera = cullX >= wv.x - CULL_MARGIN && cullX <= wv.right + CULL_MARGIN
+          && cullY >= wv.y - CULL_MARGIN && cullY <= wv.bottom + CULL_MARGIN;
         const visible = (isFriendly || this.isVisibleToTeamWithFogMemory(Number(u.x), Number(u.y))) && inCamera;
         const baseColor = isHarvester
           ? (isFriendly ? 0xe3c44a : 0xd4873c)
@@ -1142,15 +1151,17 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           if (e) e.destroy();
           if (isTank) {
             e = this.add.image(u.x, u.y, this.getTankTextureKeyByDir(this.unitFacing.get(id) ?? 1))
-              .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
-              .setDepth(16);
+              .setOrigin(0.5, RTS_TANK_ORIGIN_Y);
+            // Build 149: Apply correct world-depth immediately so new units start BEHIND
+            // the factory building they emerge from, not on top of it.
+            this.applyWorldDepth(e, Number(u.y), WORLD_DEPTH_UNIT_OFFSET);
           } else if (isSoldier) {
             e = this.add.sprite(u.x, u.y, RTS_SOLDIER_SPRITESHEET_KEYS.run, 0)
-              .setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y)
-              .setDepth(16);
+              .setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y);
+            this.applyWorldDepth(e, Number(u.y), WORLD_DEPTH_UNIT_OFFSET);
           } else {
             e = this.add.arc(u.x, u.y, radius, 0, 360, false, baseColor).setStrokeStyle(1.5, 0xffffff);
-            e.setDepth(16);
+            this.applyWorldDepth(e, Number(u.y), WORLD_DEPTH_UNIT_OFFSET);
           }
           this.unitEntities[id] = e;
 
@@ -1539,9 +1550,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             
             if (e.visible !== visible) e.setVisible(visible);
 
-            if (visible && isCriticalUpdate) {
+            // Build 149: Update structure depth every frame (not just isCriticalUpdate).
+            // Units are depth-sorted every frame; if structures only update every 32 frames
+            // a unit can momentarily have higher depth and appear in front of a building it
+            // should be behind.
+            if (visible) {
               this.applyWorldDepth(e, e.y, WORLD_DEPTH_STRUCTURE_OFFSET);
-              // Shadow removal as per user request
             }
 
             if (t && visible && (isTextUpdate || !t.visible)) {
