@@ -231,22 +231,32 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
             if (p.dir !== undefined) unit.dir = Number(p.dir);
             unit.x = nextX;
             unit.y = nextY;
-            unit.targetX = Number(p.tx ?? unit.targetX);
-            unit.targetY = Number(p.ty ?? unit.targetY);
-
-            const radius = this.getUnitBodyRadius(String(unit.type || ""));
-            const canExitStructure = this.canOccupyProducedUnitExit(unit, nextX, nextY, radius, now);
-            // Relaxed collision for client-auth units to avoid "sticking" due to slight client/server mismatches
-            if (!this.canOccupy(nextX, nextY, radius * 0.6) && !canExitStructure) return;
-
-            unit.x = nextX;
-            unit.y = nextY;
             if (Number.isFinite(Number(p?.tx))) unit.targetX = Number(p.tx);
             if (Number.isFinite(Number(p?.ty))) unit.targetY = Number(p.ty);
-            const distToTarget = Math.hypot(Number(unit.targetX) - nextX, Number(unit.targetY) - nextY);
-            unit.aiState = distToTarget > 5 ? "walking" : "idle";
-            if (distToTarget <= TILE_SIZE * 0.65 || now >= Number(unit.manualUntil || 0)) {
+
+            if (p.final) {
+              // Build 153: Client signalled arrival at slot. Enforce idle state and snap.
+              unit.x = nextX;
+              unit.y = nextY;
+              unit.targetX = nextX;
+              unit.targetY = nextY;
+              unit.aiState = "idle";
               unit.manualUntil = 0;
+            } else {
+              const radius = this.getUnitBodyRadius(String(unit.type || ""));
+              const canExitStructure = this.canOccupyProducedUnitExit(unit, nextX, nextY, radius, now);
+              // Relaxed collision for client-auth units to avoid "sticking" due to slight client/server mismatches
+              if (!this.canOccupy(nextX, nextY, radius * 0.6) && !canExitStructure) return;
+
+              unit.x = nextX;
+              unit.y = nextY;
+              if (Number.isFinite(Number(p?.tx))) unit.targetX = Number(p.tx);
+              if (Number.isFinite(Number(p?.ty))) unit.targetY = Number(p.ty);
+              const distToTarget = Math.hypot(Number(unit.targetX) - nextX, Number(unit.targetY) - nextY);
+              unit.aiState = distToTarget > 5 ? "walking" : "idle";
+              if (distToTarget <= TILE_SIZE * 0.65 || now >= Number(unit.manualUntil || 0)) {
+                unit.manualUntil = 0;
+              }
             }
             this.unitPoseAudit.set(unitId, { x: nextX, y: nextY, at: now });
         });
