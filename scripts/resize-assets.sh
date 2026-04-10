@@ -29,8 +29,9 @@ echo "Resizing UI buttons to 96x96..."
 sips -s format png -Z 96 "$ASSETS_DIR/rts_button_base.webp" --out "$LOW_DIR/rts_button_base.png"
 sips -s format png -Z 96 "$ASSETS_DIR/rts_button_active.webp" --out "$LOW_DIR/rts_button_active.png"
 
-echo "Resizing soldier sheets to 256x256 (32px frames for 25px units)..."
-sips -s format png -Z 256 "$ASSETS_DIR/soldier/run.webp" --out "$LOW_DIR/soldier/run.png"
+echo "Resizing soldier run sheet to 512x256 (32px frames across 16x8 directions)..."
+sips -Z 512 "$ASSETS_DIR/soldier/run.png" --out "$LOW_DIR/soldier/run.png"
+echo "Resizing soldier shoot sheet to 256x256..."
 sips -s format png -Z 256 "$ASSETS_DIR/soldier/shoot.webp" --out "$LOW_DIR/soldier/shoot.png"
 
 echo "Ultra-low optimization complete."

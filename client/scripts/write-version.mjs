@@ -6,7 +6,7 @@ const buildMetaPath = path.resolve(process.cwd(), "src/build-meta.ts");
 const buildMetaSource = fs.existsSync(buildMetaPath)
   ? fs.readFileSync(buildMetaPath, "utf8")
   : "";
-const buildNumberMatch = buildMetaSource.match(/DISPLAY_BUILD_NUMBER\s*=\s*(\d+)/);
+const buildNumberMatch = buildMetaSource.match(/DISPLAY_BUILD_NUMBER\s*=\s*(?:"|')?(\d+)(?:"|')?/);
 const buildNumber = buildNumberMatch ? Number(buildNumberMatch[1]) : 0;
 const version = {
   id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,

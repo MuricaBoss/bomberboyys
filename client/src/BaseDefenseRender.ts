@@ -5,8 +5,8 @@ import { client, CLIENT_BUNDLE_VERSION, activeClientBuildId } from "./network";
 import {
   TILE_SIZE, RTS_GROUND_TILE_SCALE, RTS_BLOCK_TEXTURE_KEYS, RTS_INTERIOR_WALL_VISUAL_SCALE,
   RTS_BUILDING_TEXTURE_KEYS, RTS_UI_TEXTURE_KEYS, RTS_TANK_TEXTURE_KEYS, RTS_TANK_TEXTURE_BY_DIR,
-  RTS_SOLDIER_SPRITESHEET_KEYS, RTS_SOLDIER_FRAME_SIZE, RTS_SOLDIER_FRAME_COLS,
-  RTS_SOLDIER_ROW_BY_DIR, RTS_SOLDIER_IDLE_FRAMES,
+  RTS_SOLDIER_SPRITESHEET_KEYS, RTS_SOLDIER_RUN_FRAME_COLS, RTS_SOLDIER_SHOOT_FRAME_COLS,
+  RTS_SOLDIER_ROW_BY_DIR, RTS_SOLDIER_IDLE_FRAME,
   RTS_SOLDIER_PROJECTILE_RANGE, RTS_TANK_PROJECTILE_RANGE,
   RTS_SOLDIER_PROJECTILE_INTERVAL_MS, RTS_SOLDIER_PROJECTILE_SPEED, RTS_SOLDIER_PROJECTILE_RADIUS,
   RTS_TANK_PROJECTILE_SPEED, RTS_TANK_PROJECTILE_RADIUS, RTS_TANK_PROJECTILE_INTERVAL_MS,
@@ -73,40 +73,33 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     return `soldier_${action}_${dir}`;
   }
 
+  getSoldierIdleFrame(dir: number) {
+    return this.getSoldierSheetRowByDir(dir) * RTS_SOLDIER_RUN_FRAME_COLS + RTS_SOLDIER_IDLE_FRAME;
+  }
+
   ensureSoldierAnimations() {
     for (let dir = 0; dir < 8; dir++) {
-      const rowStart = this.getSoldierSheetRowByDir(dir) * RTS_SOLDIER_FRAME_COLS;
-      const idleKey = this.getSoldierAnimKey("idle", dir);
-      if (!this.anims.exists(idleKey)) {
-        this.anims.create({
-          key: idleKey,
-          frames: RTS_SOLDIER_IDLE_FRAMES.map((frame) => ({
-            key: RTS_SOLDIER_SPRITESHEET_KEYS.run,
-            frame: rowStart + frame,
-          })),
-          frameRate: 1.2,
-          repeat: -1,
-        });
-      }
+      const runRowStart = this.getSoldierSheetRowByDir(dir) * RTS_SOLDIER_RUN_FRAME_COLS;
       const runKey = this.getSoldierAnimKey("run", dir);
       if (!this.anims.exists(runKey)) {
         this.anims.create({
           key: runKey,
           frames: this.anims.generateFrameNumbers(RTS_SOLDIER_SPRITESHEET_KEYS.run, {
-            start: rowStart,
-            end: rowStart + RTS_SOLDIER_FRAME_COLS - 1,
+            start: runRowStart,
+            end: runRowStart + RTS_SOLDIER_RUN_FRAME_COLS - 1,
           }),
           frameRate: 12,
           repeat: -1,
         });
       }
+      const shootRowStart = this.getSoldierSheetRowByDir(dir) * RTS_SOLDIER_SHOOT_FRAME_COLS;
       const shootKey = this.getSoldierAnimKey("shoot", dir);
       if (!this.anims.exists(shootKey)) {
         this.anims.create({
           key: shootKey,
           frames: this.anims.generateFrameNumbers(RTS_SOLDIER_SPRITESHEET_KEYS.shoot, {
-            start: rowStart,
-            end: rowStart + RTS_SOLDIER_FRAME_COLS - 1,
+            start: shootRowStart,
+            end: shootRowStart + RTS_SOLDIER_SHOOT_FRAME_COLS - 1,
           }),
           frameRate: 16,
           repeat: -1,

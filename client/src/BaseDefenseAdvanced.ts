@@ -5,8 +5,7 @@ import { client, CLIENT_BUNDLE_VERSION, activeClientBuildId } from "./network";
 import {
   TILE_SIZE, RTS_GROUND_TILE_SCALE, RTS_BLOCK_TEXTURE_KEYS, RTS_INTERIOR_WALL_VISUAL_SCALE,
   RTS_BUILDING_TEXTURE_KEYS, RTS_UI_TEXTURE_KEYS, RTS_TANK_TEXTURE_KEYS, RTS_TANK_TEXTURE_BY_DIR,
-  RTS_SOLDIER_SPRITESHEET_KEYS, RTS_SOLDIER_FRAME_SIZE, RTS_SOLDIER_FRAME_COLS,
-  RTS_SOLDIER_ROW_BY_DIR, RTS_SOLDIER_IDLE_FRAMES,
+  RTS_SOLDIER_SPRITESHEET_KEYS, RTS_SOLDIER_RUN_FRAME_SIZE, RTS_SOLDIER_SHOOT_FRAME_SIZE,
   RTS_SOLDIER_PROJECTILE_RANGE, RTS_TANK_PROJECTILE_RANGE,
   RTS_SOLDIER_PROJECTILE_INTERVAL_MS, RTS_SOLDIER_PROJECTILE_SPEED, RTS_SOLDIER_PROJECTILE_RADIUS,
   RTS_TANK_PROJECTILE_SPEED, RTS_TANK_PROJECTILE_RADIUS, RTS_TANK_PROJECTILE_INTERVAL_MS,
@@ -66,12 +65,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.load.image(RTS_TANK_TEXTURE_KEYS.nw, `${path}/tanks/tank_ready_nw.png`);
 
     this.load.spritesheet(RTS_SOLDIER_SPRITESHEET_KEYS.run, `${path}/soldier/run.png`, {
-      frameWidth: RTS_SOLDIER_FRAME_SIZE,
-      frameHeight: RTS_SOLDIER_FRAME_SIZE,
+      frameWidth: RTS_SOLDIER_RUN_FRAME_SIZE,
+      frameHeight: RTS_SOLDIER_RUN_FRAME_SIZE,
     });
     this.load.spritesheet(RTS_SOLDIER_SPRITESHEET_KEYS.shoot, `${path}/soldier/shoot.png`, {
-      frameWidth: RTS_SOLDIER_FRAME_SIZE,
-      frameHeight: RTS_SOLDIER_FRAME_SIZE,
+      frameWidth: RTS_SOLDIER_SHOOT_FRAME_SIZE,
+      frameHeight: RTS_SOLDIER_SHOOT_FRAME_SIZE,
     });
   }
 
@@ -1079,7 +1078,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           e.x = Phaser.Math.Linear(e.x, p.x, 1 - Math.exp(-delta * 0.02));
           e.y = Phaser.Math.Linear(e.y, p.y, 1 - Math.exp(-delta * 0.02));
           if (e instanceof Phaser.GameObjects.Sprite) {
-            e.play(this.getSoldierAnimKey("idle", 2), true);
+            e.anims.stop();
+            e.setTexture(RTS_SOLDIER_SPRITESHEET_KEYS.run, this.getSoldierIdleFrame(2));
           }
         }
         this.applyWorldDepth(e, e.y, WORLD_DEPTH_PLAYER_OFFSET);
@@ -1324,8 +1324,16 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const moving = Math.hypot(Number(rs?.vx ?? 0), Number(rs?.vy ?? 0)) > 14
             || (String(u.aiState || "") === "walking" && Math.hypot(Number(u.targetX ?? u.x) - ux, Number(u.targetY ?? u.y) - uy) > TILE_SIZE * 0.24);
           const isShooting = !moving && this.unitAttackTarget.has(id);
-          const animKey = this.getSoldierAnimKey(isShooting ? "shoot" : moving ? "run" : "idle", dir);
-          if (soldier.anims.currentAnim?.key !== animKey) soldier.anims.play(animKey, true);
+          if (isShooting) {
+            const animKey = this.getSoldierAnimKey("shoot", dir);
+            if (soldier.anims.currentAnim?.key !== animKey) soldier.anims.play(animKey, true);
+          } else if (moving) {
+            const animKey = this.getSoldierAnimKey("run", dir);
+            if (soldier.anims.currentAnim?.key !== animKey) soldier.anims.play(animKey, true);
+          } else {
+            soldier.anims.stop();
+            soldier.setTexture(RTS_SOLDIER_SPRITESHEET_KEYS.run, this.getSoldierIdleFrame(dir));
+          }
           
           if (u.hp <= 0) soldier.setTint(0x444444);
           else soldier.clearTint();

@@ -36,10 +36,15 @@ export const RTS_SOLDIER_SPRITESHEET_KEYS = {
   run: "soldier_run_sheet",
   shoot: "soldier_shoot_sheet",
 } as const;
-export const RTS_SOLDIER_FRAME_SIZE = 32;
-export const RTS_SOLDIER_FRAME_COLS = 8;
+export const RTS_SOLDIER_RUN_FRAME_SIZE = 512;
+export const RTS_SOLDIER_RUN_FRAME_COLS = 16;
+export const RTS_SOLDIER_SHOOT_FRAME_SIZE = 32;
+export const RTS_SOLDIER_SHOOT_FRAME_COLS = 8;
+export const RTS_SOLDIER_FRAME_SIZE = RTS_SOLDIER_RUN_FRAME_SIZE;
+export const RTS_SOLDIER_FRAME_COLS = RTS_SOLDIER_RUN_FRAME_COLS;
 export const RTS_SOLDIER_ROW_BY_DIR = [2, 3, 4, 5, 6, 7, 0, 1] as const;
-export const RTS_SOLDIER_IDLE_FRAMES = [0, 0, 4, 4, 0, 7] as const;
+export const RTS_SOLDIER_IDLE_FRAME = 0;
+export const RTS_SOLDIER_IDLE_FRAMES = [RTS_SOLDIER_IDLE_FRAME] as const;
 export const RTS_SOLDIER_PROJECTILE_RANGE = TILE_SIZE * 5.7;
 export const RTS_TANK_PROJECTILE_RANGE = TILE_SIZE * 7.7;
 export const RTS_SOLDIER_PROJECTILE_INTERVAL_MS = 420;
