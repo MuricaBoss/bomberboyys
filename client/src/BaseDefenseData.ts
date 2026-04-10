@@ -23,6 +23,7 @@ import {
   WORLD_DEPTH_SELECTION_OFFSET, WORLD_DEPTH_LABEL_OFFSET, WORLD_DEPTH_HP_OFFSET,
   PRODUCED_UNIT_EXIT_GRACE_MS, FOG_CELL_SIZE, FOG_UPDATE_MS, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM,
 } from "./constants";
+import { getGraphicsProfile, getGraphicsQuality, getTieredTextureKey } from "./graphicsQuality";
 
 export class BaseDefenseScene_Data extends Phaser.Scene {
   phaserHudEnabled = false;
@@ -249,6 +250,32 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   cameraClampBackX: number | null = null;
   cameraClampBackY: number | null = null;
 
+  applyNextGraphicsQuality() {}
+
+  getGraphicsProfile() {
+    return getGraphicsProfile(getGraphicsQuality());
+  }
+
+  getGroundTextureKey() {
+    return getTieredTextureKey("rts_ground", this.getGraphicsProfile().worldTier);
+  }
+
+  getUiButtonTextureKey(active: boolean) {
+    return getTieredTextureKey(active ? "rts_button_active" : "rts_button_base", this.getGraphicsProfile().worldTier);
+  }
+
+  getBuildingTextureKey(baseKey: string) {
+    return getTieredTextureKey(baseKey, this.getGraphicsProfile().structureTier);
+  }
+
+  getTankTextureKey(baseKey: string) {
+    return getTieredTextureKey(baseKey, this.getGraphicsProfile().unitTier);
+  }
+
+  getSoldierSheetTextureKey(action: "run" | "shoot") {
+    return getTieredTextureKey(RTS_SOLDIER_SPRITESHEET_KEYS[action], this.getGraphicsProfile().unitTier);
+  }
+
   screenToWorldPoint(screenX: number, screenY: number) {
     const cam = this.cameras.main;
     cam.preRender();
@@ -374,7 +401,8 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
 
   getInteriorWallTextureKey(gx: number, gy: number) {
     const hash = Math.abs((gx * 73856093) ^ (gy * 19349663));
-    return RTS_BLOCK_TEXTURE_KEYS[hash % RTS_BLOCK_TEXTURE_KEYS.length];
+    const baseKey = RTS_BLOCK_TEXTURE_KEYS[hash % RTS_BLOCK_TEXTURE_KEYS.length];
+    return getTieredTextureKey(baseKey, this.getGraphicsProfile().worldTier);
   }
 
   createWallTile(gx: number, gy: number, width: number, height: number) {
@@ -412,6 +440,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     if (type === "ore_refinery") {
       return {
         key: RTS_BUILDING_TEXTURE_KEYS.ore_refinery,
+        textureKey: this.getBuildingTextureKey(RTS_BUILDING_TEXTURE_KEYS.ore_refinery),
         size: TILE_SIZE * 4.2,
         originY: 0.74,
         pickRadius: TILE_SIZE * 2.2,
@@ -421,6 +450,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     if (type === "solar_panel") {
       return {
         key: RTS_BUILDING_TEXTURE_KEYS.solar_panel,
+        textureKey: this.getBuildingTextureKey(RTS_BUILDING_TEXTURE_KEYS.solar_panel),
         size: TILE_SIZE * 3.4,
         originY: 0.7,
         pickRadius: TILE_SIZE * 1.9,
@@ -430,6 +460,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     if (type === "barracks") {
       return {
         key: RTS_BUILDING_TEXTURE_KEYS.barracks,
+        textureKey: this.getBuildingTextureKey(RTS_BUILDING_TEXTURE_KEYS.barracks),
         size: TILE_SIZE * 3.8,
         originY: 0.68,
         pickRadius: TILE_SIZE * 2.0,
@@ -439,6 +470,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     if (type === "war_factory" || type === "factory") {
       return {
         key: RTS_BUILDING_TEXTURE_KEYS.war_factory,
+        textureKey: this.getBuildingTextureKey(RTS_BUILDING_TEXTURE_KEYS.war_factory),
         size: TILE_SIZE * 4.1,
         originY: 0.73,
         pickRadius: TILE_SIZE * 2.15,
@@ -845,7 +877,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     ];
 
     for (const def of defs) {
-      const btnImg = this.add.image(0, 0, "rts_button_base").setInteractive().setScrollFactor(0).setDepth(1000);
+      const btnImg = this.add.image(0, 0, this.getUiButtonTextureKey(false)).setInteractive().setScrollFactor(0).setDepth(1000);
       const btnText = this.add.text(0, 0, def.label, {
         font: "700 14px Arial",
         color: "#ffffff"
@@ -931,7 +963,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
           if (me?.devMode) active = true;
       }
       
-      img.setTexture(active ? "rts_button_active" : "rts_button_base");
+      img.setTexture(this.getUiButtonTextureKey(active));
     }
   }
 

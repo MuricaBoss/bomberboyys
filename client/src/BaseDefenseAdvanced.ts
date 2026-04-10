@@ -23,6 +23,7 @@ import {
   PRODUCED_UNIT_EXIT_GRACE_MS, FOG_CELL_SIZE, FOG_UPDATE_MS, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM,
 } from "./constants";
 import { BaseDefenseScene_Hud } from "./BaseDefenseHud";
+import { cycleGraphicsQuality, getGraphicsQualityLabel, getTieredTextureKey } from "./graphicsQuality";
 
 export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   public tankTrailState = new Map<string, any>();
@@ -37,41 +38,85 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   }
 
   preload() {
-    // Build 95: Using optimized low-res PNG textures for mobile performance
-    const path = "assets/low";
-    this.load.image("rts_ground", `${path}/rts_ground_texture_winter.png`);
-    this.load.image("rts_button_base", `${path}/rts_button_base.png`);
-    this.load.image("rts_button_active", `${path}/rts_button_active.png`);
-    
-    RTS_BLOCK_TEXTURE_KEYS.forEach(key => {
-      this.load.image(key, `${path}/blocks/${key}.png`);
-    });
+    const tiers = [
+      { tier: "low" as const, path: "assets/low", soldierRunFrameSize: RTS_SOLDIER_RUN_FRAME_SIZE, soldierShootFrameSize: RTS_SOLDIER_SHOOT_FRAME_SIZE },
+      { tier: "full" as const, path: "assets", soldierRunFrameSize: 512, soldierShootFrameSize: 80 },
+    ];
+    for (const { tier, path, soldierRunFrameSize, soldierShootFrameSize } of tiers) {
+      this.load.image(getTieredTextureKey("rts_ground", tier), `${path}/rts_ground_texture_winter.png`);
+      this.load.image(getTieredTextureKey("rts_button_base", tier), `${path}/rts_button_base.png`);
+      this.load.image(getTieredTextureKey("rts_button_active", tier), `${path}/rts_button_active.png`);
+      RTS_BLOCK_TEXTURE_KEYS.forEach(key => {
+        this.load.image(getTieredTextureKey(key, tier), `${path}/blocks/${key}.png`);
+      });
+      this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.constructor, tier), `${path}/buildings/constructor.png`);
+      this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.ore_refinery, tier), `${path}/buildings/ore_refinery.png`);
+      this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.solar_panel, tier), `${path}/buildings/solar_panel.png`);
+      this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.barracks, tier), `${path}/buildings/barracks.png`);
+      this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.war_factory, tier), `${path}/buildings/war_factory.png`);
+
+      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.n, tier), `${path}/tanks/tank_ready_n.png`);
+      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.ne, tier), `${path}/tanks/tank_ready_ne.png`);
+      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.e, tier), `${path}/tanks/tank_ready_e.png`);
+      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.se, tier), `${path}/tanks/tank_ready_se.png`);
+      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.s, tier), `${path}/tanks/tank_ready_s.png`);
+      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.sw, tier), `${path}/tanks/tank_ready_sw.png`);
+      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.w, tier), `${path}/tanks/tank_ready_w.png`);
+      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.nw, tier), `${path}/tanks/tank_ready_nw.png`);
+
+      this.load.spritesheet(getTieredTextureKey(RTS_SOLDIER_SPRITESHEET_KEYS.run, tier), `${path}/soldier/run.png`, {
+        frameWidth: soldierRunFrameSize,
+        frameHeight: soldierRunFrameSize,
+      });
+      this.load.spritesheet(getTieredTextureKey(RTS_SOLDIER_SPRITESHEET_KEYS.shoot, tier), `${path}/soldier/shoot.png`, {
+        frameWidth: soldierShootFrameSize,
+        frameHeight: soldierShootFrameSize,
+      });
+    }
 
     this.load.image(RTS_UI_TEXTURE_KEYS.move_target_marker, "assets/ui/move_target_marker.svg");
-    
-    this.load.image(RTS_BUILDING_TEXTURE_KEYS.constructor, `${path}/buildings/constructor.png`);
-    this.load.image(RTS_BUILDING_TEXTURE_KEYS.ore_refinery, `${path}/buildings/ore_refinery.png`);
-    this.load.image(RTS_BUILDING_TEXTURE_KEYS.solar_panel, `${path}/buildings/solar_panel.png`);
-    this.load.image(RTS_BUILDING_TEXTURE_KEYS.barracks, `${path}/buildings/barracks.png`);
-    this.load.image(RTS_BUILDING_TEXTURE_KEYS.war_factory, `${path}/buildings/war_factory.png`);
+  }
 
-    this.load.image(RTS_TANK_TEXTURE_KEYS.n, `${path}/tanks/tank_ready_n.png`);
-    this.load.image(RTS_TANK_TEXTURE_KEYS.ne, `${path}/tanks/tank_ready_ne.png`);
-    this.load.image(RTS_TANK_TEXTURE_KEYS.e, `${path}/tanks/tank_ready_e.png`);
-    this.load.image(RTS_TANK_TEXTURE_KEYS.se, `${path}/tanks/tank_ready_se.png`);
-    this.load.image(RTS_TANK_TEXTURE_KEYS.s, `${path}/tanks/tank_ready_s.png`);
-    this.load.image(RTS_TANK_TEXTURE_KEYS.sw, `${path}/tanks/tank_ready_sw.png`);
-    this.load.image(RTS_TANK_TEXTURE_KEYS.w, `${path}/tanks/tank_ready_w.png`);
-    this.load.image(RTS_TANK_TEXTURE_KEYS.nw, `${path}/tanks/tank_ready_nw.png`);
+  applyNextGraphicsQuality() {
+    const next = cycleGraphicsQuality();
+    this.ensureSoldierAnimations();
+    if (this.groundTileSprite) this.groundTileSprite.setTexture(this.getGroundTextureKey());
+    this.updatePremiumHudButtons();
+    this.refreshGraphicsPresentation();
+    this.updateActionPanelDom();
+    this.showNotice(`Graphics: ${getGraphicsQualityLabel(next)}`, "#ffd27a");
+  }
 
-    this.load.spritesheet(RTS_SOLDIER_SPRITESHEET_KEYS.run, `${path}/soldier/run.png`, {
-      frameWidth: RTS_SOLDIER_RUN_FRAME_SIZE,
-      frameHeight: RTS_SOLDIER_RUN_FRAME_SIZE,
-    });
-    this.load.spritesheet(RTS_SOLDIER_SPRITESHEET_KEYS.shoot, `${path}/soldier/shoot.png`, {
-      frameWidth: RTS_SOLDIER_SHOOT_FRAME_SIZE,
-      frameHeight: RTS_SOLDIER_SHOOT_FRAME_SIZE,
-    });
+  refreshGraphicsPresentation() {
+    const state = this.room?.state;
+    if (!state || !this.hasInitialized) return;
+    this.syncWorldBackground(state.mapWidth * TILE_SIZE, state.mapHeight * TILE_SIZE);
+    this.drawMap(state);
+    for (const entity of Object.values(this.playerEntities)) {
+      if (entity instanceof Phaser.GameObjects.Image) {
+        entity.setTexture(this.getBuildingTextureKey(RTS_BUILDING_TEXTURE_KEYS.constructor));
+      } else if (entity instanceof Phaser.GameObjects.Sprite) {
+        entity.stop();
+        entity.setTexture(this.getSoldierSheetTextureKey("run"), this.getSoldierIdleFrame(2));
+      }
+    }
+    for (const [id, entity] of Object.entries(this.structureEntities)) {
+      if (!(entity instanceof Phaser.GameObjects.Image)) continue;
+      const structure = state.structures?.get ? state.structures.get(id) : state.structures?.[id];
+      const artSpec = structure ? this.getStructureArtSpec(String(structure.type || "")) : null;
+      if (artSpec?.textureKey) entity.setTexture(artSpec.textureKey);
+    }
+    for (const [id, entity] of Object.entries(this.unitEntities)) {
+      const unit = state.units?.get ? state.units.get(id) : state.units?.[id];
+      if (!unit) continue;
+      if (entity instanceof Phaser.GameObjects.Image && unit.type === "tank") {
+        entity.setTexture(this.getTankTextureKeyByDir(this.unitFacing.get(id) ?? Number(unit.dir || 0)));
+      } else if (entity instanceof Phaser.GameObjects.Sprite && unit.type === "soldier") {
+        const dir = this.unitFacing.get(id) ?? Number(unit.dir || 0);
+        entity.stop();
+        entity.setTexture(this.getSoldierSheetTextureKey("run"), this.getSoldierIdleFrame(dir));
+      }
+    }
   }
 
   async create() {
@@ -1052,11 +1097,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         if (wrongType) {
           e?.destroy();
           if (needsConstructor) {
-            e = this.add.image(p.x, p.y, RTS_BUILDING_TEXTURE_KEYS.constructor)
+            e = this.add.image(p.x, p.y, this.getBuildingTextureKey(RTS_BUILDING_TEXTURE_KEYS.constructor))
               .setOrigin(0.5, RTS_PLAYER_CONSTRUCTOR_ORIGIN_Y)
               .setDisplaySize(RTS_PLAYER_CONSTRUCTOR_DISPLAY_SIZE, RTS_PLAYER_CONSTRUCTOR_DISPLAY_SIZE);
           } else {
-            e = this.add.sprite(p.x, p.y, RTS_SOLDIER_SPRITESHEET_KEYS.run, 0)
+            e = this.add.sprite(p.x, p.y, this.getSoldierSheetTextureKey("run"), 0)
               .setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y)
               .setDisplaySize(RTS_PLAYER_SOLDIER_DISPLAY_SIZE, RTS_PLAYER_SOLDIER_DISPLAY_SIZE);
           }
@@ -1079,7 +1124,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           e.y = Phaser.Math.Linear(e.y, p.y, 1 - Math.exp(-delta * 0.02));
           if (e instanceof Phaser.GameObjects.Sprite) {
             e.anims.stop();
-            e.setTexture(RTS_SOLDIER_SPRITESHEET_KEYS.run, this.getSoldierIdleFrame(2));
+            e.setTexture(this.getSoldierSheetTextureKey("run"), this.getSoldierIdleFrame(2));
           }
         }
         this.applyWorldDepth(e, e.y, WORLD_DEPTH_PLAYER_OFFSET);
@@ -1156,7 +1201,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             // the factory building they emerge from, not on top of it.
             this.applyWorldDepth(e, Number(u.y), WORLD_DEPTH_UNIT_OFFSET);
           } else if (isSoldier) {
-            e = this.add.sprite(u.x, u.y, RTS_SOLDIER_SPRITESHEET_KEYS.run, 0)
+            e = this.add.sprite(u.x, u.y, this.getSoldierSheetTextureKey("run"), 0)
               .setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y);
             this.applyWorldDepth(e, Number(u.y), WORLD_DEPTH_UNIT_OFFSET);
           } else {
@@ -1323,10 +1368,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           soldier.setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE);
           const targetDx = Number(u.targetX ?? u.x) - ux;
           const targetDy = Number(u.targetY ?? u.y) - uy;
-          const hasImmediateMoveTarget = this.localUnitTargetOverride.has(id) && Math.hypot(targetDx, targetDy) > 2;
+          const isSlotLocked = this.unitSlotLocked.has(String(id));
+          const hasImmediateMoveTarget = !isSlotLocked && this.localUnitTargetOverride.has(id) && Math.hypot(targetDx, targetDy) > 2;
           const moving = Math.hypot(Number(rs?.vx ?? 0), Number(rs?.vy ?? 0)) > 6
             || hasImmediateMoveTarget
-            || (String(u.aiState || "") === "walking" && Math.hypot(targetDx, targetDy) > TILE_SIZE * 0.08);
+            || (!isSlotLocked && String(u.aiState || "") === "walking" && Math.hypot(targetDx, targetDy) > TILE_SIZE * 0.08);
           const isShooting = !moving && this.unitAttackTarget.has(id);
           if (isShooting) {
             const animKey = this.getSoldierAnimKey("shoot", dir);
@@ -1336,7 +1382,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             if (soldier.anims.currentAnim?.key !== animKey) soldier.anims.play(animKey, true);
           } else {
             soldier.anims.stop();
-            soldier.setTexture(RTS_SOLDIER_SPRITESHEET_KEYS.run, this.getSoldierIdleFrame(dir));
+            soldier.setTexture(this.getSoldierSheetTextureKey("run"), this.getSoldierIdleFrame(dir));
           }
           
           if (u.hp <= 0) soldier.setTint(0x444444);
@@ -1362,21 +1408,10 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
                     trailState.lastSpawnY = e.y;
                 }
             }
-
-            const shadowSpec = this.getTankShadowSpec(e);
-            const shadow = this.syncGroundShadow(
-              this.unitShadowEntities[id],
-              shadowSpec.x,
-              shadowSpec.y,
-              shadowSpec.width,
-              shadowSpec.height,
-              shadowSpec.y,
-              e.y,
-              WORLD_DEPTH_UNIT_OFFSET,
-              RTS_IMAGE_SHADOW_ALPHA,
-            );
-            shadow.setVisible(visible);
-            this.unitShadowEntities[id] = shadow;
+            if (this.unitShadowEntities[id]) {
+              this.destroyGroundShadow(this.unitShadowEntities[id]);
+              delete this.unitShadowEntities[id];
+            }
             
             this.maybeFireUnitProjectile(id, u, e, isFriendly, visible, dir, isTank);
           } else if (isSoldier && e instanceof Phaser.GameObjects.Sprite) {
@@ -1535,7 +1570,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
             if (!e) {
               if (artSpec) {
-                e = this.add.image(s.x, s.y, artSpec.key)
+                e = this.add.image(s.x, s.y, artSpec.textureKey)
                   .setOrigin(0.5, artSpec.originY)
                   .setDisplaySize(artSpec.size, artSpec.size);
               } else {
@@ -1560,7 +1595,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             if (e.y !== s.y) e.y = s.y;
             
             if (artSpec && e instanceof Phaser.GameObjects.Image) {
-              if (e.texture?.key !== artSpec.key) e.setTexture(artSpec.key);
+              if (e.texture?.key !== artSpec.textureKey) e.setTexture(artSpec.textureKey);
               if (e.originY !== artSpec.originY) e.setOrigin(0.5, artSpec.originY);
               if (Math.abs(e.displayWidth - artSpec.size) > 0.1) e.setDisplaySize(artSpec.size, artSpec.size);
               // Build 156: No longer coloring enemy structures red

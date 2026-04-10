@@ -37,7 +37,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     this.groundTileSprite?.destroy();
     this.groundTintOverlay?.destroy();
 
-    this.groundTileSprite = this.add.tileSprite(0, 0, safeWidth, safeHeight, "rts_ground")
+    this.groundTileSprite = this.add.tileSprite(0, 0, safeWidth, safeHeight, this.getGroundTextureKey())
       .setOrigin(0)
       .setDepth(-120)
       .setTileScale(RTS_GROUND_TILE_SCALE)
@@ -62,7 +62,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
   }
 
   getTankTextureKeyByDir(dir: number) {
-    return RTS_TANK_TEXTURE_BY_DIR[dir] ?? RTS_TANK_TEXTURE_KEYS.e;
+    return this.getTankTextureKey(RTS_TANK_TEXTURE_BY_DIR[dir] ?? RTS_TANK_TEXTURE_KEYS.e);
   }
 
   getSoldierSheetRowByDir(dir: number) {
@@ -70,7 +70,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
   }
 
   getSoldierAnimKey(action: "idle" | "run" | "shoot", dir: number) {
-    return `soldier_${action}_${dir}`;
+    return `soldier_${action}_${dir}_${this.getGraphicsProfile().unitTier}`;
   }
 
   getSoldierIdleFrame(dir: number) {
@@ -84,11 +84,11 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       if (!this.anims.exists(runKey)) {
         this.anims.create({
           key: runKey,
-          frames: this.anims.generateFrameNumbers(RTS_SOLDIER_SPRITESHEET_KEYS.run, {
+          frames: this.anims.generateFrameNumbers(this.getSoldierSheetTextureKey("run"), {
             start: runRowStart,
             end: runRowStart + RTS_SOLDIER_RUN_FRAME_COLS - 1,
           }),
-          frameRate: 18.72,
+          frameRate: 22.46,
           repeat: -1,
         });
       }
@@ -97,7 +97,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       if (!this.anims.exists(shootKey)) {
         this.anims.create({
           key: shootKey,
-          frames: this.anims.generateFrameNumbers(RTS_SOLDIER_SPRITESHEET_KEYS.shoot, {
+          frames: this.anims.generateFrameNumbers(this.getSoldierSheetTextureKey("shoot"), {
             start: shootRowStart,
             end: shootRowStart + RTS_SOLDIER_SHOOT_FRAME_COLS - 1,
           }),
@@ -133,7 +133,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
   getTankTrailAnchor(entity: Phaser.GameObjects.Image) {
     return {
       x: entity.x,
-      y: this.getImageTopY(entity) + entity.displayHeight * 0.74,
+      y: this.getImageTopY(entity) + entity.displayHeight * 0.79,
     };
   }
 
@@ -149,7 +149,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
   getSoldierShadowSpec(entity: Phaser.GameObjects.Sprite) {
     return {
       x: entity.x,
-      y: this.getSpriteTopY(entity) + entity.displayHeight * 0.8,
+      y: this.getSpriteTopY(entity) + entity.displayHeight * 0.74,
       width: entity.displayWidth * 0.42,
       height: entity.displayHeight * 0.14,
     };
@@ -297,10 +297,10 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     const perpX = -dirY;
     const perpY = dirX;
     const trailAnchor = this.getTankTrailAnchor(entity);
-    const backOffset = Math.max(RTS_TANK_TRAIL_BACK_OFFSET, entity.displayWidth * 0.14);
-    const centerX = trailAnchor.x - dirX * backOffset;
-    const centerY = trailAnchor.y - dirY * backOffset;
-    const gap = Math.max(RTS_TANK_TRAIL_GAP, entity.displayWidth * 0.18) * 0.5;
+    const rearOffset = Math.max(RTS_TANK_TRAIL_BACK_OFFSET, entity.displayWidth * 0.27);
+    const centerX = trailAnchor.x - dirX * rearOffset;
+    const centerY = trailAnchor.y - dirY * rearOffset;
+    const gap = Math.max(RTS_TANK_TRAIL_GAP, entity.displayWidth * 0.2) * 0.5;
     const left = this.add.rectangle(
       centerX - perpX * gap,
       centerY - perpY * gap,
@@ -372,6 +372,10 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
   }
 
   drawMap(state: any) {
+    for (const tile of this.tileEntities) tile?.destroy();
+    for (const shadow of this.tileShadowEntities) this.destroyGroundShadow(shadow);
+    this.tileEntities = [];
+    this.tileShadowEntities = [];
     const width = state.mapWidth;
     const height = state.mapHeight;
     for (let y = 0; y < height; y++) {
@@ -534,8 +538,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         ty = override.y;
       }
       const distToSlot = Math.hypot(override.x - s.x, override.y - s.y);
-      if (distToSlot <= TILE_SIZE * 0.38) {
-        // Build 155: Tightened threshold (12px) for snappier arrival and reduced jitter.
+      if (distToSlot <= TILE_SIZE * 0.48) {
         if (!this.unitSlotLocked.has(String(id))) {
           const velSpeed = Math.hypot(s.vx, s.vy);
           let arrivalDir: number | null = null;
