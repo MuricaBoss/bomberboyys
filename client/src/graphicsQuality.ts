@@ -31,9 +31,9 @@ export function cycleGraphicsQuality(): GraphicsQuality {
 
 export function getGraphicsResolution(quality: GraphicsQuality) {
   if (quality === "low") return 1;
-  if (quality === "medium") return 1;
-  if (quality === "high") return 1;
-  return Math.min(window.devicePixelRatio || 1, 1.25);
+  if (quality === "medium") return Math.min(window.devicePixelRatio || 1, 1.25);
+  if (quality === "high") return Math.min(window.devicePixelRatio || 1, 1.75);
+  return Math.min(window.devicePixelRatio || 1, 2.5);
 }
 
 export function getGraphicsQualityLabel(quality: GraphicsQuality) {
@@ -78,4 +78,8 @@ export function getGraphicsProfile(quality: GraphicsQuality) {
 
 export function getTieredTextureKey(baseKey: string, tier: GraphicsAssetTier) {
   return `${baseKey}__${tier}`;
+}
+
+export function shouldRoundPixels(quality: GraphicsQuality) {
+  return quality === "low" || quality === "medium";
 }

@@ -23,7 +23,7 @@ import {
   PRODUCED_UNIT_EXIT_GRACE_MS, FOG_CELL_SIZE, FOG_UPDATE_MS, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM,
 } from "./constants";
 import { BaseDefenseScene_Hud } from "./BaseDefenseHud";
-import { cycleGraphicsQuality, getGraphicsQualityLabel, getTieredTextureKey } from "./graphicsQuality";
+import { cycleGraphicsQuality, getGraphicsQuality, getGraphicsQualityLabel, getTieredTextureKey, shouldRoundPixels } from "./graphicsQuality";
 
 export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   public tankTrailState = new Map<string, any>();
@@ -79,6 +79,16 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
   applyNextGraphicsQuality() {
     const next = cycleGraphicsQuality();
+    const roundPixels = shouldRoundPixels(next);
+    this.cameras.main.setRoundPixels(roundPixels);
+    if ((this.game as any).config) {
+      (this.game as any).config.autoRound = roundPixels;
+      (this.game as any).config.roundPixels = roundPixels;
+      (this.game as any).config.pixelArt = roundPixels;
+    }
+    if ((this.scale as any).autoRound !== undefined) {
+      (this.scale as any).autoRound = roundPixels;
+    }
     this.ensureSoldierAnimations();
     if (this.groundTileSprite) this.groundTileSprite.setTexture(this.getGroundTextureKey());
     this.updatePremiumHudButtons();
@@ -122,6 +132,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   async create() {
     this.clientClockStartedAt = Date.now();
     this.ensureSoldierAnimations();
+    this.cameras.main.setRoundPixels(shouldRoundPixels(getGraphicsQuality()));
     this.input.addPointer(2);
     document.body.style.overscrollBehavior = "none";
     const canvas = this.game.canvas;
