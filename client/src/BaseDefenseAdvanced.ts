@@ -23,7 +23,16 @@ import {
   PRODUCED_UNIT_EXIT_GRACE_MS, FOG_CELL_SIZE, FOG_UPDATE_MS, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM,
 } from "./constants";
 import { BaseDefenseScene_Hud } from "./BaseDefenseHud";
-import { cycleGraphicsQuality, getGraphicsQuality, getGraphicsQualityLabel, getTieredTextureKey, shouldRoundPixels } from "./graphicsQuality";
+import {
+  cycleGraphicsQuality,
+  getAssetBasePath,
+  getGraphicsQuality,
+  getGraphicsQualityLabel,
+  getSoldierRunFrameSize,
+  getSoldierShootFrameSize,
+  getTieredTextureKey,
+  shouldRoundPixels,
+} from "./graphicsQuality";
 
 export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   public tankTrailState = new Map<string, any>();
@@ -39,10 +48,15 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
   preload() {
     const tiers = [
-      { tier: "low" as const, path: "assets/low", soldierRunFrameSize: RTS_SOLDIER_RUN_FRAME_SIZE, soldierShootFrameSize: RTS_SOLDIER_SHOOT_FRAME_SIZE },
-      { tier: "full" as const, path: "assets", soldierRunFrameSize: 512, soldierShootFrameSize: 80 },
+      { tier: "low" as const },
+      { tier: "medium" as const },
+      { tier: "high" as const },
+      { tier: "ultra" as const },
     ];
-    for (const { tier, path, soldierRunFrameSize, soldierShootFrameSize } of tiers) {
+    for (const { tier } of tiers) {
+      const path = getAssetBasePath(tier);
+      const soldierRunFrameSize = getSoldierRunFrameSize(tier);
+      const soldierShootFrameSize = getSoldierShootFrameSize(tier);
       this.load.image(getTieredTextureKey("rts_ground", tier), `${path}/rts_ground_texture_winter.png`);
       this.load.image(getTieredTextureKey("rts_button_base", tier), `${path}/rts_button_base.png`);
       this.load.image(getTieredTextureKey("rts_button_active", tier), `${path}/rts_button_active.png`);
@@ -63,6 +77,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.sw, tier), `${path}/tanks/tank_ready_sw.png`);
       this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.w, tier), `${path}/tanks/tank_ready_w.png`);
       this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.nw, tier), `${path}/tanks/tank_ready_nw.png`);
+      this.load.image(getTieredTextureKey("tank_shadow_east", tier), `${path}/tanks/tank_shadow_east.png`);
 
       this.load.spritesheet(getTieredTextureKey(RTS_SOLDIER_SPRITESHEET_KEYS.run, tier), `${path}/soldier/run.png`, {
         frameWidth: soldierRunFrameSize,
@@ -90,7 +105,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       (this.scale as any).autoRound = roundPixels;
     }
     this.ensureSoldierAnimations();
-    if (this.groundTileSprite) this.groundTileSprite.setTexture(this.getGroundTextureKey());
+        if (this.groundTileSprite) this.groundTileSprite.setTexture(this.getGroundTextureKey());
     this.updatePremiumHudButtons();
     this.refreshGraphicsPresentation();
     this.updateActionPanelDom();
@@ -103,8 +118,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.syncWorldBackground(state.mapWidth * TILE_SIZE, state.mapHeight * TILE_SIZE);
     this.drawMap(state);
     for (const entity of Object.values(this.playerEntities)) {
-      if (entity instanceof Phaser.GameObjects.Image) {
-        entity.setTexture(this.getBuildingTextureKey(RTS_BUILDING_TEXTURE_KEYS.constructor));
+        if (entity instanceof Phaser.GameObjects.Image) {
+          entity.setTexture(this.getBuildingTextureKey(RTS_BUILDING_TEXTURE_KEYS.constructor));
       } else if (entity instanceof Phaser.GameObjects.Sprite) {
         entity.stop();
         entity.setTexture(this.getSoldierSheetTextureKey("run"), this.getSoldierIdleFrame(2));
@@ -1411,7 +1426,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           if (isTank && e instanceof Phaser.GameObjects.Image) {
             // Only update trail if it's NOT a brand new unit to avoid 0,0 glitches
             const isNew = !this.tankTrailState.has(id);
-            this.updateTankTrailForUnit(id, e, visible && (u.hp ?? 0) > 0);
+            this.updateTankTrailForUnit(id, e, visible && (u.hp ?? 0) > 0, dir);
             if (isNew) {
                 const trailState = this.tankTrailState.get(id);
                 if (trailState) {
@@ -1419,9 +1434,25 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
                     trailState.lastSpawnY = e.y;
                 }
             }
-            if (this.unitShadowEntities[id]) {
-              this.destroyGroundShadow(this.unitShadowEntities[id]);
-              delete this.unitShadowEntities[id];
+            let tankShadow = this.tankShadowEntities[id];
+            if ((u.hp ?? 0) > 0 && visible) {
+              const pos = this.getTankShadowPosition(e, dir);
+              if (!tankShadow) {
+                tankShadow = this.add.image(pos.x, pos.y, this.getTankShadowTextureKey())
+                  .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
+                  .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE)
+                  .setAlpha(0.95)
+                  .setBlendMode(Phaser.BlendModes.MULTIPLY);
+                this.tankShadowEntities[id] = tankShadow;
+              }
+              if (tankShadow.texture?.key !== this.getTankShadowTextureKey()) tankShadow.setTexture(this.getTankShadowTextureKey());
+              tankShadow.setPosition(pos.x, pos.y);
+              tankShadow.setOrigin(0.5, RTS_TANK_ORIGIN_Y);
+              tankShadow.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
+              this.applyWorldDepth(tankShadow, e.y, WORLD_DEPTH_UNIT_OFFSET - WORLD_DEPTH_SHADOW_GAP);
+              tankShadow.setVisible(true);
+            } else if (tankShadow) {
+              tankShadow.setVisible(false);
             }
             
             this.maybeFireUnitProjectile(id, u, e, isFriendly, visible, dir, isTank);
@@ -1444,9 +1475,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           } else if (this.unitShadowEntities[id]) {
             this.destroyGroundShadow(this.unitShadowEntities[id]);
             delete this.unitShadowEntities[id];
-          }
-          if (isTank && e instanceof Phaser.GameObjects.Image && (u.hp ?? 0) > 0) {
-            this.updateTankTrailForUnit(id, e, visible);
           }
         }
         e.setVisible(visible);
@@ -1527,6 +1555,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         delete this.unitEntities[id];
         this.destroyGroundShadow(this.unitShadowEntities[id]);
         delete this.unitShadowEntities[id];
+        this.tankShadowEntities[id]?.destroy();
+        delete this.tankShadowEntities[id];
         this.unitFacing.delete(id);
         this.unitDirVote.delete(id);
         this.tankTrailState.delete(id);

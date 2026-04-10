@@ -24,6 +24,7 @@ import {
   PRODUCED_UNIT_EXIT_GRACE_MS, FOG_CELL_SIZE, FOG_UPDATE_MS, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM,
 } from "./constants";
 import { BaseDefenseScene_Server } from "./BaseDefenseServer";
+import { RTS_TANK_SPRITE_META } from "./tankSpriteMeta";
 
 export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
   syncWorldBackground(width: number, height: number) {
@@ -63,6 +64,10 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
 
   getTankTextureKeyByDir(dir: number) {
     return this.getTankTextureKey(RTS_TANK_TEXTURE_BY_DIR[dir] ?? RTS_TANK_TEXTURE_KEYS.e);
+  }
+
+  getTankBaseTextureKeyByDir(dir: number) {
+    return RTS_TANK_TEXTURE_BY_DIR[dir] ?? RTS_TANK_TEXTURE_KEYS.e;
   }
 
   getSoldierSheetRowByDir(dir: number) {
@@ -130,10 +135,33 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     return this.getImageTopY(entity) + RTS_TANK_HP_BOTTOM_OFFSET;
   }
 
-  getTankTrailAnchor(entity: Phaser.GameObjects.Image) {
+  getTankSpritePoint(entity: Phaser.GameObjects.Image, normalizedX: number, normalizedY: number) {
     return {
-      x: entity.x,
-      y: this.getImageTopY(entity) + entity.displayHeight * 0.79,
+      x: entity.x + (normalizedX - entity.originX) * entity.displayWidth,
+      y: entity.y + (normalizedY - entity.originY) * entity.displayHeight,
+    };
+  }
+
+  getTankSpriteMeta(dir: number) {
+    return RTS_TANK_SPRITE_META[this.getTankBaseTextureKeyByDir(dir)];
+  }
+
+  getTankTrailAnchor(entity: Phaser.GameObjects.Image, dir: number) {
+    const meta = this.getTankSpriteMeta(dir);
+    return this.getTankSpritePoint(entity, meta.rearX, meta.rearY);
+  }
+
+  getTankBodyCenter(entity: Phaser.GameObjects.Image, dir: number) {
+    const meta = this.getTankSpriteMeta(dir);
+    return this.getTankSpritePoint(entity, meta.centerX, meta.centerY);
+  }
+
+  getTankShadowPosition(entity: Phaser.GameObjects.Image, dir: number) {
+    const bodyCenter = this.getTankBodyCenter(entity, dir);
+    const eastMeta = RTS_TANK_SPRITE_META.tank_ready_e;
+    return {
+      x: bodyCenter.x - (eastMeta.centerX - entity.originX) * entity.displayWidth + entity.displayWidth * 0.08,
+      y: bodyCenter.y - (eastMeta.centerY - entity.originY) * entity.displayHeight + entity.displayHeight * 0.1,
     };
   }
 
@@ -291,16 +319,15 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     };
   }
 
-  spawnTankTrail(entity: Phaser.GameObjects.Image, angleRad: number) {
+  spawnTankTrail(entity: Phaser.GameObjects.Image, angleRad: number, dir: number) {
     const dirX = Math.cos(angleRad);
     const dirY = Math.sin(angleRad);
     const perpX = -dirY;
     const perpY = dirX;
-    const trailAnchor = this.getTankTrailAnchor(entity);
-    const rearOffset = Math.max(RTS_TANK_TRAIL_BACK_OFFSET, entity.displayWidth * 0.27);
-    const centerX = trailAnchor.x - dirX * rearOffset;
-    const centerY = trailAnchor.y - dirY * rearOffset;
-    const gap = Math.max(RTS_TANK_TRAIL_GAP, entity.displayWidth * 0.2) * 0.5;
+    const trailAnchor = this.getTankTrailAnchor(entity, dir);
+    const centerX = trailAnchor.x;
+    const centerY = trailAnchor.y;
+    const gap = Math.max(RTS_TANK_TRAIL_GAP, entity.displayWidth * this.getTankSpriteMeta(dir).trailHalfGap);
     const left = this.add.rectangle(
       centerX - perpX * gap,
       centerY - perpY * gap,
@@ -326,7 +353,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     });
   }
 
-  updateTankTrailForUnit(id: string, entity: Phaser.GameObjects.Image, visible: boolean) {
+  updateTankTrailForUnit(id: string, entity: Phaser.GameObjects.Image, visible: boolean, dir: number) {
     let state = this.tankTrailState.get(id);
     if (!state) {
       state = {
@@ -345,7 +372,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     if (visible && frameDist > 0.35) {
       const spawnDist = Math.hypot(entity.x - state.lastSpawnX, entity.y - state.lastSpawnY);
       if (spawnDist >= RTS_TANK_TRAIL_SPAWN_DISTANCE) {
-        this.spawnTankTrail(entity, Math.atan2(dy, dx));
+        this.spawnTankTrail(entity, Math.atan2(dy, dx), dir);
         state.lastSpawnX = entity.x;
         state.lastSpawnY = entity.y;
       }

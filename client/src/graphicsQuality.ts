@@ -1,5 +1,5 @@
 export type GraphicsQuality = "low" | "medium" | "high" | "ultra";
-export type GraphicsAssetTier = "low" | "full";
+export type GraphicsAssetTier = GraphicsQuality;
 
 const STORAGE_KEY = "bomber_boys_graphics_quality";
 const ORDER: GraphicsQuality[] = ["low", "medium", "high", "ultra"];
@@ -44,7 +44,7 @@ export function getGraphicsQualityLabel(quality: GraphicsQuality) {
 }
 
 export function getGraphicsAssetTier(quality: GraphicsQuality) {
-  return quality === "low" ? "low" : "full";
+  return quality;
 }
 
 export function getGraphicsProfile(quality: GraphicsQuality) {
@@ -57,22 +57,22 @@ export function getGraphicsProfile(quality: GraphicsQuality) {
   }
   if (quality === "medium") {
     return {
-      worldTier: "low" as GraphicsAssetTier,
-      structureTier: "low" as GraphicsAssetTier,
-      unitTier: "full" as GraphicsAssetTier,
+      worldTier: "medium" as GraphicsAssetTier,
+      structureTier: "medium" as GraphicsAssetTier,
+      unitTier: "medium" as GraphicsAssetTier,
     };
   }
   if (quality === "high") {
     return {
-      worldTier: "low" as GraphicsAssetTier,
-      structureTier: "full" as GraphicsAssetTier,
-      unitTier: "full" as GraphicsAssetTier,
+      worldTier: "high" as GraphicsAssetTier,
+      structureTier: "high" as GraphicsAssetTier,
+      unitTier: "high" as GraphicsAssetTier,
     };
   }
   return {
-    worldTier: "full" as GraphicsAssetTier,
-    structureTier: "full" as GraphicsAssetTier,
-    unitTier: "full" as GraphicsAssetTier,
+    worldTier: "ultra" as GraphicsAssetTier,
+    structureTier: "ultra" as GraphicsAssetTier,
+    unitTier: "ultra" as GraphicsAssetTier,
   };
 }
 
@@ -82,4 +82,22 @@ export function getTieredTextureKey(baseKey: string, tier: GraphicsAssetTier) {
 
 export function shouldRoundPixels(quality: GraphicsQuality) {
   return quality === "low" || quality === "medium";
+}
+
+export function getAssetBasePath(tier: GraphicsAssetTier) {
+  return tier === "ultra" ? "assets" : `assets/${tier}`;
+}
+
+export function getSoldierRunFrameSize(tier: GraphicsAssetTier) {
+  if (tier === "low") return 32;
+  if (tier === "medium") return 64;
+  if (tier === "high") return 128;
+  return 512;
+}
+
+export function getSoldierShootFrameSize(tier: GraphicsAssetTier) {
+  if (tier === "low") return 32;
+  if (tier === "medium") return 48;
+  if (tier === "high") return 64;
+  return 80;
 }
