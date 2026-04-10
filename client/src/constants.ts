@@ -36,7 +36,7 @@ export const RTS_SOLDIER_SPRITESHEET_KEYS = {
   run: "soldier_run_sheet",
   shoot: "soldier_shoot_sheet",
 } as const;
-export const RTS_SOLDIER_RUN_FRAME_SIZE = 512;
+export const RTS_SOLDIER_RUN_FRAME_SIZE = 32;
 export const RTS_SOLDIER_RUN_FRAME_COLS = 16;
 export const RTS_SOLDIER_SHOOT_FRAME_SIZE = 32;
 export const RTS_SOLDIER_SHOOT_FRAME_COLS = 8;
