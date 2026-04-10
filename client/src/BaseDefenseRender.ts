@@ -88,7 +88,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
             start: runRowStart,
             end: runRowStart + RTS_SOLDIER_RUN_FRAME_COLS - 1,
           }),
-          frameRate: 12,
+          frameRate: 18.72,
           repeat: -1,
         });
       }
@@ -149,10 +149,14 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
   getSoldierShadowSpec(entity: Phaser.GameObjects.Sprite) {
     return {
       x: entity.x,
-      y: this.getSpriteTopY(entity) + entity.displayHeight * 0.86,
+      y: this.getSpriteTopY(entity) + entity.displayHeight * 0.8,
       width: entity.displayWidth * 0.42,
       height: entity.displayHeight * 0.14,
     };
+  }
+
+  getSoldierHpY(entity: Phaser.GameObjects.Sprite) {
+    return this.getSpriteTopY(entity) - 8;
   }
 
   spawnUnitProjectile(unitId: string, fromX: number, fromY: number, toX: number, toY: number, isFriendly: boolean, dir: number, victimId: string, isTank: boolean) {

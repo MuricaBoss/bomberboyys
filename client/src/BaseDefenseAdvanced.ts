@@ -1321,8 +1321,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const soldier = e as Phaser.GameObjects.Sprite;
           soldier.setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y);
           soldier.setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE);
-          const moving = Math.hypot(Number(rs?.vx ?? 0), Number(rs?.vy ?? 0)) > 14
-            || (String(u.aiState || "") === "walking" && Math.hypot(Number(u.targetX ?? u.x) - ux, Number(u.targetY ?? u.y) - uy) > TILE_SIZE * 0.24);
+          const targetDx = Number(u.targetX ?? u.x) - ux;
+          const targetDy = Number(u.targetY ?? u.y) - uy;
+          const hasImmediateMoveTarget = this.localUnitTargetOverride.has(id) && Math.hypot(targetDx, targetDy) > 2;
+          const moving = Math.hypot(Number(rs?.vx ?? 0), Number(rs?.vy ?? 0)) > 6
+            || hasImmediateMoveTarget
+            || (String(u.aiState || "") === "walking" && Math.hypot(targetDx, targetDy) > TILE_SIZE * 0.08);
           const isShooting = !moving && this.unitAttackTarget.has(id);
           if (isShooting) {
             const animKey = this.getSoldierAnimKey("shoot", dir);
@@ -1454,7 +1458,14 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             this.unitHpTexts[id] = hp;
           }
           hp.setText(`${Math.max(0, Math.floor(u.hp || 0))}/${Math.max(1, Math.floor(u.maxHp || 1))}`);
-          hp.setPosition(e.x, isTank && e instanceof Phaser.GameObjects.Image ? this.getTankHpY(e) : e.y - TILE_SIZE * 0.46);
+          hp.setPosition(
+            e.x,
+            isTank && e instanceof Phaser.GameObjects.Image
+              ? this.getTankHpY(e)
+              : e instanceof Phaser.GameObjects.Sprite
+                ? this.getSoldierHpY(e)
+                : e.y - TILE_SIZE * 0.46,
+          );
           this.applyWorldDepth(hp, e.y, WORLD_DEPTH_HP_OFFSET);
           hp.setVisible(true);
           seenUnitHp.add(id);
