@@ -77,7 +77,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.sw, tier), `${path}/tanks/tank_ready_sw.png`);
       this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.w, tier), `${path}/tanks/tank_ready_w.png`);
       this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.nw, tier), `${path}/tanks/tank_ready_nw.png`);
-      this.load.image(getTieredTextureKey("tank_shadow_east", tier), `${path}/tanks/tank_shadow_east.png`);
 
       this.load.spritesheet(getTieredTextureKey(RTS_SOLDIER_SPRITESHEET_KEYS.run, tier), `${path}/soldier/run.png`, {
         frameWidth: soldierRunFrameSize,
@@ -1438,19 +1437,23 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             if ((u.hp ?? 0) > 0 && visible) {
               const pos = this.getTankShadowPosition(e, dir);
               if (!tankShadow) {
-                tankShadow = this.add.image(pos.x, pos.y, this.getTankShadowTextureKey())
+                tankShadow = this.add.image(pos.x, pos.y, this.getTankShadowTextureKey(dir))
                   .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
                   .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE)
-                  .setAlpha(0.95)
-                  .setBlendMode(Phaser.BlendModes.MULTIPLY);
+                  .setAlpha(RTS_IMAGE_SHADOW_ALPHA)
+                  .setBlendMode(Phaser.BlendModes.MULTIPLY)
+                  .setTint(0x000000);
                 this.tankShadowEntities[id] = tankShadow;
               }
-              if (tankShadow.texture?.key !== this.getTankShadowTextureKey()) tankShadow.setTexture(this.getTankShadowTextureKey());
+              if (tankShadow.texture?.key !== this.getTankShadowTextureKey(dir)) {
+                tankShadow.setTexture(this.getTankShadowTextureKey(dir));
+              }
               tankShadow.setPosition(pos.x, pos.y);
               tankShadow.setOrigin(0.5, RTS_TANK_ORIGIN_Y);
               tankShadow.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
               this.applyWorldDepth(tankShadow, e.y, WORLD_DEPTH_UNIT_OFFSET - WORLD_DEPTH_SHADOW_GAP);
               tankShadow.setVisible(true);
+              tankShadow.setTint(0x000000); // Ensure it stays black
             } else if (tankShadow) {
               tankShadow.setVisible(false);
             }

@@ -273,8 +273,8 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     return getTieredTextureKey(baseKey, this.getGraphicsProfile().unitTier);
   }
 
-  getTankShadowTextureKey() {
-    return getTieredTextureKey("tank_shadow_east", this.getGraphicsProfile().unitTier);
+  getTankShadowTextureKey(dir: number) {
+    return this.getTankTextureKey(RTS_TANK_TEXTURE_BY_DIR[dir] ?? RTS_TANK_TEXTURE_KEYS.e);
   }
 
   getSoldierSheetTextureKey(action: "run" | "shoot") {
