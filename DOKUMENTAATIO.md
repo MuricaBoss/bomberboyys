@@ -40,7 +40,50 @@ Client pyörii Viten dev-serverillä (oletusportti Viten mukaan).
 
 ## 4. Tuotantodeploy (nykyinen tapa)
 
-### 1) Synkkaa koodi palvelimelle
+Tällä hetkellä tuotantojulkaisu tehdään lähdekoodista palvelimelle, eikä paikallista `dist/`-kansiota kopioida sellaisenaan tuotantoon.
+
+Suositeltu julkaisujärjestys:
+
+1. Tee koodimuutokset.
+2. Nosta clientin näkyvä build-numero.
+3. Aja paikalliset tarkistukset.
+4. Synkkaa repo palvelimelle `rsync`:llä.
+5. Rakenna ja käynnistä kontit palvelimella.
+6. Tarkista konttien tila.
+7. Commitoi ja puske git-repoon.
+
+### 4.1 Version nosto
+
+Clientin näkyvä build-numero tulee tiedostosta `client/src/build-meta.ts`.
+
+Helpoin tapa nostaa numero yhdellä pykälällä:
+
+```bash
+cd client
+node scripts/bump-build-number.mjs
+```
+
+Esimerkki: `192 -> 193`
+
+`client`-Dockerfile ajaa tuotantobuildin komennolla `npm run build:ci`, joten palvelimelle riittää että päivitetty lähdekoodi ja build-numero ovat mukana.
+
+### 4.2 Paikalliset tarkistukset ennen deployta
+
+Client:
+
+```bash
+cd client
+npm run build:ci
+```
+
+Server:
+
+```bash
+cd server
+npx tsc --noEmit -p tsconfig.json
+```
+
+### 4.3 Synkkaa koodi palvelimelle
 
 ```bash
 rsync -az --delete \
@@ -51,17 +94,38 @@ rsync -az --delete \
   root@46.224.175.9:/opt/bomber-boys/
 ```
 
-### 2) Rakenna ja käynnistä kontit
+Huomio: `--delete` poistaa palvelimelta tiedostoja, joita ei enää ole lokaalissa repossa. Komentoa kannattaa käyttää vain oikeasta projektihakemistosta.
+
+### 4.4 Rakenna ja käynnistä kontit
 
 ```bash
 ssh root@46.224.175.9 'cd /opt/bomber-boys && docker compose up -d --build server client'
 ```
 
-### 3) Tarkista konttien tila
+Tämä rebuildaa ainakin `client`-kontin aina kun sen lähdekoodi muuttuu. `server` voi jäädä ennalleen jos Docker-kerrokset cachettuvat eikä sisältö muuttunut.
+
+### 4.5 Tarkista konttien tila
 
 ```bash
 ssh root@46.224.175.9 'docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep bomber-'
 ```
+
+Odotettu lopputulos:
+
+- `bomber-client` näkyy tilassa `Up`
+- `bomber-server` näkyy tilassa `Up`
+
+### 4.6 Git commit ja push
+
+Kun deploy on onnistunut, pidä repo samassa tilassa kuin tuotanto:
+
+```bash
+git add client/src/build-meta.ts client/src/BaseDefenseInput.ts
+git commit -m "Add two-finger camera drag to base defense"
+git push origin main
+```
+
+Jos muutoksia on enemmän, lisää commitiin kaikki julkaisuun kuuluvat tiedostot.
 
 ## 5. Nykyinen pelikonfiguraatio
 
@@ -112,6 +176,13 @@ ssh root@46.224.175.9 'docker logs --tail 200 bomber-server'
 ssh root@46.224.175.9 'docker logs --tail 200 bomber-client'
 ```
 
+### Ongelma: uusi versio ei näy selaimessa
+
+1. Tarkista että `bomber-client` on oikeasti rebuildattu ja käynnistynyt uudelleen.
+2. Tarkista `client/src/build-meta.ts`:n build-numero commitissa.
+3. Varmista että selain haki uuden `index.html`:n eikä käytä vanhaa cachea.
+4. Tarvittaessa tee hard reload mobiilissa tai Safarissa.
+
 ## 9. Suorituskyvystä (CX33 / 4 vCPU / 8 GB)
 
 Käytännön arvio nykyiselle toteutukselle:
@@ -120,4 +191,3 @@ Käytännön arvio nykyiselle toteutukselle:
 - riskialue: 150+ pelaajaa
 
 Jos tavoite on selvästi yli 120, suositellaan kuormatestibotteja + huoneiden shardausta.
-
