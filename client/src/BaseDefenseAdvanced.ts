@@ -32,6 +32,8 @@ import {
   getSoldierShootFrameSize,
   getTieredTextureKey,
   shouldRoundPixels,
+  shouldAntialias,
+  getTargetFps,
 } from "./graphicsQuality";
 
 export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
@@ -47,68 +49,62 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   }
 
   preload() {
-    const tiers = [
-      { tier: "low" as const },
-      { tier: "medium" as const },
-      { tier: "high" as const },
-      { tier: "ultra" as const },
-    ];
-    for (const { tier } of tiers) {
-      const path = getAssetBasePath(tier);
-      const soldierRunFrameSize = getSoldierRunFrameSize(tier);
-      const soldierShootFrameSize = getSoldierShootFrameSize(tier);
-      this.load.image(getTieredTextureKey("rts_ground", tier), `${path}/rts_ground_texture_winter.png`);
-      this.load.image(getTieredTextureKey("rts_button_base", tier), `${path}/rts_button_base.png`);
-      this.load.image(getTieredTextureKey("rts_button_active", tier), `${path}/rts_button_active.png`);
-      RTS_BLOCK_TEXTURE_KEYS.forEach(key => {
-        this.load.image(getTieredTextureKey(key, tier), `${path}/blocks/${key}.png`);
-      });
-      this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.constructor, tier), `${path}/buildings/constructor.png`);
-      this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.ore_refinery, tier), `${path}/buildings/ore_refinery.png`);
-      this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.solar_panel, tier), `${path}/buildings/solar_panel.png`);
-      this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.barracks, tier), `${path}/buildings/barracks.png`);
-      this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.war_factory, tier), `${path}/buildings/war_factory.png`);
+    // Load ONLY the currently active quality tier.
+    // Previously all 4 tiers were loaded simultaneously (4× VRAM waste).
+    // A quality change triggers a full page reload (window.location.reload)
+    // so the new tier and its associated render settings (antialias, fps, etc.)
+    // are applied correctly from main.ts at Phaser game creation time.
+    const tier = getGraphicsQuality();
+    const path = getAssetBasePath(tier);
+    const soldierRunFrameSize = getSoldierRunFrameSize(tier);
+    const soldierShootFrameSize = getSoldierShootFrameSize(tier);
 
-      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.n, tier), `${path}/tanks/tank_ready_n.png`);
-      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.ne, tier), `${path}/tanks/tank_ready_ne.png`);
-      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.e, tier), `${path}/tanks/tank_ready_e.png`);
-      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.se, tier), `${path}/tanks/tank_ready_se.png`);
-      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.s, tier), `${path}/tanks/tank_ready_s.png`);
-      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.sw, tier), `${path}/tanks/tank_ready_sw.png`);
-      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.w, tier), `${path}/tanks/tank_ready_w.png`);
-      this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.nw, tier), `${path}/tanks/tank_ready_nw.png`);
+    this.load.image(getTieredTextureKey("rts_ground", tier), `${path}/rts_ground_texture_winter.png`);
+    this.load.image(getTieredTextureKey("rts_button_base", tier), `${path}/rts_button_base.png`);
+    this.load.image(getTieredTextureKey("rts_button_active", tier), `${path}/rts_button_active.png`);
+    RTS_BLOCK_TEXTURE_KEYS.forEach(key => {
+      this.load.image(getTieredTextureKey(key, tier), `${path}/blocks/${key}.png`);
+    });
+    this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.constructor, tier), `${path}/buildings/constructor.png`);
+    this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.ore_refinery, tier), `${path}/buildings/ore_refinery.png`);
+    this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.solar_panel, tier), `${path}/buildings/solar_panel.png`);
+    this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.barracks, tier), `${path}/buildings/barracks.png`);
+    this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.war_factory, tier), `${path}/buildings/war_factory.png`);
 
-      this.load.spritesheet(getTieredTextureKey(RTS_SOLDIER_SPRITESHEET_KEYS.run, tier), `${path}/soldier/run.png`, {
-        frameWidth: soldierRunFrameSize,
-        frameHeight: soldierRunFrameSize,
-      });
-      this.load.spritesheet(getTieredTextureKey(RTS_SOLDIER_SPRITESHEET_KEYS.shoot, tier), `${path}/soldier/shoot.png`, {
-        frameWidth: soldierShootFrameSize,
-        frameHeight: soldierShootFrameSize,
-      });
-    }
+    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.n, tier), `${path}/tanks/tank_ready_n.png`);
+    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.ne, tier), `${path}/tanks/tank_ready_ne.png`);
+    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.e, tier), `${path}/tanks/tank_ready_e.png`);
+    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.se, tier), `${path}/tanks/tank_ready_se.png`);
+    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.s, tier), `${path}/tanks/tank_ready_s.png`);
+    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.sw, tier), `${path}/tanks/tank_ready_sw.png`);
+    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.w, tier), `${path}/tanks/tank_ready_w.png`);
+    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.nw, tier), `${path}/tanks/tank_ready_nw.png`);
+
+    this.load.spritesheet(getTieredTextureKey(RTS_SOLDIER_SPRITESHEET_KEYS.run, tier), `${path}/soldier/run.png`, {
+      frameWidth: soldierRunFrameSize,
+      frameHeight: soldierRunFrameSize,
+    });
+    this.load.spritesheet(getTieredTextureKey(RTS_SOLDIER_SPRITESHEET_KEYS.shoot, tier), `${path}/soldier/shoot.png`, {
+      frameWidth: soldierShootFrameSize,
+      frameHeight: soldierShootFrameSize,
+    });
 
     this.load.image(RTS_UI_TEXTURE_KEYS.move_target_marker, "assets/ui/move_target_marker.svg");
   }
 
   applyNextGraphicsQuality() {
     const next = cycleGraphicsQuality();
-    const roundPixels = shouldRoundPixels(next);
-    this.cameras.main.setRoundPixels(roundPixels);
-    if ((this.game as any).config) {
-      (this.game as any).config.autoRound = roundPixels;
-      (this.game as any).config.roundPixels = roundPixels;
-      (this.game as any).config.pixelArt = roundPixels;
-    }
-    if ((this.scale as any).autoRound !== undefined) {
-      (this.scale as any).autoRound = roundPixels;
-    }
-    this.ensureSoldierAnimations();
-        if (this.groundTileSprite) this.groundTileSprite.setTexture(this.getGroundTextureKey());
-    this.updatePremiumHudButtons();
-    this.refreshGraphicsPresentation();
-    this.updateActionPanelDom();
-    this.showNotice(`Graphics: ${getGraphicsQualityLabel(next)}`, "#ffd27a");
+    // Changing quality tier requires a full page reload because:
+    //   1. Different asset files must be loaded (different resolution tier)
+    //   2. Render settings (antialias, pixelArt, fps target) are set at
+    //      Phaser game creation in main.ts — cannot be changed at runtime.
+    // We save the new quality to localStorage first (done by cycleGraphicsQuality),
+    // then reload. On next load, main.ts reads the new quality and configures
+    // the game correctly, and preload() loads only the new tier's assets.
+    this.showNotice(`Graphics: ${getGraphicsQualityLabel(next)} — reloading...`, "#ffd27a");
+    this.time.delayedCall(600, () => {
+      window.location.reload();
+    });
   }
 
   refreshGraphicsPresentation() {
