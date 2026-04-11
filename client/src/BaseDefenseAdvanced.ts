@@ -559,7 +559,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     // Restored in Build 187. Zoom is anchored to the mouse position so
     // the world point under the cursor stays fixed while zooming in/out.
     this.input.on("wheel",
-      (_pointer: Phaser.Input.Pointer, _gos: any, _dx: number, deltaY: number) => {
+      (pointer: Phaser.Input.Pointer, _gos: any, _dx: number, deltaY: number) => {
         if (!this.room?.state || !this.hasInitialized) return;
         const cam = this.cameras.main;
         const zoomFactor = deltaY > 0 ? 0.88 : 1.14; // scroll-down = zoom out
@@ -569,8 +569,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           MAX_CAMERA_ZOOM
         );
         if (Math.abs(nextZoom - cam.zoom) < 0.001) return;
-        this.applyZoomToViewportCenter(nextZoom);
-        this.clampCameraToWorld();
+        this.applyZoomToScreenPoint(nextZoom, pointer.x, pointer.y);
         this.layoutBaseDefenseHud();
       }
     );

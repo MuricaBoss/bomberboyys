@@ -351,15 +351,32 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     this.syncCameraFocusToView();
   }
 
+  applyZoomToScreenPoint(nextZoom: number, screenX: number, screenY: number) {
+    const cam = this.cameras.main;
+    const oldZoom = cam.zoom;
+    
+    const viewCenterX = cam.width / 2;
+    const viewCenterY = cam.height / 2;
+    const dx = screenX - viewCenterX;
+    const dy = screenY - viewCenterY;
+    
+    // Changing the zoom scales the scene around the center of the camera.
+    // To keep a specific screen coordinate visually "pinned" to the same world point,
+    // we must offset the scrollX/Y by the difference in logical size caused by the zoom change.
+    const worldShiftX = (dx / oldZoom) - (dx / nextZoom);
+    const worldShiftY = (dy / oldZoom) - (dy / nextZoom);
+    
+    cam.setZoom(nextZoom);
+    cam.scrollX += worldShiftX;
+    cam.scrollY += worldShiftY;
+    
+    (this as any).clampCameraToWorld?.();
+    this.syncCameraAfterZoom();
+  }
+
   applyZoomToViewportCenter(nextZoom: number) {
     const cam = this.cameras.main;
-    cam.preRender();
-    const centerX = cam.midPoint.x;
-    const centerY = cam.midPoint.y;
-    cam.setZoom(nextZoom);
-    cam.preRender();
-    cam.setScroll(centerX - cam.displayWidth * 0.5, centerY - cam.displayHeight * 0.5);
-    this.syncCameraAfterZoom();
+    this.applyZoomToScreenPoint(nextZoom, cam.width / 2, cam.height / 2);
   }
 
   centerCameraOnWorldPoint(worldX: number, worldY: number, smooth = true) {
@@ -375,6 +392,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     if (!smooth || (Math.abs(targetX - startX) < 1 && Math.abs(targetY - startY) < 1)) {
       cam.scrollX = targetX;
       cam.scrollY = targetY;
+      (this as any).clampCameraToWorld?.();
       return;
     }
     cam.scrollX = startX;
@@ -386,10 +404,10 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
       duration: 180,
       ease: "Quad.easeOut",
       onUpdate: () => {
-        // Build 116: removed clamp
+        (this as any).clampCameraToWorld?.();
       },
       onComplete: () => {
-        // Build 116: removed clamp
+        (this as any).clampCameraToWorld?.();
         this.cameraCenterTween = null;
       },
     });

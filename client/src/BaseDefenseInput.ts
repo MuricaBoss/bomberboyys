@@ -176,11 +176,10 @@ export class BaseDefenseScene_Input extends BaseDefenseScene_Render {
     this.touchPinchLastMidX = midX;
     this.touchPinchLastMidY = midY;
     this.touchPinchLastMoveAt = now;
-    cam.setZoom(nextZoom);
-    const next = this.getCameraScrollForCenterWorld(this.touchWorldFocusX, this.touchWorldFocusY);
-    cam.scrollX = next.scrollX;
-    cam.scrollY = next.scrollY;
-    this.syncCameraFocusToView();
+    
+    // Zoom anchored to the center point between the user's fingers
+    this.applyZoomToScreenPoint(nextZoom, midX, midY);
+    
     this.layoutBaseDefenseHud();
     this.touchPinchLastDist = dist;
     if (Math.abs(nextZoom - prevZoom) > 0.002) {
