@@ -1189,8 +1189,8 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     const cam = this.cameras.main;
     const worldW = Math.max(1, Number(this.room.state.mapWidth || 1) * TILE_SIZE);
     const worldH = Math.max(1, Number(this.room.state.mapHeight || 1) * TILE_SIZE);
-    const fitByWidth = cam.width / worldW;
-    const fitByHeight = cam.height / worldH;
+    const fitByWidth = window.innerWidth / worldW;
+    const fitByHeight = window.innerHeight / worldH;
     return Phaser.Math.Clamp(Math.max(MIN_CAMERA_ZOOM, fitByWidth, fitByHeight), MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM);
   }
 

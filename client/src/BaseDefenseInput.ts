@@ -65,8 +65,10 @@ export class BaseDefenseScene_Input extends BaseDefenseScene_Render {
     const cam = this.cameras.main;
     const worldW = this.room.state.mapWidth * TILE_SIZE;
     const worldH = this.room.state.mapHeight * TILE_SIZE;
-    const viewW = cam.width / cam.zoom;
-    const viewH = cam.height / cam.zoom;
+    // Use logical viewport (CSS pixels), not cam.width which is divided
+    // by scale.zoom (DPR) and would make the clamp DPR× too tight.
+    const viewW = window.innerWidth / cam.zoom;
+    const viewH = window.innerHeight / cam.zoom;
     const maxX = Math.max(0, worldW - viewW);
     const maxY = Math.max(0, worldH - viewH);
     cam.scrollX = Phaser.Math.Clamp(cam.scrollX, 0, maxX);
