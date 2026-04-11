@@ -386,7 +386,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         cam.scrollY -= dy / cam.zoom;
         this.cameraDragLastX = pointer.x;
         this.cameraDragLastY = pointer.y;
-        // Build 116: Removed clamp
+        this.clampCameraToWorld();
         return;
       }
       if (this.draggingBuildType) {
@@ -554,6 +554,26 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       this.isDraggingSelection = false;
       this.selectionRectGraphics?.clear();
     });
+
+    // ── Scroll-wheel zoom (cursor-centred) ─────────────────────────────────
+    // Restored in Build 187. Zoom is anchored to the mouse position so
+    // the world point under the cursor stays fixed while zooming in/out.
+    this.input.on("wheel",
+      (_pointer: Phaser.Input.Pointer, _gos: any, _dx: number, deltaY: number) => {
+        if (!this.room?.state || !this.hasInitialized) return;
+        const cam = this.cameras.main;
+        const zoomFactor = deltaY > 0 ? 0.88 : 1.14; // scroll-down = zoom out
+        const nextZoom = Phaser.Math.Clamp(
+          cam.zoom * zoomFactor,
+          this.getMinCameraZoom(),
+          MAX_CAMERA_ZOOM
+        );
+        if (Math.abs(nextZoom - cam.zoom) < 0.001) return;
+        this.applyZoomToViewportCenter(nextZoom);
+        this.clampCameraToWorld();
+        this.layoutBaseDefenseHud();
+      }
+    );
   }
 
   initializeWorld() {

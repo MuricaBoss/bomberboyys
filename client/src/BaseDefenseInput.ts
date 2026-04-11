@@ -247,7 +247,7 @@ export class BaseDefenseScene_Input extends BaseDefenseScene_Render {
       cam.scrollY -= dy / cam.zoom;
       this.cameraDragLastX = pointer.x;
       this.cameraDragLastY = pointer.y;
-      // Build 116: removed clamp
+      this.clampCameraToWorld();
       this.syncCameraFocusToView();
       return true;
     }

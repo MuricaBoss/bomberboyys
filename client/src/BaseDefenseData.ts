@@ -999,7 +999,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     
     // Build 107: Robust Zoom Locking for mobile stability
     if (!this.hasInitialZoomSet) {
-        cam.setZoom(1.1);
+        cam.setZoom(1.6);
         this.hasInitialZoomSet = true;
     }
     // Note: Subsequent resizes strictly PRESERVE current cam.zoom
