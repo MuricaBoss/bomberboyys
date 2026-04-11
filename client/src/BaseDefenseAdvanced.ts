@@ -579,7 +579,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.hasInitialized = true;
     const state = this.room.state;
     this.cameras.main.setBackgroundColor(0x1f5f1f);
-    this.cameras.main.setZoom(1);
     this.syncWorldBackground(state.mapWidth * TILE_SIZE, state.mapHeight * TILE_SIZE);
     this.drawMap(state);
     this.mapCache = Array.from(state.map as number[]);
@@ -589,10 +588,17 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.worldFogGraphics.setVisible(true);
     this.cameras.main.removeBounds();
     
-    // Build 115: Re-introduced ONLY the initial-join snap, but with a safe-bounds check.
+    const worldW = state.mapWidth * TILE_SIZE;
+    const worldH = state.mapHeight * TILE_SIZE;
+    
     const me = state.players?.get ? state.players.get(this.currentPlayerId) : state.players?.[this.currentPlayerId];
-    if (me && !this.hasHadInitialCameraSnap && me.x > 10 && me.y > 10) {
-      this.setCameraCenterWorld(Number(me.x), Number(me.y));
+    if (me && !this.hasHadInitialCameraSnap && Number(me.x) > 10 && Number(me.y) > 10) {
+      // Start camera at perfect world center first to establish stable bounds
+      this.setCameraCenterWorld(worldW / 2, worldH / 2);
+      this.clampCameraToWorld();
+      
+      // Then smoothly animate to player base layout
+      this.centerCameraOnWorldPoint(Number(me.x), Number(me.y), true);
       this.hasHadInitialCameraSnap = true;
     }
   }

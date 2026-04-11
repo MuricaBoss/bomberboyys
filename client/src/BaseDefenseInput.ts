@@ -207,9 +207,7 @@ export class BaseDefenseScene_Input extends BaseDefenseScene_Render {
     if (Date.now() < this.touchPinchCooldownUntil) return true;
     if (this.touchPinching) return true;
     if (this.getActiveTouchPointers().length >= 2) {
-      this.cameraDragging = false;
-      this.touchPanMaybe = false;
-      this.clearSelectionDragState();
+      this.beginTouchPinch();
       return true;
     }
     if (this.handleMobileHudPointer(pointer)) return true;
@@ -253,6 +251,7 @@ export class BaseDefenseScene_Input extends BaseDefenseScene_Render {
       this.clearSelectionDragState();
     }
     if (this.getActiveTouchPointers().length >= 2) {
+      if (this.updateTouchPinch()) return true;
       return true;
     }
 
