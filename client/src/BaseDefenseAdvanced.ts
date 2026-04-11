@@ -585,7 +585,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.mapCache = Array.from(state.map as number[]);
     this.mapSyncPending = false;
     if (!this.worldFogGraphics) {
-      this.worldFogGraphics = this.add.graphics().setDepth(90);
+      this.worldFogGraphics = this.add.graphics().setDepth(240);
     }
     this.worldFogGraphics.setVisible(true);
     this.cameras.main.removeBounds();
@@ -781,7 +781,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     g.clear();
     const visibleHoldSec = 0.35;
     const fadeToDarkSec = 16;
-    const drawMarginPx = Math.max(cam.width, cam.height) * 0.5;
+    const drawMarginPx = 0;
     const drawStartCol = Math.max(0, Math.floor((cam.x - drawMarginPx) / fogCellSize));
     const drawEndCol = Math.min(cols - 1, Math.ceil((cam.right + drawMarginPx) / fogCellSize));
     const drawStartRow = Math.max(0, Math.floor((cam.y - drawMarginPx) / fogCellSize));
@@ -1131,6 +1131,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
        else if (this.game.loop.actualFps < 28) this.fpsText.setColor("#ffff44");
        else this.fpsText.setColor("#00ff00");
     }
+    this.updateClientVersionDom(this.game.loop.actualFps);
     this.perfStart("syncPlayers");
     const seenPlayers = new Set<string>();
     if (players?.forEach) {

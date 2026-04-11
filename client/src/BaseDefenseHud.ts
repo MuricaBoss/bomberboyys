@@ -33,7 +33,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       color: "#00ff00",
       fontFamily: "monospace",
       backgroundColor: "#00000088"
-    }).setOrigin(0, 0).setScrollFactor(0).setDepth(20000).setPadding(2, 1, 2, 1);
+    }).setOrigin(0, 0).setScrollFactor(0).setDepth(20000).setPadding(2, 1, 2, 1).setVisible(false);
     this.uiText = this.add.text(20, 30, "", {
       fontSize: "18px",
       color: "#fff",
@@ -282,9 +282,15 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
     root.style.zIndex = "10002";
     root.style.pointerEvents = "none";
     root.style.userSelect = "none";
-    root.textContent = `BUILD ${DISPLAY_BUILD_NUMBER} · ${activeClientBuildId || CLIENT_BUNDLE_VERSION}`;
+    root.textContent = `BUILD ${DISPLAY_BUILD_NUMBER} · ${activeClientBuildId || CLIENT_BUNDLE_VERSION} · FPS --`;
     this.getOverlayHostEl().appendChild(root);
     this.clientVersionRootEl = root;
+  }
+
+  updateClientVersionDom(fps?: number) {
+    if (!this.clientVersionRootEl) return;
+    const fpsLabel = Number.isFinite(fps) ? Math.round(Number(fps)) : "--";
+    this.clientVersionRootEl.textContent = `BUILD ${DISPLAY_BUILD_NUMBER} · ${activeClientBuildId || CLIENT_BUNDLE_VERSION} · FPS ${fpsLabel}`;
   }
 
   destroyClientVersionDom() {
