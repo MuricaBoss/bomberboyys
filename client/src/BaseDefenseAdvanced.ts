@@ -744,44 +744,55 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     }
     this.worldFogOverlay.setVisible(true);
 
-    // Use camera worldView corners directly — the overlay lives in world space.
     const cam = this.cameras.main.worldView;
     const camZoom = this.cameras.main.zoom;
+    
+    // Always update position to follow camera perfectly (prevent lag)
+    this.worldFogOverlay.setPosition(cam.x, cam.y);
+    
+    // Throttled internal draw to save performance, but keep position updates every frame.
+    // However, the user wants it to follow perfectly, so let's check if we should even throttle the draw.
+    // If zoom or camera changed significantly, redraw.
     const zoomChanged = !Number.isFinite(this.lastFogZoom) || Math.abs(camZoom - this.lastFogZoom) > 0.001;
     const camMoved = !Number.isFinite(this.lastFogCamX)
-      || Math.abs(cam.x - this.lastFogCamX) >= 4
-      || Math.abs(cam.y - this.lastFogCamY) >= 4;
-    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < FOG_UPDATE_MS) return;
+      || Math.abs(cam.x - this.lastFogCamX) >= 0.5 // More sensitive
+      || Math.abs(cam.y - this.lastFogCamY) >= 0.5;
+    
+    // If not moved enough and not enough time passed, just stay at current position (already updated above)
+    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < 32) return; 
+
     this.lastWorldFogDrawAt = now;
     this.lastFogCamX = cam.x;
     this.lastFogCamY = cam.y;
     this.lastFogZoom = camZoom;
 
     const overlay = this.worldFogOverlay;
-    // Overlay sits at worldView origin, sized to worldView dimensions (world units).
-    // Internal texture resolution = worldView size in pixels (1:1 with world units).
-    const texW = Math.ceil(cam.width);
-    const texH = Math.ceil(cam.height);
+    
+    // To keep fog sharp, internal texture resolution should match screen resolution, 
+    // but its display size matches world view.
+    const screenW = this.cameras.main.width;
+    const screenH = this.cameras.main.height;
 
-    overlay.setPosition(cam.x, cam.y);
-    if (overlay.width !== texW || overlay.height !== texH) {
-      overlay.resize(texW, texH);
+    if (overlay.width !== screenW || overlay.height !== screenH) {
+      overlay.resize(screenW, screenH);
     }
     overlay.setDisplaySize(cam.width, cam.height);
     overlay.clear();
-    overlay.fill(0x000000, 0.88, 0, 0, texW, texH);
+    overlay.fill(0x000000, 0.88, 0, 0, screenW, screenH);
 
-    // Erase vision circles — coordinates are world offset from cam origin (1:1).
     const brush = this.worldFogMaskGraphics;
     for (const src of this.visionSources) {
-      const ox = src.x - cam.x;
-      const oy = src.y - cam.y;
-      const radius = Math.sqrt(src.r2);
-      if (ox + radius < 0 || ox - radius > texW) continue;
-      if (oy + radius < 0 || oy - radius > texH) continue;
+      // Map world coords to the screen-resolution texture coordinates
+      const tx = (src.x - cam.x) * camZoom;
+      const ty = (src.y - cam.y) * camZoom;
+      const tRadius = Math.sqrt(src.r2) * camZoom;
+
+      if (tx + tRadius < 0 || tx - tRadius > screenW) continue;
+      if (ty + tRadius < 0 || ty - tRadius > screenH) continue;
+      
       brush.clear();
       brush.fillStyle(0xffffff, 1);
-      brush.fillCircle(ox, oy, radius);
+      brush.fillCircle(tx, ty, tRadius);
       overlay.erase(brush);
     }
   }
