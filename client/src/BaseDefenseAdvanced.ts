@@ -744,7 +744,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     }
     this.worldFogOverlay.setVisible(true);
     const cam = this.cameras.main.worldView;
-    const zoomChanged = !Number.isFinite(this.lastFogZoom) || Math.abs(this.cameras.main.zoom - this.lastFogZoom) > 0.001;
+    const camZoom = this.cameras.main.zoom;
+    const zoomChanged = !Number.isFinite(this.lastFogZoom) || Math.abs(camZoom - this.lastFogZoom) > 0.001;
     const camMoved = !Number.isFinite(this.lastFogCamX)
       || Math.abs(cam.x - this.lastFogCamX) >= 4
       || Math.abs(cam.y - this.lastFogCamY) >= 4;
@@ -752,12 +753,15 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.lastWorldFogDrawAt = now;
     this.lastFogCamX = cam.x;
     this.lastFogCamY = cam.y;
-    this.lastFogZoom = this.cameras.main.zoom;
+    this.lastFogZoom = camZoom;
     const overlay = this.worldFogOverlay;
-    const sw = this.cameras.main.width;
-    const sh = this.cameras.main.height;
+
+    // Camera zoom scales scrollFactor=0 objects too, so we must compensate:
+    // make the overlay 1/zoom larger so it fills the full screen after scaling.
+    const sw = Math.ceil(this.cameras.main.width / camZoom);
+    const sh = Math.ceil(this.cameras.main.height / camZoom);
+
     overlay.setPosition(0, 0);
-    // Resize the internal canvas if its size differs (handles zoom changes & window resize)
     if (overlay.width !== sw || overlay.height !== sh) {
       overlay.resize(sw, sh);
     }
@@ -765,18 +769,19 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     overlay.clear();
     overlay.fill(0x000000, 0.88, 0, 0, sw, sh);
 
+    // Vision sources: convert world coords to overlay-local coords.
+    // The overlay covers the visible world area (cam.x..cam.x+worldView.width),
+    // so overlay pixel (0,0) = world (cam.x, cam.y) and the scale is 1:1 in world units.
     const brush = this.worldFogMaskGraphics;
-    brush.clear();
-    brush.fillStyle(0xffffff, 1);
     for (const src of this.visionSources) {
-      const screenX = (src.x - cam.x) * this.cameras.main.zoom;
-      const screenY = (src.y - cam.y) * this.cameras.main.zoom;
-      const radius = Math.sqrt(src.r2) * this.cameras.main.zoom;
-      if (screenX + radius < 0 || screenX - radius > this.cameras.main.width) continue;
-      if (screenY + radius < 0 || screenY - radius > this.cameras.main.height) continue;
+      const ox = src.x - cam.x;
+      const oy = src.y - cam.y;
+      const radius = Math.sqrt(src.r2);
+      if (ox + radius < 0 || ox - radius > sw) continue;
+      if (oy + radius < 0 || oy - radius > sh) continue;
       brush.clear();
       brush.fillStyle(0xffffff, 1);
-      brush.fillCircle(screenX, screenY, radius);
+      brush.fillCircle(ox, oy, radius);
       overlay.erase(brush);
     }
   }
