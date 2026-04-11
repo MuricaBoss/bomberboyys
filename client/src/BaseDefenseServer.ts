@@ -31,8 +31,8 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
   createLocalBaseDefenseRoom() {
     const state: any = {
       mode: "base_defense",
-      mapWidth: 35,
-      mapHeight: 35,
+      mapWidth: 140,
+      mapHeight: 140,
       phase: "build",
       phaseEndsAt: Date.now() + 60 * 60 * 1000,
       roundActive: true,
