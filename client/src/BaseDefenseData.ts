@@ -177,6 +177,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   worldFogGraphics: Phaser.GameObjects.Graphics | null = null;
   worldFogOverlay: Phaser.GameObjects.RenderTexture | null = null;
   worldFogMaskGraphics: Phaser.GameObjects.Graphics | null = null;
+  fogEnabled = true;
   lastWorldFogDrawAt = 0;
   fogCols = 0;
   fogRows = 0;
@@ -1041,6 +1042,9 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     
     this.layoutBaseDefenseHud();
     this.scale.refresh();
+    this.lastFogCamX = Number.NaN;
+    this.lastFogCamY = Number.NaN;
+    this.lastWorldFogDrawAt = 0;
     
     // Ensure the new aspect ratio / viewport size hasn't exposed the out-of-bounds void
     (this as any).clampCameraToWorld?.();

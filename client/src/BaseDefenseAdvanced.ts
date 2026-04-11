@@ -737,6 +737,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
   updateWorldFog(now: number) {
     if (!this.worldFogOverlay || !this.worldFogMaskGraphics || !this.room?.state) return;
+    if (!this.fogEnabled) {
+      this.worldFogOverlay.clear();
+      this.worldFogOverlay.setVisible(false);
+      return;
+    }
+    this.worldFogOverlay.setVisible(true);
     const cam = this.cameras.main.worldView;
     const camMoved = !Number.isFinite(this.lastFogCamX)
       || Math.abs(cam.x - this.lastFogCamX) >= 8

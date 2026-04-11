@@ -321,6 +321,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
     const defs: Array<{ id: string; label: string }> = [
       { id: "anchor", label: "ANCHOR" },
       { id: "build", label: "MAP" },
+      { id: "fog", label: "FOG" },
       { id: "gfx", label: "GFX" },
       { id: "dev", label: "DEV" },
       { id: "full", label: "FULL" },
@@ -382,6 +383,11 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
         this.clearCommandSelectionState();
         if (def.id === "anchor") {
           this.room.send("anchor_base");
+        } else if (def.id === "fog") {
+          this.fogEnabled = !this.fogEnabled;
+          this.lastFogCamX = Number.NaN;
+          this.lastFogCamY = Number.NaN;
+          this.lastWorldFogDrawAt = 0;
         } else if (def.id === "gfx") {
           this.applyNextGraphicsQuality();
         } else if (def.id === "dev") {
@@ -422,7 +428,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       for (const [id, btn] of this.actionPanelButtons.entries()) {
         const reason = this.actionPanelReasonLabels.get(id);
         const wrap = btn.parentElement as HTMLDivElement | null;
-        const selected = (id === "build" && this.actionMode === "build") || id === this.selectedBuild;
+        const selected = (id === "build" && this.actionMode === "build") || (id === "fog" && this.fogEnabled) || id === this.selectedBuild;
         if (wrap) wrap.style.display = id === "anchor" ? "flex" : "none";
         btn.style.background = selected ? "#2d7458" : "#223348";
         btn.style.borderColor = selected ? "#99ffd0" : "#8fb8da";
@@ -454,6 +460,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
         continue;
       }
       const selected = (id === "build" && this.actionMode === "build")
+        || (id === "fog" && this.fogEnabled)
         || (id === "dev" && !!me?.devMode)
         || id === this.selectedBuild;
       if (id === "gfx") btn.textContent = `GFX ${getGraphicsQualityLabel(getGraphicsQuality()).toUpperCase()}`;
