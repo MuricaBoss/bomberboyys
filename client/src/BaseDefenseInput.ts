@@ -63,16 +63,35 @@ export class BaseDefenseScene_Input extends BaseDefenseScene_Render {
   clampCameraToWorld() {
     if (!this.room?.state) return;
     const cam = this.cameras.main;
+    cam.preRender(); // Force update of worldView polygon based on current zoom and scroll
+
     const worldW = this.room.state.mapWidth * TILE_SIZE;
     const worldH = this.room.state.mapHeight * TILE_SIZE;
-    // Use logical viewport (CSS pixels), not cam.width which is divided
-    // by scale.zoom (DPR) and would make the clamp DPR× too tight.
-    const viewW = window.innerWidth / cam.zoom;
-    const viewH = window.innerHeight / cam.zoom;
-    const maxX = Math.max(0, worldW - viewW);
-    const maxY = Math.max(0, worldH - viewH);
-    cam.scrollX = Phaser.Math.Clamp(cam.scrollX, 0, maxX);
-    cam.scrollY = Phaser.Math.Clamp(cam.scrollY, 0, maxY);
+
+    let dx = 0;
+    let dy = 0;
+
+    // Like raycasting the corners to the ground: if the left visible edge is past 0 (off map), push it back right.
+    if (cam.worldView.width >= worldW) {
+      dx = (worldW / 2) - cam.worldView.centerX; // Center if worldview is bigger than the map
+    } else {
+      if (cam.worldView.left < 0) dx = -cam.worldView.left;
+      else if (cam.worldView.right > worldW) dx = worldW - cam.worldView.right;
+    }
+
+    // Same for Y axis limits
+    if (cam.worldView.height >= worldH) {
+      dy = (worldH / 2) - cam.worldView.centerY;
+    } else {
+      if (cam.worldView.top < 0) dy = -cam.worldView.top;
+      else if (cam.worldView.bottom > worldH) dy = worldH - cam.worldView.bottom;
+    }
+
+    if (dx !== 0 || dy !== 0) {
+      cam.scrollX += dx;
+      cam.scrollY += dy;
+      cam.preRender(); // Update after fixing bounds
+    }
   }
 
   updateRtsCamera(_delta: number) {
