@@ -1227,7 +1227,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             this.applyWorldDepth(e, Number(u.y), WORLD_DEPTH_UNIT_OFFSET);
           } else if (isSoldier) {
             e = this.add.sprite(u.x, u.y, this.getSoldierSheetTextureKey("run"), 0)
-              .setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y);
+              .setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y)
+              .setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE)
+              .setVisible(false);
             this.applyWorldDepth(e, Number(u.y), WORLD_DEPTH_UNIT_OFFSET);
           } else {
             e = this.add.arc(u.x, u.y, radius, 0, 360, false, baseColor).setStrokeStyle(1.5, 0xffffff);

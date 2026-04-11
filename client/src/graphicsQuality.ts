@@ -89,15 +89,9 @@ export function getAssetBasePath(tier: GraphicsAssetTier) {
 }
 
 export function getSoldierRunFrameSize(tier: GraphicsAssetTier) {
-  if (tier === "low") return 32;
-  if (tier === "medium") return 64;
-  if (tier === "high") return 128;
-  return 512;
+  return 32;
 }
 
 export function getSoldierShootFrameSize(tier: GraphicsAssetTier) {
-  if (tier === "low") return 32;
-  if (tier === "medium") return 48;
-  if (tier === "high") return 64;
-  return 80;
+  return 32;
 }
