@@ -158,10 +158,10 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
 
   getTankShadowPosition(entity: Phaser.GameObjects.Image, dir: number) {
     const bodyCenter = this.getTankBodyCenter(entity, dir);
-    const eastMeta = RTS_TANK_SPRITE_META.tank_ready_e;
+    const meta = this.getTankSpriteMeta(dir);
     return {
-      x: bodyCenter.x - (eastMeta.centerX - entity.originX) * entity.displayWidth + entity.displayWidth * 0.08,
-      y: bodyCenter.y - (eastMeta.centerY - entity.originY) * entity.displayHeight + entity.displayHeight * 0.1,
+      x: bodyCenter.x - (meta.centerX - entity.originX) * entity.displayWidth + entity.displayWidth * 0.08,
+      y: bodyCenter.y - (meta.centerY - entity.originY) * entity.displayHeight + entity.displayHeight * 0.1,
     };
   }
 
@@ -789,6 +789,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         if (oid === id) return;
         if ((ou.hp ?? 0) <= 0) return;
         if (myTeam && ou.team !== myTeam) return;
+        if (u.type === "soldier" && ou.type === "soldier") return;
         const ors = this.localUnitRenderState.get(oid);
         const ox = Number(ors?.x ?? ou.x);
         const oy = Number(ors?.y ?? ou.y);

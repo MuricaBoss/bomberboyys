@@ -23,7 +23,7 @@ const config: Phaser.Types.Core.GameConfig = {
   fullscreenTarget: "game-container",
   render: {
     pixelArt: roundPixels,
-    antialias: false,
+    antialias: graphicsQuality === "ultra" || graphicsQuality === "high",
     roundPixels,
     batchSize: 4096,
   },

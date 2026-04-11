@@ -37,12 +37,12 @@ export const RTS_SOLDIER_SPRITESHEET_KEYS = {
   shoot: "soldier_shoot_sheet",
 } as const;
 export const RTS_SOLDIER_RUN_FRAME_SIZE = 32;
-export const RTS_SOLDIER_RUN_FRAME_COLS = 16;
+export const RTS_SOLDIER_RUN_FRAME_COLS = 7;
 export const RTS_SOLDIER_SHOOT_FRAME_SIZE = 32;
 export const RTS_SOLDIER_SHOOT_FRAME_COLS = 8;
 export const RTS_SOLDIER_FRAME_SIZE = RTS_SOLDIER_RUN_FRAME_SIZE;
 export const RTS_SOLDIER_FRAME_COLS = RTS_SOLDIER_RUN_FRAME_COLS;
-export const RTS_SOLDIER_ROW_BY_DIR = [4, 3, 2, 1, 0, 7, 6, 5] as const;
+export const RTS_SOLDIER_ROW_BY_DIR = [3, 2, 1, 0, 7, 6, 5, 4] as const;
 export const RTS_SOLDIER_IDLE_FRAME = 1;
 export const RTS_SOLDIER_IDLE_FRAMES = [RTS_SOLDIER_IDLE_FRAME] as const;
 export const RTS_SOLDIER_PROJECTILE_RANGE = TILE_SIZE * 5.7;
@@ -67,7 +67,7 @@ export const RTS_TANK_SELECTION_SIDE_Y_OFFSET = 3;
 export const RTS_TANK_HP_BOTTOM_OFFSET = 4;
 export const RTS_TANK_TRAIL_SEGMENT_LENGTH = 16;
 export const RTS_TANK_TRAIL_SEGMENT_WIDTH = 5;
-export const RTS_TANK_TRAIL_GAP = 12;
+export const RTS_TANK_TRAIL_GAP = 8;
 export const RTS_TANK_TRAIL_BACK_OFFSET = 8;
 export const RTS_TANK_TRAIL_SPAWN_DISTANCE = 6;
 export const RTS_TANK_TRAIL_LIFETIME_MS = 2200;
