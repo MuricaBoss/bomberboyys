@@ -1027,6 +1027,9 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     
     this.layoutBaseDefenseHud();
     this.scale.refresh();
+    
+    // Ensure the new aspect ratio / viewport size hasn't exposed the out-of-bounds void
+    (this as any).clampCameraToWorld?.();
   }
 
   layoutBaseDefenseHud() {
