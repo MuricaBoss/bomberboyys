@@ -746,18 +746,24 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const cam = this.cameras.main.worldView;
     const zoomChanged = !Number.isFinite(this.lastFogZoom) || Math.abs(this.cameras.main.zoom - this.lastFogZoom) > 0.001;
     const camMoved = !Number.isFinite(this.lastFogCamX)
-      || Math.abs(cam.x - this.lastFogCamX) >= 8
-      || Math.abs(cam.y - this.lastFogCamY) >= 8;
+      || Math.abs(cam.x - this.lastFogCamX) >= 4
+      || Math.abs(cam.y - this.lastFogCamY) >= 4;
     if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < FOG_UPDATE_MS) return;
     this.lastWorldFogDrawAt = now;
     this.lastFogCamX = cam.x;
     this.lastFogCamY = cam.y;
     this.lastFogZoom = this.cameras.main.zoom;
     const overlay = this.worldFogOverlay;
+    const sw = this.cameras.main.width;
+    const sh = this.cameras.main.height;
     overlay.setPosition(0, 0);
-    overlay.setSize(this.cameras.main.width, this.cameras.main.height);
+    // Resize the internal canvas if its size differs (handles zoom changes & window resize)
+    if (overlay.width !== sw || overlay.height !== sh) {
+      overlay.resize(sw, sh);
+    }
+    overlay.setDisplaySize(sw, sh);
     overlay.clear();
-    overlay.fill(0x000000, 0.88, 0, 0, this.cameras.main.width, this.cameras.main.height);
+    overlay.fill(0x000000, 0.88, 0, 0, sw, sh);
 
     const brush = this.worldFogMaskGraphics;
     brush.clear();
