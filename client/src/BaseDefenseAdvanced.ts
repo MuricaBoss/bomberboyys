@@ -585,16 +585,13 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.mapCache = Array.from(state.map as number[]);
     this.mapSyncPending = false;
     if (!this.worldFogOverlay) {
-      this.worldFogOverlay = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.88)
-        .setOrigin(0.5)
+      this.worldFogOverlay = this.add.renderTexture(0, 0, this.cameras.main.width, this.cameras.main.height)
+        .setOrigin(0)
         .setScrollFactor(0)
         .setDepth(240);
     }
     if (!this.worldFogMaskGraphics) {
       this.worldFogMaskGraphics = this.add.graphics().setScrollFactor(0).setDepth(241).setVisible(false);
-      const fogMask = this.worldFogMaskGraphics.createBitmapMask();
-      fogMask.invertAlpha = true;
-      this.worldFogOverlay.setMask(fogMask);
     }
     this.worldFogOverlay.setVisible(true);
     this.cameras.main.removeBounds();
@@ -749,19 +746,24 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.lastFogCamX = cam.x;
     this.lastFogCamY = cam.y;
     const overlay = this.worldFogOverlay;
-    overlay.setPosition(this.cameras.main.width * 0.5, this.cameras.main.height * 0.5);
+    overlay.setPosition(0, 0);
     overlay.setSize(this.cameras.main.width, this.cameras.main.height);
+    overlay.clear();
+    overlay.fill(0x000000, 0.88, 0, 0, this.cameras.main.width, this.cameras.main.height);
 
-    const mask = this.worldFogMaskGraphics;
-    mask.clear();
-    mask.fillStyle(0xffffff, 1);
+    const brush = this.worldFogMaskGraphics;
+    brush.clear();
+    brush.fillStyle(0xffffff, 1);
     for (const src of this.visionSources) {
       const screenX = (src.x - cam.x) * this.cameras.main.zoom;
       const screenY = (src.y - cam.y) * this.cameras.main.zoom;
       const radius = Math.sqrt(src.r2) * this.cameras.main.zoom;
       if (screenX + radius < 0 || screenX - radius > this.cameras.main.width) continue;
       if (screenY + radius < 0 || screenY - radius > this.cameras.main.height) continue;
-      mask.fillCircle(screenX, screenY, radius);
+      brush.clear();
+      brush.fillStyle(0xffffff, 1);
+      brush.fillCircle(screenX, screenY, radius);
+      overlay.erase(brush);
     }
   }
 

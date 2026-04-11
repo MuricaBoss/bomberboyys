@@ -175,7 +175,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   groundTileSprite: Phaser.GameObjects.TileSprite | null = null;
   groundTintOverlay: Phaser.GameObjects.Rectangle | null = null;
   worldFogGraphics: Phaser.GameObjects.Graphics | null = null;
-  worldFogOverlay: Phaser.GameObjects.Rectangle | null = null;
+  worldFogOverlay: Phaser.GameObjects.RenderTexture | null = null;
   worldFogMaskGraphics: Phaser.GameObjects.Graphics | null = null;
   lastWorldFogDrawAt = 0;
   fogCols = 0;
