@@ -584,10 +584,19 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.drawMap(state);
     this.mapCache = Array.from(state.map as number[]);
     this.mapSyncPending = false;
-    if (!this.worldFogGraphics) {
-      this.worldFogGraphics = this.add.graphics().setDepth(240);
+    if (!this.worldFogOverlay) {
+      this.worldFogOverlay = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.88)
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(240);
     }
-    this.worldFogGraphics.setVisible(true);
+    if (!this.worldFogMaskGraphics) {
+      this.worldFogMaskGraphics = this.add.graphics().setScrollFactor(0).setDepth(241).setVisible(false);
+      const fogMask = this.worldFogMaskGraphics.createBitmapMask();
+      fogMask.invertAlpha = true;
+      this.worldFogOverlay.setMask(fogMask);
+    }
+    this.worldFogOverlay.setVisible(true);
     this.cameras.main.removeBounds();
     
     const worldW = state.mapWidth * TILE_SIZE;
@@ -730,88 +739,29 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   }
 
   updateWorldFog(now: number) {
-    if (!this.worldFogGraphics || !this.room?.state) return;
-    const fogCellSize = this.getFogCellSize();
+    if (!this.worldFogOverlay || !this.worldFogMaskGraphics || !this.room?.state) return;
     const cam = this.cameras.main.worldView;
     const camMoved = !Number.isFinite(this.lastFogCamX)
-      || Math.abs(cam.x - this.lastFogCamX) >= fogCellSize * 2
-      || Math.abs(cam.y - this.lastFogCamY) >= fogCellSize * 2;
+      || Math.abs(cam.x - this.lastFogCamX) >= 8
+      || Math.abs(cam.y - this.lastFogCamY) >= 8;
     if (!camMoved && now - this.lastWorldFogDrawAt < FOG_UPDATE_MS) return;
     this.lastWorldFogDrawAt = now;
     this.lastFogCamX = cam.x;
     this.lastFogCamY = cam.y;
-    if (!this.lastFogTickAt) this.lastFogTickAt = now;
-    const dtSec = Math.max(0, Math.min(0.2, (now - this.lastFogTickAt) / 1000));
-    this.lastFogTickAt = now;
-    this.fogClockSec += dtSec;
-    const worldW = this.room.state.mapWidth * TILE_SIZE;
-    const worldH = this.room.state.mapHeight * TILE_SIZE;
-    const cols = Math.ceil(worldW / fogCellSize);
-    const rows = Math.ceil(worldH / fogCellSize);
-    const total = cols * rows;
-    if (!this.fogSeenAt || this.fogCols !== cols || this.fogRows !== rows || this.fogSeenAt.length !== total) {
-      this.fogCols = cols;
-      this.fogRows = rows;
-      this.fogSeenAt = new Float32Array(total);
-      this.fogSeenAt.fill(-9999);
-    }
-    const seenAt = this.fogSeenAt;
-    for (const src of this.visionSources) {
-      const radius = Math.sqrt(src.r2);
-      const minCol = Math.max(0, Math.floor((src.x - radius) / fogCellSize));
-      const maxCol = Math.min(cols - 1, Math.ceil((src.x + radius) / fogCellSize));
-      const minRow = Math.max(0, Math.floor((src.y - radius) / fogCellSize));
-      const maxRow = Math.min(rows - 1, Math.ceil((src.y + radius) / fogCellSize));
-      for (let row = minRow; row <= maxRow; row++) {
-        const y = row * fogCellSize + fogCellSize * 0.5;
-        const dy = y - src.y;
-        const maxDx2 = src.r2 - dy * dy;
-        if (maxDx2 < 0) continue;
-        const dx = Math.sqrt(maxDx2);
-        const rowOffset = row * cols;
-        const fromCol = Math.max(minCol, Math.floor((src.x - dx) / fogCellSize));
-        const toCol = Math.min(maxCol, Math.ceil((src.x + dx) / fogCellSize));
-        for (let col = fromCol; col <= toCol; col++) {
-          seenAt[rowOffset + col] = this.fogClockSec;
-        }
-      }
-    }
+    const overlay = this.worldFogOverlay;
+    overlay.setPosition(this.cameras.main.width * 0.5, this.cameras.main.height * 0.5);
+    overlay.setSize(this.cameras.main.width, this.cameras.main.height);
 
-    const g = this.worldFogGraphics;
-    g.clear();
-    const visibleHoldSec = 0.35;
-    const fadeToDarkSec = 16;
-    const drawMarginPx = 0;
-    const drawStartCol = Math.max(0, Math.floor((cam.x - drawMarginPx) / fogCellSize));
-    const drawEndCol = Math.min(cols - 1, Math.ceil((cam.right + drawMarginPx) / fogCellSize));
-    const drawStartRow = Math.max(0, Math.floor((cam.y - drawMarginPx) / fogCellSize));
-    const drawEndRow = Math.min(rows - 1, Math.ceil((cam.bottom + drawMarginPx) / fogCellSize));
-    const alphaFromSeenTime = (seenTime: number) => {
-      if (seenTime <= -1000) return 0.9;
-      const ageSec = Math.max(0, this.fogClockSec - seenTime);
-      if (ageSec <= visibleHoldSec) return 0;
-      const t = Math.min(1, (ageSec - visibleHoldSec) / fadeToDarkSec);
-      return 0.14 + t * 0.76;
-    };
-    for (let row = drawStartRow; row <= drawEndRow; row++) {
-      const rowOffset = row * cols;
-      const rowUp = (row > 0 ? row - 1 : row) * cols;
-      const rowDown = (row < rows - 1 ? row + 1 : row) * cols;
-      for (let col = drawStartCol; col <= drawEndCol; col++) {
-        const c0 = col > 0 ? col - 1 : col;
-        const c2 = col < cols - 1 ? col + 1 : col;
-        const center = alphaFromSeenTime(seenAt[rowOffset + col]) * 0.52;
-        const neigh = (
-          alphaFromSeenTime(seenAt[rowOffset + c0]) +
-          alphaFromSeenTime(seenAt[rowOffset + c2]) +
-          alphaFromSeenTime(seenAt[rowUp + col]) +
-          alphaFromSeenTime(seenAt[rowDown + col])
-        ) * 0.12;
-        const alpha = center + neigh;
-        if (alpha <= 0.01) continue;
-        g.fillStyle(0x000000, alpha);
-        g.fillRect(col * fogCellSize, row * fogCellSize, fogCellSize, fogCellSize);
-      }
+    const mask = this.worldFogMaskGraphics;
+    mask.clear();
+    mask.fillStyle(0xffffff, 1);
+    for (const src of this.visionSources) {
+      const screenX = (src.x - cam.x) * this.cameras.main.zoom;
+      const screenY = (src.y - cam.y) * this.cameras.main.zoom;
+      const radius = Math.sqrt(src.r2) * this.cameras.main.zoom;
+      if (screenX + radius < 0 || screenX - radius > this.cameras.main.width) continue;
+      if (screenY + radius < 0 || screenY - radius > this.cameras.main.height) continue;
+      mask.fillCircle(screenX, screenY, radius);
     }
   }
 
