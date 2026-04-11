@@ -34,6 +34,11 @@
       }
       canvas {
         display: block;
+        /* Bilinear browser upscaling on HiDPI/Retina displays.
+           Without this, some browsers use nearest-neighbor when
+           stretching the 1x canvas to fill 2x physical pixels,
+           creating blocky pixel edges on photorealistic assets. */
+        image-rendering: auto;
       }
     </style>
   </head>

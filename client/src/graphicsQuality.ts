@@ -219,3 +219,27 @@ export function getButtonTextureSize(tier: GraphicsAssetTier): number {
   if (tier === "high") return 256;
   return 512; // ultra
 }
+
+/**
+ * Ground TileSprite tile scale per quality tier.
+ *
+ * The tileScale controls how many world-units one texture repetition covers:
+ *   tileScale = 1.0 → texture repeats at its native pixel size (1 world unit = 1 texel)
+ *   tileScale = 0.5 → texture is displayed at 50% of its pixel count per tile
+ *
+ * Target: one texture repetition = ~8 map tiles = 8 × TILE_SIZE = 256 world units.
+ *
+ *   Low    → 128px texture, want 256wu → scale = 256/128 = 2.0
+ *   Medium → 256px texture, want 256wu → scale = 256/256 = 1.0
+ *   High   → 512px texture, want 256wu → scale = 256/512 = 0.5
+ *   Ultra  → 1024px texture, want 256wu → scale = 256/1024 = 0.25
+ *
+ * Higher tiers have more texel density per world unit = sharper detail.
+ */
+export function getGroundTileScale(tier: GraphicsAssetTier): number {
+  if (tier === "low") return 2.0;
+  if (tier === "medium") return 1.0;
+  if (tier === "high") return 0.5;
+  return 0.25; // ultra
+}
+

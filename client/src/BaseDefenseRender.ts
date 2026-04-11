@@ -25,6 +25,7 @@ import {
 } from "./constants";
 import { BaseDefenseScene_Server } from "./BaseDefenseServer";
 import { RTS_TANK_SPRITE_META } from "./tankSpriteMeta";
+import { getGraphicsQuality, getGraphicsProfile, getGroundTileScale } from "./graphicsQuality";
 
 export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
   syncWorldBackground(width: number, height: number) {
@@ -38,10 +39,13 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     this.groundTileSprite?.destroy();
     this.groundTintOverlay?.destroy();
 
+    const tier = getGraphicsProfile(getGraphicsQuality()).worldTier;
+    const tileScale = getGroundTileScale(tier);
+
     this.groundTileSprite = this.add.tileSprite(0, 0, safeWidth, safeHeight, this.getGroundTextureKey())
       .setOrigin(0)
       .setDepth(-120)
-      .setTileScale(RTS_GROUND_TILE_SCALE)
+      .setTileScale(tileScale)
       .setAlpha(0.98);
     this.groundTintOverlay = this.add.rectangle(safeWidth / 2, safeHeight / 2, safeWidth, safeHeight, 0xd8e7f5, 0.06)
       .setDepth(-110);
