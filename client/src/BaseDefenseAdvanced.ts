@@ -744,13 +744,15 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     }
     this.worldFogOverlay.setVisible(true);
     const cam = this.cameras.main.worldView;
+    const zoomChanged = !Number.isFinite(this.lastFogZoom) || Math.abs(this.cameras.main.zoom - this.lastFogZoom) > 0.001;
     const camMoved = !Number.isFinite(this.lastFogCamX)
       || Math.abs(cam.x - this.lastFogCamX) >= 8
       || Math.abs(cam.y - this.lastFogCamY) >= 8;
-    if (!camMoved && now - this.lastWorldFogDrawAt < FOG_UPDATE_MS) return;
+    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < FOG_UPDATE_MS) return;
     this.lastWorldFogDrawAt = now;
     this.lastFogCamX = cam.x;
     this.lastFogCamY = cam.y;
+    this.lastFogZoom = this.cameras.main.zoom;
     const overlay = this.worldFogOverlay;
     overlay.setPosition(0, 0);
     overlay.setSize(this.cameras.main.width, this.cameras.main.height);

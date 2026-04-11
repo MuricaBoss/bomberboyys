@@ -184,6 +184,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   fogSeenAt: Float32Array | null = null;
   lastFogCamX = Number.NaN;
   lastFogCamY = Number.NaN;
+  lastFogZoom = Number.NaN;
   fogClockSec = 0;
   lastFogTickAt = 0;
   camVelX = 0;
@@ -1044,6 +1045,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     this.scale.refresh();
     this.lastFogCamX = Number.NaN;
     this.lastFogCamY = Number.NaN;
+    this.lastFogZoom = Number.NaN;
     this.lastWorldFogDrawAt = 0;
     
     // Ensure the new aspect ratio / viewport size hasn't exposed the out-of-bounds void
