@@ -163,6 +163,8 @@ export class BaseDefenseScene_Input extends BaseDefenseScene_Render {
     const midX = (a.x + b.x) * 0.5;
     const midY = (a.y + b.y) * 0.5;
     const cam = this.cameras.main;
+    const midDx = midX - this.touchPinchLastMidX;
+    const midDy = midY - this.touchPinchLastMidY;
     const distRatio = dist / Math.max(1, this.touchPinchLastDist || dist);
     const ratioDelta = distRatio - 1;
     const ratioDeadZone = 0.008;
@@ -173,16 +175,24 @@ export class BaseDefenseScene_Input extends BaseDefenseScene_Render {
     const now = performance.now();
     this.touchGestureScrollVX = 0;
     this.touchGestureScrollVY = 0;
-    this.touchPinchLastMidX = midX;
-    this.touchPinchLastMidY = midY;
     this.touchPinchLastMoveAt = now;
     
     // Zoom anchored to the center point between the user's fingers
     this.applyZoomToScreenPoint(nextZoom, midX, midY);
+
+    // When both fingers travel together, pan the camera with their shared midpoint.
+    if (midDx !== 0 || midDy !== 0) {
+      cam.scrollX -= midDx / Math.max(0.001, cam.zoom);
+      cam.scrollY -= midDy / Math.max(0.001, cam.zoom);
+      this.clampCameraToWorld();
+      this.syncCameraFocusToView();
+    }
     
     this.layoutBaseDefenseHud();
+    this.touchPinchLastMidX = midX;
+    this.touchPinchLastMidY = midY;
     this.touchPinchLastDist = dist;
-    if (Math.abs(nextZoom - prevZoom) > 0.002) {
+    if (Math.abs(nextZoom - prevZoom) > 0.002 || Math.hypot(midDx, midDy) > 1) {
       this.touchMoved = true;
     }
     return true;
