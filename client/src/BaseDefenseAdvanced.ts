@@ -587,11 +587,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (!this.worldFogOverlay) {
       this.worldFogOverlay = this.add.renderTexture(0, 0, this.cameras.main.width, this.cameras.main.height)
         .setOrigin(0)
-        .setScrollFactor(0)
+        .setScrollFactor(1)
         .setDepth(240);
     }
     if (!this.worldFogMaskGraphics) {
-      this.worldFogMaskGraphics = this.add.graphics().setScrollFactor(0).setDepth(241).setVisible(false);
+      this.worldFogMaskGraphics = this.add.graphics().setVisible(false);
     }
     this.worldFogOverlay.setVisible(true);
     this.cameras.main.removeBounds();
@@ -743,6 +743,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       return;
     }
     this.worldFogOverlay.setVisible(true);
+
+    // Use camera worldView corners directly — the overlay lives in world space.
     const cam = this.cameras.main.worldView;
     const camZoom = this.cameras.main.zoom;
     const zoomChanged = !Number.isFinite(this.lastFogZoom) || Math.abs(camZoom - this.lastFogZoom) > 0.001;
@@ -754,31 +756,29 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.lastFogCamX = cam.x;
     this.lastFogCamY = cam.y;
     this.lastFogZoom = camZoom;
+
     const overlay = this.worldFogOverlay;
+    // Overlay sits at worldView origin, sized to worldView dimensions (world units).
+    // Internal texture resolution = worldView size in pixels (1:1 with world units).
+    const texW = Math.ceil(cam.width);
+    const texH = Math.ceil(cam.height);
 
-    // Camera zoom scales scrollFactor=0 objects too, so we must compensate:
-    // make the overlay 1/zoom larger so it fills the full screen after scaling.
-    const sw = Math.ceil(this.cameras.main.width / camZoom);
-    const sh = Math.ceil(this.cameras.main.height / camZoom);
-
-    overlay.setPosition(0, 0);
-    if (overlay.width !== sw || overlay.height !== sh) {
-      overlay.resize(sw, sh);
+    overlay.setPosition(cam.x, cam.y);
+    if (overlay.width !== texW || overlay.height !== texH) {
+      overlay.resize(texW, texH);
     }
-    overlay.setDisplaySize(sw, sh);
+    overlay.setDisplaySize(cam.width, cam.height);
     overlay.clear();
-    overlay.fill(0x000000, 0.88, 0, 0, sw, sh);
+    overlay.fill(0x000000, 0.88, 0, 0, texW, texH);
 
-    // Vision sources: convert world coords to overlay-local coords.
-    // The overlay covers the visible world area (cam.x..cam.x+worldView.width),
-    // so overlay pixel (0,0) = world (cam.x, cam.y) and the scale is 1:1 in world units.
+    // Erase vision circles — coordinates are world offset from cam origin (1:1).
     const brush = this.worldFogMaskGraphics;
     for (const src of this.visionSources) {
       const ox = src.x - cam.x;
       const oy = src.y - cam.y;
       const radius = Math.sqrt(src.r2);
-      if (ox + radius < 0 || ox - radius > sw) continue;
-      if (oy + radius < 0 || oy - radius > sh) continue;
+      if (ox + radius < 0 || ox - radius > texW) continue;
+      if (oy + radius < 0 || oy - radius > texH) continue;
       brush.clear();
       brush.fillStyle(0xffffff, 1);
       brush.fillCircle(ox, oy, radius);
