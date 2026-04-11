@@ -59,6 +59,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   tileEntities: (Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle)[] = [];
   tileShadowEntities: (Phaser.GameObjects.Ellipse | undefined)[] = [];
   mapCache: number[] = [];
+  mapSyncPending = false;
   uiText!: Phaser.GameObjects.Text;
   statusText!: Phaser.GameObjects.Text;
   clientClockText!: Phaser.GameObjects.Text;
@@ -259,6 +260,17 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
 
   getGroundTextureKey() {
     return getTieredTextureKey("rts_ground", this.getGraphicsProfile().worldTier);
+  }
+
+  getFogCellSize() {
+    const state = this.room?.state;
+    if (!state) return FOG_CELL_SIZE;
+    const worldW = Math.max(1, Number(state.mapWidth || 1) * TILE_SIZE);
+    const worldH = Math.max(1, Number(state.mapHeight || 1) * TILE_SIZE);
+    const worldMax = Math.max(worldW, worldH);
+    if (worldMax >= 4000) return 16;
+    if (worldMax >= 2500) return 12;
+    return FOG_CELL_SIZE;
   }
 
   getUiButtonTextureKey(active: boolean) {

@@ -112,6 +112,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (!state || !this.hasInitialized) return;
     this.syncWorldBackground(state.mapWidth * TILE_SIZE, state.mapHeight * TILE_SIZE);
     this.drawMap(state);
+    this.mapSyncPending = false;
     for (const entity of Object.values(this.playerEntities)) {
         if (entity instanceof Phaser.GameObjects.Image) {
           entity.setTexture(this.getBuildingTextureKey(RTS_BUILDING_TEXTURE_KEYS.constructor));
@@ -582,6 +583,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.syncWorldBackground(state.mapWidth * TILE_SIZE, state.mapHeight * TILE_SIZE);
     this.drawMap(state);
     this.mapCache = Array.from(state.map as number[]);
+    this.mapSyncPending = false;
     if (!this.worldFogGraphics) {
       this.worldFogGraphics = this.add.graphics().setDepth(90);
     }
@@ -729,10 +731,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
   updateWorldFog(now: number) {
     if (!this.worldFogGraphics || !this.room?.state) return;
+    const fogCellSize = this.getFogCellSize();
     const cam = this.cameras.main.worldView;
     const camMoved = !Number.isFinite(this.lastFogCamX)
-      || Math.abs(cam.x - this.lastFogCamX) >= FOG_CELL_SIZE * 2
-      || Math.abs(cam.y - this.lastFogCamY) >= FOG_CELL_SIZE * 2;
+      || Math.abs(cam.x - this.lastFogCamX) >= fogCellSize * 2
+      || Math.abs(cam.y - this.lastFogCamY) >= fogCellSize * 2;
     if (!camMoved && now - this.lastWorldFogDrawAt < FOG_UPDATE_MS) return;
     this.lastWorldFogDrawAt = now;
     this.lastFogCamX = cam.x;
@@ -743,8 +746,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.fogClockSec += dtSec;
     const worldW = this.room.state.mapWidth * TILE_SIZE;
     const worldH = this.room.state.mapHeight * TILE_SIZE;
-    const cols = Math.ceil(worldW / FOG_CELL_SIZE);
-    const rows = Math.ceil(worldH / FOG_CELL_SIZE);
+    const cols = Math.ceil(worldW / fogCellSize);
+    const rows = Math.ceil(worldH / fogCellSize);
     const total = cols * rows;
     if (!this.fogSeenAt || this.fogCols !== cols || this.fogRows !== rows || this.fogSeenAt.length !== total) {
       this.fogCols = cols;
@@ -755,19 +758,19 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const seenAt = this.fogSeenAt;
     for (const src of this.visionSources) {
       const radius = Math.sqrt(src.r2);
-      const minCol = Math.max(0, Math.floor((src.x - radius) / FOG_CELL_SIZE));
-      const maxCol = Math.min(cols - 1, Math.ceil((src.x + radius) / FOG_CELL_SIZE));
-      const minRow = Math.max(0, Math.floor((src.y - radius) / FOG_CELL_SIZE));
-      const maxRow = Math.min(rows - 1, Math.ceil((src.y + radius) / FOG_CELL_SIZE));
+      const minCol = Math.max(0, Math.floor((src.x - radius) / fogCellSize));
+      const maxCol = Math.min(cols - 1, Math.ceil((src.x + radius) / fogCellSize));
+      const minRow = Math.max(0, Math.floor((src.y - radius) / fogCellSize));
+      const maxRow = Math.min(rows - 1, Math.ceil((src.y + radius) / fogCellSize));
       for (let row = minRow; row <= maxRow; row++) {
-        const y = row * FOG_CELL_SIZE + FOG_CELL_SIZE * 0.5;
+        const y = row * fogCellSize + fogCellSize * 0.5;
         const dy = y - src.y;
         const maxDx2 = src.r2 - dy * dy;
         if (maxDx2 < 0) continue;
         const dx = Math.sqrt(maxDx2);
         const rowOffset = row * cols;
-        const fromCol = Math.max(minCol, Math.floor((src.x - dx) / FOG_CELL_SIZE));
-        const toCol = Math.min(maxCol, Math.ceil((src.x + dx) / FOG_CELL_SIZE));
+        const fromCol = Math.max(minCol, Math.floor((src.x - dx) / fogCellSize));
+        const toCol = Math.min(maxCol, Math.ceil((src.x + dx) / fogCellSize));
         for (let col = fromCol; col <= toCol; col++) {
           seenAt[rowOffset + col] = this.fogClockSec;
         }
@@ -779,10 +782,10 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const visibleHoldSec = 0.35;
     const fadeToDarkSec = 16;
     const drawMarginPx = Math.max(cam.width, cam.height) * 0.5;
-    const drawStartCol = Math.max(0, Math.floor((cam.x - drawMarginPx) / FOG_CELL_SIZE));
-    const drawEndCol = Math.min(cols - 1, Math.ceil((cam.right + drawMarginPx) / FOG_CELL_SIZE));
-    const drawStartRow = Math.max(0, Math.floor((cam.y - drawMarginPx) / FOG_CELL_SIZE));
-    const drawEndRow = Math.min(rows - 1, Math.ceil((cam.bottom + drawMarginPx) / FOG_CELL_SIZE));
+    const drawStartCol = Math.max(0, Math.floor((cam.x - drawMarginPx) / fogCellSize));
+    const drawEndCol = Math.min(cols - 1, Math.ceil((cam.right + drawMarginPx) / fogCellSize));
+    const drawStartRow = Math.max(0, Math.floor((cam.y - drawMarginPx) / fogCellSize));
+    const drawEndRow = Math.min(rows - 1, Math.ceil((cam.bottom + drawMarginPx) / fogCellSize));
     const alphaFromSeenTime = (seenTime: number) => {
       if (seenTime <= -1000) return 0.9;
       const ageSec = Math.max(0, this.fogClockSec - seenTime);
@@ -807,7 +810,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         const alpha = center + neigh;
         if (alpha <= 0.01) continue;
         g.fillStyle(0x000000, alpha);
-        g.fillRect(col * FOG_CELL_SIZE, row * FOG_CELL_SIZE, FOG_CELL_SIZE, FOG_CELL_SIZE);
+        g.fillRect(col * fogCellSize, row * fogCellSize, fogCellSize, fogCellSize);
       }
     }
   }
@@ -999,9 +1002,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       );
     }
     if (!this.room?.state || !this.hasInitialized) return;
-    this.perfStart("syncMap");
-    this.syncMap();
-    this.perfEnd("syncMap");
+    if (this.mapSyncPending) {
+      this.perfStart("syncMap");
+      this.syncMap();
+      this.perfEnd("syncMap");
+      this.mapSyncPending = false;
+    }
     const state = this.room.state;
     const players = state.players;
     const me = players?.get ? players.get(this.currentPlayerId) : players?.[this.currentPlayerId];

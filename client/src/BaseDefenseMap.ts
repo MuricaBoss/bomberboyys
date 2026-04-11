@@ -705,8 +705,9 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
 
   fogAlphaAtWorld(worldX: number, worldY: number) {
     if (!this.fogSeenAt || this.fogCols <= 0 || this.fogRows <= 0) return 0.9;
-    const col = Math.max(0, Math.min(this.fogCols - 1, Math.floor(worldX / FOG_CELL_SIZE)));
-    const row = Math.max(0, Math.min(this.fogRows - 1, Math.floor(worldY / FOG_CELL_SIZE)));
+    const fogCellSize = this.getFogCellSize();
+    const col = Math.max(0, Math.min(this.fogCols - 1, Math.floor(worldX / fogCellSize)));
+    const row = Math.max(0, Math.min(this.fogRows - 1, Math.floor(worldY / fogCellSize)));
     const seenTime = this.fogSeenAt[row * this.fogCols + col];
     if (seenTime <= -1000) return 0.9;
     const visibleHoldSec = 0.35;
