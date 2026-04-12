@@ -424,10 +424,11 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
           const dx = (gx * TILE_SIZE + TILE_SIZE/2) - v.x;
           const dy = (gy * TILE_SIZE + TILE_SIZE/2) - v.y;
           if (dx*dx + dy*dy <= v.r2) {
-             // For simple "fast" fog, we check LOS only if it's far
-             if (dx*dx + dy*dy <= (TILE_SIZE*2.5)*(TILE_SIZE*2.5) || this.lineOfSightClear(v.x, v.y, gx*TILE_SIZE+TILE_SIZE/2, gy*TILE_SIZE+TILE_SIZE/2)) {
-                this.currentVisionGrid[gy * this.gridW + gx] = 1;
-             }
+            // Build 228: Skip LOS checks for units (radius < 7.5 tiles).
+            const isUnit = v.r2 < (TILE_SIZE * 7.5) * (TILE_SIZE * 7.5);
+            if (isUnit || dx*dx + dy*dy <= (TILE_SIZE*2.5)*(TILE_SIZE*2.5) || this.lineOfSightClear(v.x, v.y, gx*TILE_SIZE+TILE_SIZE/2, gy*TILE_SIZE+TILE_SIZE/2)) {
+               this.currentVisionGrid[gy * this.gridW + gx] = 1;
+            }
           }
         }
       }
@@ -661,8 +662,8 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
   }
 
   unitTargetForYield(id: string) {
-    const override = this.localUnitTargetOverride.get(id);
-    if (override) return { x: override.x, y: override.y };
+    const manualTarget = this.getLocalUnitManualTarget(id);
+    if (manualTarget) return { x: manualTarget.finalX, y: manualTarget.finalY };
     const u = this.room?.state?.units?.get ? this.room.state.units.get(id) : this.room?.state?.units?.[id];
     if (!u) return null;
     return { x: Number(u.targetX ?? u.x), y: Number(u.targetY ?? u.y) };
@@ -707,6 +708,18 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
   isPathWalkableForRadius(gx: number, gy: number, radius: number) {
     if (!this.isPathWalkable(gx, gy)) return false;
     if (!(radius > 0)) return true;
+
+    // Build 248: O(1) NavMesh check for blazing fast pathfinding
+    if (this.clearanceGrid && this.clearanceGrid.length > 0) {
+        const gridIdx = gy * this.gridW + gx;
+        const clearanceTiles = this.clearanceGrid[gridIdx];
+        if (clearanceTiles !== undefined) {
+            // (clearanceTiles + 0.45) to account for center-of-tile to nearest wall
+            return (clearanceTiles + 0.45) * TILE_SIZE >= radius;
+        }
+    }
+
+    // Fallback if NavMesh not yet baked (first 1s of game)
     const world = this.gridToWorld(gx, gy);
     return this.canOccupyLocalUnit(world.x, world.y, radius);
   }
@@ -864,7 +877,10 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       { dx: -1, dy: -1, c: 1.4142 },
     ];
 
-    while (open.length > 0) {
+    // Build 228: Iteration limit to prevent spikes on unreachable paths
+    let iters = 0;
+    while (open.length > 0 && iters < 2000) {
+      iters++;
       let best = 0;
       for (let i = 1; i < open.length; i++) {
         if (open[i].f < open[best].f) best = i;
@@ -921,34 +937,105 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     const ty = Number(unit?.targetY ?? uy);
     const startGX = Math.floor(ux / TILE_SIZE);
     const startGY = Math.floor(uy / TILE_SIZE);
-    const goalGX = Math.floor(tx / TILE_SIZE);
-    const goalGY = Math.floor(ty / TILE_SIZE);
+    
+    // Build 242: Remove the 220px intermediate segmenting. Path straight to the goal.
+    let effectiveTX = tx;
+    let effectiveTY = ty;
+    
+    const goalGX = Math.floor(effectiveTX / TILE_SIZE);
+    const goalGY = Math.floor(effectiveTY / TILE_SIZE);
+
+    const radiusOverride = this.localUnitPathRadiusOverride.get(unitId);
+    const useRadius = radiusOverride ?? unitRadius;
+    const radiusBucket = Math.max(4, Math.round(useRadius / 4) * 4);
 
     let cache = this.unitClientPathCache.get(unitId);
     const needRecalc = !cache
       || cache.goalGX !== goalGX
       || cache.goalGY !== goalGY
+      || cache.radiusBucket !== radiusBucket
       || (now - cache.updatedAt) > 520
       || cache.idx >= cache.cells.length;
 
     if (needRecalc) {
-      const cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, unitRadius);
+      const targetSectorGX = Math.floor(goalGX / 4);
+      const targetSectorGY = Math.floor(goalGY / 4);
+      const sectorKey = `sector_${targetSectorGX}_${targetSectorGY}_r${radiusBucket}`;
+
+      let cells = this.sharedPathCache.get(sectorKey);
+      
+      if (!cells) {
+        cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
+        if (cells && cells.length > 0) {
+          this.sharedPathCache.set(sectorKey, cells);
+        }
+      }
+
       if (!cells || cells.length === 0) {
         this.unitClientPathCache.delete(unitId);
         return null;
       }
-      cache = { goalGX, goalGY, cells, idx: 0, updatedAt: now };
+      // Build 244: Smart Path Entry — Find the closest waypoint instead of defaulting to idx 0.
+      // This prevents units from running backwards to reach the start of a shared path.
+      let bestIdx = 0;
+      let minD = Infinity;
+      const centerX = goalGX * TILE_SIZE + TILE_SIZE / 2;
+      const centerY = goalGY * TILE_SIZE + TILE_SIZE / 2;
+      const railOffsetX = (unit.targetX ?? tx) - centerX;
+      const railOffsetY = (unit.targetY ?? ty) - centerY;
+
+      for (let i = 0; i < cells.length; i++) {
+        const wx = cells[i].x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
+        const wy = cells[i].y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
+        const d = Math.hypot(wx - ux, wy - uy);
+        if (d < minD) {
+          minD = d;
+          bestIdx = i;
+        }
+      }
+      cache = { goalGX, goalGY, radiusBucket, cells, idx: bestIdx, updatedAt: now };
       this.unitClientPathCache.set(unitId, cache);
     }
     if (!cache) return null;
 
     while (cache.idx < cache.cells.length) {
       const c = cache.cells[cache.idx];
-      const wx = c.x * TILE_SIZE + TILE_SIZE / 2;
-      const wy = c.y * TILE_SIZE + TILE_SIZE / 2;
-      const d = Math.hypot(wx - ux, wy - uy);
-      if (d <= TILE_SIZE * 0.28) cache.idx += 1;
-      else return { x: wx, y: wy };
+      let wx = c.x * TILE_SIZE + TILE_SIZE / 2;
+      let wy = c.y * TILE_SIZE + TILE_SIZE / 2;
+
+      // Build 241: "Imaginary Rails" — Units follow the shared path but maintain their personal slot offset.
+      // Offset = difference between the unit's personal target and the center of the sector target.
+      const centerX = goalGX * TILE_SIZE + TILE_SIZE / 2;
+      const centerY = goalGY * TILE_SIZE + TILE_SIZE / 2;
+      const railOffsetX = (unit.targetX ?? tx) - centerX;
+      const railOffsetY = (unit.targetY ?? ty) - centerY;
+
+      wx += railOffsetX;
+      wy += railOffsetY;
+
+      // Build 247: Smart Funneling — Use the NavMesh clearance grid to squeeze the formation through gaps.
+      if (this.clearanceGrid && this.clearanceGrid.length > 0) {
+        const gridIdx = c.y * this.gridW + c.x;
+        const clearanceTiles = this.clearanceGrid[gridIdx];
+        if (clearanceTiles !== undefined) {
+          // Calculate max allowed distance from center of path (clearance - unitRadius - small margin)
+          // clearanceTiles is distance to nearest wall in tiles.
+          const maxDistPx = Math.max(TILE_SIZE * 0.1, (clearanceTiles * TILE_SIZE) - unitRadius - 6);
+          const currentOffsetDist = Math.hypot(railOffsetX, railOffsetY);
+          
+          if (currentOffsetDist > maxDistPx) {
+            const scale = maxDistPx / currentOffsetDist;
+            wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX * scale;
+            wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY * scale;
+          }
+        }
+      }
+
+      if (Math.hypot(wx - ux, wy - uy) <= TILE_SIZE * 0.45) {
+        cache.idx += 1;
+      } else {
+        return { x: wx, y: wy };
+      }
     }
     return null;
   }
@@ -1043,6 +1130,69 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     return pickedId;
   }
 
+  hasLocalUnitManualCommand(id: string) {
+    return this.localUnitTargetOverride.has(id) || this.localUnitFollowState.has(id);
+  }
+
+  getLocalUnitManualTarget(id: string) {
+    const override = this.localUnitTargetOverride.get(id);
+    if (override) {
+      return {
+        currentX: override.x,
+        currentY: override.y,
+        finalX: override.x,
+        finalY: override.y,
+        setAt: override.setAt,
+        isAuto: !!override.isAuto,
+        directSteer: false,
+        kind: "override" as const,
+        leaderAlive: true,
+      };
+    }
+
+    const follow = this.localUnitFollowState.get(id);
+    if (!follow || !this.room?.state) return null;
+
+    const leader = this.room.state.units.get
+      ? this.room.state.units.get(follow.leaderId)
+      : this.room.state.units?.[follow.leaderId];
+    const leaderAlive = !!leader && (leader.hp ?? 0) > 0;
+
+    let currentX = follow.slotX;
+    let currentY = follow.slotY;
+    let directSteer = false;
+
+    if (leaderAlive) {
+      const leaderRs = this.localUnitRenderState.get(follow.leaderId);
+      const leaderX = Number(leaderRs?.x ?? leader?.x ?? follow.leaderGoalX);
+      const leaderY = Number(leaderRs?.y ?? leader?.y ?? follow.leaderGoalY);
+      const leaderGoalDist = Math.hypot(follow.leaderGoalX - leaderX, follow.leaderGoalY - leaderY);
+      if (leaderGoalDist > TILE_SIZE * 1.4) {
+        currentX = leaderX + follow.offsetX;
+        currentY = leaderY + follow.offsetY;
+        directSteer = true;
+      }
+    }
+
+    const minBound = TILE_SIZE * 0.5;
+    const maxX = Math.max(minBound, this.room.state.mapWidth * TILE_SIZE - minBound);
+    const maxY = Math.max(minBound, this.room.state.mapHeight * TILE_SIZE - minBound);
+    currentX = Math.max(minBound, Math.min(currentX, maxX));
+    currentY = Math.max(minBound, Math.min(currentY, maxY));
+
+    return {
+      currentX,
+      currentY,
+      finalX: follow.slotX,
+      finalY: follow.slotY,
+      setAt: follow.setAt,
+      isAuto: !!follow.isAuto,
+      directSteer,
+      kind: "follow" as const,
+      leaderAlive,
+    };
+  }
+
   findEnemyPlayerAtWorld(x: number, y: number, myTeam?: string) {
     if (!myTeam || !this.room?.state?.players?.forEach) return null;
     let pickedId: string | null = null;
@@ -1108,33 +1258,29 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     return Math.max(TILE_SIZE * 0.8, maxRadius * 2 + 2);
   }
 
-  localFormationSlot(centerX: number, centerY: number, gridIndex: number, _totalUnits: number, spacing: number) {
+  localFormationSlot(centerX: number, centerY: number, gridIndex: number, _totalUnits: number, spacing: number, angle = 0) {
     const sp = Math.max(TILE_SIZE * 0.8, spacing);
+    const cols = 5;
+    const col = gridIndex % cols;
+    const row = Math.floor(gridIndex / cols);
     
-    let x = 0, y = 0;
-    let dx = 1, dy = 0;
-    let stepsToTake = 1;
-    let stepCount = 0;
-    let changes = 0;
+    // Build 248: 5-Lane (5 Raidetta) — Distribute units across 5 fixed lateral lanes centered on target.
+    // col 0..4 -> lateral offset index -2, -1, 0, 1, 2
+    const lateralOffset = (col - 2) * sp;
+    const depthOffset = row * sp;
     
-    for (let i = 0; i < gridIndex; i++) {
-      x += dx;
-      y += dy;
-      stepCount++;
-      if (stepCount === stepsToTake) {
-        stepCount = 0;
-        // Rotate 90 degrees counter-clockwise (downwards in screen coordinates)
-        const t = dx;
-        dx = -dy;
-        dy = t;
-        changes++;
-        if (changes % 2 === 0) {
-          stepsToTake++;
-        }
-      }
-    }
+    // Rotate relative to move direction angle
+    // Perpendicular vector for lateral spread: (-sin, cos)
+    // Forward vector: (cos, sin)
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
     
-    return { x: centerX + x * sp, y: centerY + y * sp };
+    // Formation stacks BACKWARDS from the center target point.
+    // rx/ry are offsets from the centerX/Y goal
+    const rx = lateralOffset * (-sin) + (-depthOffset) * cos;
+    const ry = lateralOffset * (cos) + (-depthOffset) * sin;
+    
+    return { x: centerX + rx, y: centerY + ry };
   }
 
   isClickOnOwnPlayer(x: number, y: number) {
@@ -1147,6 +1293,50 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
 
   canPlaceSelectedBuildAt(gx: number, gy: number) {
     return this.canPlaceBuildAt(this.selectedBuild, gx, gy);
+  }
+
+  bakeNavMesh() {
+    if (!this.obstacleGrid) return;
+    const w = this.gridW;
+    const h = this.gridH;
+    const total = w * h;
+    this.clearanceGrid = new Uint8Array(total).fill(255);
+    
+    const q: number[] = [];
+    for (let i = 0; i < total; i++) {
+        if (this.obstacleGrid[i] !== 0) {
+            this.clearanceGrid[i] = 0;
+            q.push(i);
+        }
+    }
+
+    let head = 0;
+    const dirs = [
+        { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+        { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+    ];
+
+    while (head < q.length) {
+        const idx = q[head++];
+        const x = idx % w;
+        const y = Math.floor(idx / w);
+        const dist = this.clearanceGrid[idx];
+
+        if (dist >= 15) continue; // Limits search radius for performance
+
+        for (const d of dirs) {
+            const nx = x + d.dx;
+            const ny = y + d.dy;
+            if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                const nIdx = ny * w + nx;
+                if (this.clearanceGrid[nIdx] > dist + 1) {
+                    this.clearanceGrid[nIdx] = dist + 1;
+                    q.push(nIdx);
+                }
+            }
+        }
+    }
+    console.log("[BaseDefenseMap] NavMesh baked.");
   }
 
   reflowFormationAssignments(now: number) {

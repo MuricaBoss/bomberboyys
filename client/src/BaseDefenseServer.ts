@@ -27,6 +27,11 @@ import { BaseDefenseScene_Map } from "./BaseDefenseMap";
 
 export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
   recentAssignedSlots = new Map<string, { x: number; y: number; r: number; at: number }>();
+  groupFinalTarget: { x: number; y: number } | null = null;
+  groupSegmentTarget: { x: number; y: number } | null = null;
+  lastSegmentUpdateAt = 0;
+  // Build 239: Explicitly ensure the server simulation ignores all fog logic
+  fogEnabled = false;
 
   createLocalBaseDefenseRoom() {
     const state: any = {
@@ -387,18 +392,38 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
     }
   }
 
-  issueLocalUnitMoveCommand(targetX: number, targetY: number) {
+  issueLocalUnitMoveCommand(targetX: number, targetY: number, isAutoSegment = false) {
     if (!this.room?.state || this.selectedUnitIds.size <= 0) return;
-    this.showMoveClickMarker(targetX, targetY);
+    
+    // Calculate group center to determine the 7m (220px) segment
     const ids = Array.from(this.selectedUnitIds);
+    this.lastCommandedUnitIds = new Set(ids);
+    const unitPositions = ids.map(id => {
+      const s = this.localUnitRenderState.get(id);
+      const u = this.room?.state?.units?.get ? this.room.state.units.get(id) : this.room?.state?.units?.[id];
+      return { id, x: Number(s?.x ?? u?.x ?? 0), y: Number(s?.y ?? u?.y ?? 0) };
+    });
+    const groupCX = unitPositions.reduce((s, u) => s + u.x, 0) / Math.max(1, unitPositions.length);
+    const groupCY = unitPositions.reduce((s, u) => s + u.y, 0) / Math.max(1, unitPositions.length);
+    const angle = Math.atan2(targetY - groupCY, targetX - groupCX);
+    this.lastCommandGroupAngle = angle;
+
     const spacing = this.localFormationSpacingForIds(ids);
     const n = ids.length;
+    
+    // Build 248: Calculate total formation clearance needed for the 5-lane setup
+    // 5 columns spread laterally. Radius = half width.
+    this.lastCommandGroupRadius = (3.0 * spacing);
 
     const slots: Array<{ x: number; y: number; r: number }> = [];
     const reserved: Array<{ x: number; y: number; radius: number }> = [];
     const selectedSet = new Set(ids);
     let gridIndex = 0;
     
+    // Build 243: Always use the true targetX/Y. No more segmenting.
+    targetX = targetX;
+    targetY = targetY;
+
     for (let i = 0; i < n; i++) {
       const id = ids[i];
       const u = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
@@ -406,15 +431,16 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       const wallRadius = unitRadius + TILE_SIZE * 0.45;
 
       let slot: {x: number, y: number} | null = null;
-      while (gridIndex < 300) {
-        const base = this.localFormationSlot(targetX, targetY, gridIndex, n, spacing);
+      
+      // Build 240: Always perform full formation slot search to avoid clumping
+      while (gridIndex < 1000) {
+        const base = this.localFormationSlot(targetX, targetY, gridIndex, n, spacing, angle);
         gridIndex++;
         
-        // Build 225: Added robust obstacle and reservation checking
         if (this.canOccupy(base.x, base.y, wallRadius)) {
           let blocked = false;
           
-          // 1. Check current units (excluding selected group)
+          // Check other units
           if (this.room?.state?.units) {
             for (const [otherId, otherU] of this.room.state.units.entries()) {
               if (selectedSet.has(otherId) || (otherU.hp ?? 0) <= 0) continue;
@@ -430,7 +456,6 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
           }
           if (blocked) continue;
 
-          // 2. Check 15-second reservations
           const now = Date.now();
           for (const [rid, rslot] of this.recentAssignedSlots.entries()) {
             if (now - rslot.at > 15000) {
@@ -444,7 +469,6 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
           }
           if (blocked) continue;
 
-          // 3. Check slots being assigned in this current batch
           for (const prevSlot of slots) {
             if (Math.hypot(base.x - prevSlot.x, base.y - prevSlot.y) < unitRadius + prevSlot.r) {
               blocked = true;
@@ -453,50 +477,57 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
           }
           if (blocked) continue;
 
-          // All checks passed
           slot = base;
           break;
         }
       }
+      
       if (!slot) slot = { x: targetX, y: targetY };
 
       reserved.push({ x: slot.x, y: slot.y, radius: unitRadius });
       slots.push({ x: slot.x, y: slot.y, r: Math.max(spacing * 0.35, unitRadius + 2) });
     }
 
-    // Compute the group's current center
-    const unitPositions = ids.map(id => {
-      const s = this.localUnitRenderState.get(id);
-      const u = this.room?.state?.units?.get ? this.room.state.units.get(id) : this.room?.state?.units?.[id];
-      return { id, x: Number(s?.x ?? u?.x ?? 0), y: Number(s?.y ?? u?.y ?? 0) };
-    });
-    const groupCX = unitPositions.reduce((s, u) => s + u.x, 0) / Math.max(1, unitPositions.length);
-    const groupCY = unitPositions.reduce((s, u) => s + u.y, 0) / Math.max(1, unitPositions.length);
+    // Build 230: unitPositions, groupCX, groupCY are already computed at the start of the function
 
-    // Sort slots by distance from group center — FARTHEST first
-    const slotIndices = slots.map((_, i) => i).sort((a, b) => {
-      const da = Math.hypot(slots[a].x - groupCX, slots[a].y - groupCY);
-      const db = Math.hypot(slots[b].x - groupCX, slots[b].y - groupCY);
-      return db - da; // farthest slot first
-    });
-
-    // For each slot (farthest first), assign the nearest available unit
+    // Build 246: Absolute Greedy Proximity Matching
+    // Find the closest (unit, slot) pair across all available combinations to prevent crossing.
     const usedUnits = new Set<string>();
+    const usedSlots = new Set<number>();
     const assignments = new Map<string, { x: number; y: number }>();
     const priorityOrder: Array<{ id: string; slot: { x: number; y: number } }> = [];
-    for (const si of slotIndices) {
-      let bestId = "";
-      let bestDist = Number.POSITIVE_INFINITY;
-      for (const up of unitPositions) {
-        if (usedUnits.has(up.id)) continue;
-        const d = Math.hypot(up.x - slots[si].x, up.y - slots[si].y);
-        if (d < bestDist) { bestDist = d; bestId = up.id; }
+
+    const numUnits = unitPositions.length;
+    const numSlots = slots.length;
+
+    for (let iteration = 0; iteration < numUnits; iteration++) {
+      let bestUnitIdx = -1;
+      let bestSlotIdx = -1;
+      let minD = Infinity;
+
+      for (let ui = 0; ui < numUnits; ui++) {
+        if (usedUnits.has(unitPositions[ui].id)) continue;
+        for (let si = 0; si < numSlots; si++) {
+          if (usedSlots.has(si)) continue;
+          const d = Math.hypot(unitPositions[ui].x - slots[si].x, unitPositions[ui].y - slots[si].y);
+          if (d < minD) {
+            minD = d;
+            bestUnitIdx = ui;
+            bestSlotIdx = si;
+          }
+        }
       }
-      if (bestId) {
-        usedUnits.add(bestId);
-        assignments.set(bestId, { x: slots[si].x, y: slots[si].y });
-        priorityOrder.push({ id: bestId, slot: { x: slots[si].x, y: slots[si].y } });
-        this.recentAssignedSlots.set(bestId, { x: slots[si].x, y: slots[si].y, r: slots[si].r, at: Date.now() });
+
+      if (bestUnitIdx !== -1 && bestSlotIdx !== -1) {
+        const id = unitPositions[bestUnitIdx].id;
+        const slot = slots[bestSlotIdx];
+        usedUnits.add(id);
+        usedSlots.add(bestSlotIdx);
+        assignments.set(id, { x: slot.x, y: slot.y });
+        priorityOrder.push({ id, slot: { x: slot.x, y: slot.y } });
+        this.recentAssignedSlots.set(id, { x: slot.x, y: slot.y, r: slot.r, at: Date.now() });
+      } else {
+        break; // No more pairings possible
       }
     }
 
@@ -513,27 +544,136 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
     this.formationPreviewCenter = { x: targetX, y: targetY };
     this.formationPreviewUntil = Date.now() + previewMs;
 
-    // Only clear overrides for the units being commanded — leave other units' overrides intact
+    const orderedAssignments = Array.from(assignments.entries())
+      .map(([id, slot]) => ({ id, slot }))
+      .sort((a, b) => {
+        const adx = a.slot.x - targetX;
+        const ady = a.slot.y - targetY;
+        const bdx = b.slot.x - targetX;
+        const bdy = b.slot.y - targetY;
+        const aDepth = -(adx * Math.cos(angle) + ady * Math.sin(angle));
+        const bDepth = -(bdx * Math.cos(angle) + bdy * Math.sin(angle));
+        if (Math.abs(aDepth - bDepth) > spacing * 0.25) return aDepth - bDepth;
+        const aLateral = adx * (-Math.sin(angle)) + ady * Math.cos(angle);
+        const bLateral = bdx * (-Math.sin(angle)) + bdy * Math.cos(angle);
+        return aLateral - bLateral;
+      });
+
+    const subgroupSize = ids.length >= 240 ? 8 : ids.length >= 120 ? 7 : ids.length >= 48 ? 6 : 5;
+    this.lastMoveSubgroupSize = subgroupSize;
+    const subgroupCommands: Array<{
+      leaderId: string;
+      leaderSlot: { x: number; y: number };
+      memberIds: string[];
+      pathRadius: number;
+    }> = [];
+    const subgroupFollowerState = new Map<string, {
+      leaderId: string;
+      offsetX: number;
+      offsetY: number;
+      slotX: number;
+      slotY: number;
+      leaderGoalX: number;
+      leaderGoalY: number;
+      setAt: number;
+      isAuto?: boolean;
+    }>();
+    const now = Date.now();
+
+    for (let start = 0; start < orderedAssignments.length; start += subgroupSize) {
+      const subgroup = orderedAssignments.slice(start, start + subgroupSize);
+      if (subgroup.length === 0) continue;
+
+      const centerX = subgroup.reduce((sum, entry) => sum + entry.slot.x, 0) / subgroup.length;
+      const centerY = subgroup.reduce((sum, entry) => sum + entry.slot.y, 0) / subgroup.length;
+
+      let leader = subgroup[0];
+      let bestLeaderDist = Number.POSITIVE_INFINITY;
+      for (const entry of subgroup) {
+        const d = Math.hypot(entry.slot.x - centerX, entry.slot.y - centerY);
+        if (d < bestLeaderDist) {
+          bestLeaderDist = d;
+          leader = entry;
+        }
+      }
+
+      const memberIds = subgroup.map((entry) => entry.id);
+      let subgroupRadius = 0;
+      for (const entry of subgroup) {
+        subgroupRadius = Math.max(subgroupRadius, Math.hypot(entry.slot.x - leader.slot.x, entry.slot.y - leader.slot.y));
+        if (entry.id === leader.id) continue;
+        subgroupFollowerState.set(entry.id, {
+          leaderId: leader.id,
+          offsetX: entry.slot.x - leader.slot.x,
+          offsetY: entry.slot.y - leader.slot.y,
+          slotX: entry.slot.x,
+          slotY: entry.slot.y,
+          leaderGoalX: leader.slot.x,
+          leaderGoalY: leader.slot.y,
+          setAt: now,
+          isAuto: isAutoSegment,
+        });
+      }
+
+      const leaderUnit = this.room.state.units.get ? this.room.state.units.get(leader.id) : this.room.state.units?.[leader.id];
+      const leaderRadius = this.localUnitBodyRadius(leaderUnit);
+      subgroupCommands.push({
+        leaderId: leader.id,
+        leaderSlot: { x: leader.slot.x, y: leader.slot.y },
+        memberIds,
+        pathRadius: Math.max(leaderRadius, subgroupRadius + leaderRadius + 4),
+      });
+    }
+
+    subgroupCommands.sort((a, b) => {
+      const aPos = unitPositions.find((entry) => entry.id === a.leaderId);
+      const bPos = unitPositions.find((entry) => entry.id === b.leaderId);
+      const aDist = aPos ? Math.hypot(aPos.x - a.leaderSlot.x, aPos.y - a.leaderSlot.y) : 0;
+      const bDist = bPos ? Math.hypot(bPos.x - b.leaderSlot.x, bPos.y - b.leaderSlot.y) : 0;
+      return bDist - aDist;
+    });
+    this.lastMoveLeaderCount = subgroupCommands.length;
+    this.lastMoveFollowerCount = Math.max(0, ids.length - subgroupCommands.length);
+
+    // Only clear movement state for the units being commanded — leave unrelated units intact.
     for (const id of ids) {
       this.localUnitTargetOverride.delete(id);
+      this.localUnitFollowState.delete(id);
       this.localUnitMovePriority.delete(id);
+      this.localUnitPathRadiusOverride.delete(id);
       // Clear auto-engage state so manual move takes priority
       this.autoEngagedUnitIds.delete(id);
       this.unitAttackTarget.delete(id);
+      // Build 231: Clear path cache immediately to prevent backtracking to old waypoints
+      this.unitClientPathCache.delete(id);
     }
-    // Priority 0 = farthest slot = departs first
+
+    // Only subgroup leaders receive the long-distance path; the rest follow locally.
     let prio = 0;
-    for (const entry of priorityOrder) {
-      this.localUnitTargetOverride.set(entry.id, { x: entry.slot.x, y: entry.slot.y, setAt: Date.now() });
-      this.localUnitMovePriority.set(entry.id, prio++);
-    }
-    // Send individual move commands per unit so the SERVER knows each unit's slot target.
-    // This ensures units continue moving correctly even when the browser tab is backgrounded.
-    for (const entry of priorityOrder) {
-      const slot = assignments.get(entry.id);
-      if (slot) {
-        this.room.send("command_units", { unitIds: [entry.id], targetX: slot.x, targetY: slot.y });
+    for (const subgroup of subgroupCommands) {
+      this.localUnitTargetOverride.set(subgroup.leaderId, {
+        x: subgroup.leaderSlot.x,
+        y: subgroup.leaderSlot.y,
+        setAt: now,
+        isAuto: isAutoSegment,
+      });
+      this.localUnitMovePriority.set(subgroup.leaderId, prio);
+      this.localUnitPathRadiusOverride.set(subgroup.leaderId, subgroup.pathRadius);
+
+      for (const memberId of subgroup.memberIds) {
+        if (memberId === subgroup.leaderId) continue;
+        const follow = subgroupFollowerState.get(memberId);
+        if (!follow) continue;
+        this.localUnitFollowState.set(memberId, follow);
+        this.localUnitMovePriority.set(memberId, prio);
       }
+
+      this.room.send("command_units", {
+        unitIds: subgroup.memberIds,
+        targetX: subgroup.leaderSlot.x,
+        targetY: subgroup.leaderSlot.y,
+      });
+      prio++;
     }
   }
 

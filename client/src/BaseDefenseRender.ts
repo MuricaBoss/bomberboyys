@@ -431,9 +431,12 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       }
       e.x = sx;
       e.y = sy;
-      // Remove stale overrides
+      // Remove stale local movement state
       this.localUnitTargetOverride.delete(id);
+      this.localUnitFollowState.delete(id);
       this.localUnitMovePriority.delete(id);
+      this.localUnitPathRadiusOverride.delete(id);
+      this.unitClientPathCache.delete(id);
       this.autoEngagedUnitIds.delete(id);
       this.unitAttackTarget.delete(id);
       return;
@@ -537,60 +540,67 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     }
 
     const nowMs = Date.now();
-    const override = this.localUnitTargetOverride.get(id);
-    if (override) {
+    const manualTarget = this.getLocalUnitManualTarget(id);
+    if (manualTarget) {
       const prio = this.localUnitMovePriority.get(id) ?? 0;
-      const groupSize = Math.max(1, this.localUnitTargetOverride.size);
+      const groupSize = Math.max(1, this.localUnitTargetOverride.size + this.localUnitFollowState.size);
       const delayStep = groupSize >= 20 ? 20 : groupSize >= 10 ? 16 : 12;
       const maxDelay = groupSize >= 20 ? 620 : groupSize >= 10 ? 420 : 220;
-      const startDelay = Math.min(maxDelay, prio * delayStep);
-      if (nowMs - override.setAt >= startDelay) {
-        tx = override.x;
-        ty = override.y;
+      const startDelay = (manualTarget.isAuto || manualTarget.directSteer) ? 0 : Math.min(maxDelay, prio * delayStep);
+      if (manualTarget.isAuto || nowMs - manualTarget.setAt >= startDelay) {
+        tx = manualTarget.currentX;
+        ty = manualTarget.currentY;
       }
-      const distToSlot = Math.hypot(override.x - s.x, override.y - s.y);
-      if (distToSlot <= TILE_SIZE * 0.48) {
+      const distToSlot = Math.hypot(manualTarget.finalX - s.x, manualTarget.finalY - s.y);
+      if (!manualTarget.directSteer && distToSlot <= TILE_SIZE * 0.48) {
         if (!this.unitSlotLocked.has(String(id))) {
           const velSpeed = Math.hypot(s.vx, s.vy);
           let arrivalDir: number | null = null;
           if (velSpeed > 0.2) {
             arrivalDir = this.angleToDir8(Math.atan2(s.vy, s.vx));
           } else if (distToSlot > 0.5) {
-            arrivalDir = this.angleToDir8(Math.atan2(override.y - s.y, override.x - s.x));
+            arrivalDir = this.angleToDir8(Math.atan2(manualTarget.finalY - s.y, manualTarget.finalX - s.x));
           } else {
-            arrivalDir = (u.dir !== undefined) ? u.dir : 1; 
+            arrivalDir = (u.dir !== undefined) ? u.dir : 1;
           }
-          
+
           if (arrivalDir !== null) {
             this.unitFacing.set(String(id), arrivalDir);
           }
           this.unitSlotLocked.add(String(id));
-          
+
           const committedDir = this.unitFacing.get(id) ?? arrivalDir ?? (u.dir || 1);
-          this.room.send("unit_client_pose_batch", { 
-            poses: [{ unitId: id, x: override.x, y: override.y, dir: committedDir, tx: override.x, ty: override.y, final: true }] 
+          this.room.send("unit_client_pose_batch", {
+            poses: [{
+              unitId: id,
+              x: manualTarget.finalX,
+              y: manualTarget.finalY,
+              dir: committedDir,
+              tx: manualTarget.finalX,
+              ty: manualTarget.finalY,
+              final: true,
+            }],
           });
         }
 
         this.localUnitGhostMode?.delete(String(id));
         if (Number(u.manualUntil || 0) > 0) u.manualUntil = 0;
-        s.x = override.x;
-        s.y = override.y;
+        s.x = manualTarget.finalX;
+        s.y = manualTarget.finalY;
         s.vx = 0;
         s.vy = 0;
         e.x = s.x;
         e.y = s.y;
         s.lastAt = performance.now();
         return;
-      } else {
-        // Moving - ensure lock is cleared
-        this.unitSlotLocked.delete(String(id));
       }
+
+      this.unitSlotLocked.delete(String(id));
     } else {
-      // No override - ensure lock is cleared if unit is moving normally
+      // No manual target - ensure lock is cleared if unit is moving normally
       this.unitSlotLocked.delete(String(id));
     }
-    const wp = this.getClientUnitWaypoint(
+    const wp = manualTarget?.directSteer ? null : this.getClientUnitWaypoint(
       id,
       { x: s.x, y: s.y, targetX: tx, targetY: ty },
       nowMs,
@@ -701,7 +711,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     }
 
     // Server error correction — always active, but gentler when unit has an override
-    const hasOverride = this.localUnitTargetOverride.has(id);
+    const hasOverride = this.hasLocalUnitManualCommand(id);
     const errX = Number(u.x) - s.x;
     const errY = Number(u.y) - s.y;
     const err = Math.hypot(errX, errY);
@@ -756,8 +766,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     }
 
     // Grace period: skip colliders for 800ms after movement command to prevent initial jamming
-    const graceOverride = this.localUnitTargetOverride.get(id);
-    const inGracePeriod = graceOverride && (Date.now() - graceOverride.setAt) < 800;
+    const inGracePeriod = manualTarget && (Date.now() - manualTarget.setAt) < 800;
 
     // Soft repulsion between friendly units — push apart gently instead of blocking
     if (!isGhost && isLocalOwned && !inGracePeriod && this.room?.state?.units?.forEach) {
@@ -901,7 +910,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     // Build 225: If multiple units are selected, show one summary line instead of many individual paths
     const isGroupSelected = this.selectedUnitIds.size > 1;
 
-    if (this.localUnitTargetOverride.size > 0 && this.room?.state?.units?.forEach) {
+    if ((this.localUnitTargetOverride.size > 0 || this.localUnitFollowState.size > 0) && this.room?.state?.units?.forEach) {
       let groupUX = 0, groupUY = 0, groupCount = 0;
       let targetCenterSumX = 0, targetCenterSumY = 0;
 
@@ -910,10 +919,10 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         // Show for ALL units on my team (not just ownerId match - produced units have different ownerId)
         if (!myTeam || u.team !== myTeam) return;
         let sx: number, sy: number;
-        const override = this.localUnitTargetOverride.get(unitId);
-        if (override) {
-          sx = override.x;
-          sy = override.y;
+        const manualTarget = this.getLocalUnitManualTarget(unitId);
+        if (manualTarget) {
+          sx = manualTarget.finalX;
+          sy = manualTarget.finalY;
         } else if (u.aiState === "walking" && Number.isFinite(u.targetX) && Number.isFinite(u.targetY)) {
           sx = Number(u.targetX);
           sy = Number(u.targetY);
@@ -925,7 +934,12 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         const ux = Number(rs?.x ?? u.x);
         const uy = Number(rs?.y ?? u.y);
 
-        if (isGroupSelected && this.selectedUnitIds.has(unitId)) {
+        // Build 228: Optimization — Skip individual drawing if unit not selected AND detailed paths are off.
+        // This is the biggest win for 200 units moving simultaneously.
+        const isSelected = this.selectedUnitIds.has(unitId);
+        if (!isSelected && !this.showDetailedPaths) return;
+
+        if (isGroupSelected && isSelected) {
            groupUX += ux; groupUY += uy; groupCount++;
            targetCenterSumX += sx; targetCenterSumY += sy;
            return; // Skip individual drawing for group members
@@ -933,7 +947,8 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
 
         if (Math.hypot(sx - ux, sy - uy) < TILE_SIZE * 0.4) return; // Arrived — hide
         
-        // Target slot: orange ring + cross
+        // Build 234: Individual target slots (orange rounds) are now HIDDEN to reduce clutter.
+        /*
         g.lineStyle(2, 0xff8800, 0.9);
         g.strokeCircle(sx, sy, TILE_SIZE * 0.28);
         g.fillStyle(0xff8800, 0.1);
@@ -942,8 +957,10 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         g.lineStyle(1.5, 0xff8800, 0.85);
         g.beginPath(); g.moveTo(sx - cs, sy); g.lineTo(sx + cs, sy); g.strokePath();
         g.beginPath(); g.moveTo(sx, sy - cs); g.lineTo(sx, sy + cs); g.strokePath();
+        */
         
-        // Build 226: Path to slot (individual) - Only if toggled on
+        // Build 235: Only show detailed paths (orange) if explicitly toggled on (debug mode).
+        // Selection alone no longer shows them to keep the UI clean.
         if (this.showDetailedPaths) {
           const cache = this.unitClientPathCache.get(unitId);
           if (cache && cache.cells.length > 0) {
@@ -963,24 +980,41 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         }
       });
 
-      // Build 225/226: Single summary line for selected units
-      // If detailed paths are off, this is the ONLY line shown.
-      const shouldShowSummary = isGroupSelected || (this.selectedUnitIds.size === 1 && !this.showDetailedPaths);
-      if (shouldShowSummary && groupCount > 0) {
-        const avgUX = groupUX / groupCount;
-        const avgUY = groupUY / groupCount;
-        const avgTX = targetCenterSumX / groupCount;
-        const avgTY = targetCenterSumY / groupCount;
-
-        if (Math.hypot(avgTX - avgUX, avgTY - avgUY) > TILE_SIZE * 0.5) {
-          g.lineStyle(2.5, 0xffcc33, 0.85); // Bright gold for group line
-          g.beginPath();
-          g.moveTo(avgUX, avgUY);
-          g.lineTo(avgTX, avgTY);
-          g.strokePath();
-          // Small glow circle at group center
-          g.lineStyle(1.5, 0xffcc33, 0.4);
-          g.strokeCircle(avgUX, avgUY, 12);
+      // Build 234: Single persistent guide line for the entire group
+      if (this.groupFinalTarget) {
+        // Calculate the center of the squad being commanded
+        let squadX = 0, squadY = 0, commandedCount = 0;
+        for (const id of this.lastCommandedUnitIds) {
+           const u = this.room?.state?.units?.[id];
+           if (u && (u.hp || 0) > 0) {
+             const s = this.localUnitRenderState.get(id);
+             squadX += (s?.x ?? u.x ?? 0);
+             squadY += (s?.y ?? u.y ?? 0);
+             commandedCount++;
+           }
+        }
+        
+        if (commandedCount > 0) {
+          const avgX = squadX / commandedCount;
+          const avgY = squadY / commandedCount;
+          const finalTX = this.groupFinalTarget.x;
+          const finalTY = this.groupFinalTarget.y;
+          
+          if (Math.hypot(finalTX - avgX, finalTY - avgY) > TILE_SIZE * 1.5) {
+            // Draw a single bright line to the ultimate destination
+            g.lineStyle(2, 0x00ffcc, 0.6); // Cyan guide line
+            g.beginPath();
+            g.moveTo(avgX, avgY);
+            g.lineTo(finalTX, finalTY);
+            g.strokePath();
+            // Destination crosshair (Build 236: Removed to simplify UI)
+            /*
+            g.lineStyle(1.5, 0x00ffcc, 0.8);
+            g.strokeCircle(finalTX, finalTY, 8);
+            g.beginPath(); g.moveTo(finalTX - 12, finalTY); g.lineTo(finalTX + 12, finalTY); g.strokePath();
+            g.beginPath(); g.moveTo(finalTX, finalTY - 12); g.lineTo(finalTX, finalTY + 12); g.strokePath();
+            */
+          }
         }
       }
     }
@@ -1003,7 +1037,8 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       g.strokeCircle(cx, cy, 22);
     }
 
-    // Draw grid slot markers
+    // Draw grid slot markers (Build 236: Removed to simplify UI)
+    /*
     for (const slot of this.formationPreviewSlots) {
       g.lineStyle(1.5, 0x00ffcc, 0.45 * alpha);
       g.strokeCircle(slot.x, slot.y, slot.r);
@@ -1021,6 +1056,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       g.lineTo(slot.x, slot.y + cs);
       g.strokePath();
     }
+    */
 
 
     // Build 226: Assignment lines (transient) - only show if toggled on

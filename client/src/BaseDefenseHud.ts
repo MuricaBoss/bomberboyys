@@ -283,7 +283,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
     root.style.zIndex = "10002";
     root.style.pointerEvents = "none";
     root.style.userSelect = "none";
-    root.textContent = `BUILD ${DISPLAY_BUILD_NUMBER} · ${activeClientBuildId || CLIENT_BUNDLE_VERSION} · FPS --`;
+    root.textContent = `BUILD ${DISPLAY_BUILD_NUMBER} · [SOTILAAT: 0 | TANKIT: 0] · [RYHMAT: 0 | SEURAAJAT: 0 | KOKO: 0] · ${activeClientBuildId || CLIENT_BUNDLE_VERSION} · FPS --`;
     this.getOverlayHostEl().appendChild(root);
     this.clientVersionRootEl = root;
   }
@@ -291,7 +291,9 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
   updateClientVersionDom(fps?: number) {
     if (!this.clientVersionRootEl) return;
     const fpsLabel = Number.isFinite(fps) ? Math.round(Number(fps)) : "--";
-    this.clientVersionRootEl.textContent = `BUILD ${DISPLAY_BUILD_NUMBER} · ${activeClientBuildId || CLIENT_BUNDLE_VERSION} · FPS ${fpsLabel}`;
+    const unitStats = `[SOTILAAT: ${this.soldierCount} | TANKIT: ${this.tankCount}]`;
+    const groupStats = `[RYHMAT: ${this.lastMoveLeaderCount} | SEURAAJAT: ${this.lastMoveFollowerCount} | KOKO: ${this.lastMoveSubgroupSize}]`;
+    this.clientVersionRootEl.textContent = `BUILD ${DISPLAY_BUILD_NUMBER} · ${unitStats} · ${groupStats} · ${activeClientBuildId || CLIENT_BUNDLE_VERSION} · FPS ${fpsLabel}`;
   }
 
   destroyClientVersionDom() {

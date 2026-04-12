@@ -247,7 +247,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         this.currentVisionGrid = new Uint8Array(this.gridW * this.gridH);
 
         this.room.onStateChange(() => {
+          const wasInitialized = this.hasInitialized;
           finishWorldInit();
+          // Build 247: Bake the NavMesh 1 second after the map is first stable
+          if (!wasInitialized && this.hasInitialized) {
+              setTimeout(() => this.bakeNavMesh(), 1000);
+          }
         });
         this.room.onLeave((code) => {
           console.warn("[BaseDefense] DISCONNECTED:", code);
@@ -283,8 +288,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const attacker = (this.room.state.units as any)?.get ? (this.room.state.units as any).get(data.shooterId) : (this.room.state.units as any)?.[data.shooterId];
           if (attacker && (attacker.hp ?? 0) > 0) {
              // Only switch if we don't have a high-priority manual move target close by
-             const override = this.localUnitTargetOverride.get(data.victimId);
-             if (!override || Math.hypot(attacker.x - victim.x, attacker.y - victim.y) < TILE_SIZE * 8) {
+             const manualTarget = this.getLocalUnitManualTarget(data.victimId);
+             if (!manualTarget || Math.hypot(attacker.x - victim.x, attacker.y - victim.y) < TILE_SIZE * 8) {
                  this.unitAttackTarget.set(data.victimId, data.shooterId);
                  this.autoEngagedUnitIds.add(data.victimId);
              }
@@ -327,7 +332,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               const ids = Array.from(this.selectedUnitIds);
               for (const uid of ids) {
                 this.localUnitTargetOverride.delete(uid);
+                this.localUnitFollowState.delete(uid);
                 this.localUnitMovePriority.delete(uid);
+                this.localUnitPathRadiusOverride.delete(uid);
                 this.autoEngagedUnitIds.add(uid);
                 this.unitAttackTarget.set(uid, picked.id);
               }
@@ -347,7 +354,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               const ids = Array.from(this.selectedUnitIds);
               for (const uid of ids) {
                 this.localUnitTargetOverride.delete(uid);
+                this.localUnitFollowState.delete(uid);
                 this.localUnitMovePriority.delete(uid);
+                this.localUnitPathRadiusOverride.delete(uid);
               }
               this.room.send("command_attack", {
                 unitIds: ids,
@@ -779,7 +788,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     // Position exactly at camera's world position to follow it perfectly
     this.worldFogOverlay.setPosition(camView.x, camView.y);
 
-    // Throttled internal draw to save performance, but keep position updates every frame.
+    // Build 245: Redraw the fog texture much less often (every 100ms = 10 FPS) for performance.
     // Redraw the fog texture less often (e.g. every 100ms = 10 FPS) for performance,
     // as requested by the user. Position follows camera at 60 FPS regardless.
     const zoomChanged = !Number.isFinite(this.lastFogZoom) || Math.abs(camZoom - this.lastFogZoom) > 0.001;
@@ -800,7 +809,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const screenH = cam.height;
 
     // Build 210: DESTROY AND RE-CREATE on resolution change as requested by the user.
-    // This prevents any inherited transformation artifacts (ovals) from resize/scaling.
     if (overlay && (overlay.width !== screenW || overlay.height !== screenH)) {
         overlay.destroy();
         this.worldFogOverlay = null as any;
@@ -808,10 +816,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     }
 
     if (!this.worldFogOverlay) {
-      this.worldFogOverlay = this.add.renderTexture(0, 0, screenW, screenH)
-        .setOrigin(0)
-        .setScrollFactor(1)
-        .setDepth(240);
+      this.worldFogOverlay = this.add.renderTexture(0, 0, screenW, screenH).setOrigin(0).setScrollFactor(1).setDepth(240);
       overlay = this.worldFogOverlay;
     }
     overlay.setPosition(camView.x, camView.y);
@@ -819,32 +824,18 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     overlay.clear();
     overlay.fill(0x000000, 0.88, 0, 0, screenW, screenH);
 
-    const brush = this.worldFogMaskGraphics;
-
-    // Build 217 Fixed: Use a Sprite Proxy for the RenderTexture during erase.
-    // This is more reliable for coordinate mapping and scaling in Phaser 3.
+    // Build 245 Optimization: Use ONE single erase operation for ALL vision sources.
+    // Instead of looping over 200+ units and erasing circles (slow), we use the consolidated visionTrailSprite.
     const vts = this.visionTrailSprite;
     if (vts) {
+        // vts scale is 4x because the trail texture is 1/4 size
         const totalScale = 4 * camZoom;
         vts.setScale(totalScale);
         vts.setPosition(-camView.x * camZoom, -camView.y * camZoom);
         overlay.erase(vts);
     }
-
-    for (const src of this.visionSources) {
-      // Map world coords to the screen-resolution texture coordinates
-      const tx = (src.x - camView.x) * camZoom;
-      const ty = (src.y - camView.y) * camZoom;
-      const tRadius = Math.sqrt(src.r2) * camZoom;
-
-      if (tx + tRadius < 0 || tx - tRadius > screenW) continue;
-      if (ty + tRadius < 0 || ty - tRadius > screenH) continue;
-      
-      brush.clear();
-      brush.fillStyle(0xffffff, 1);
-      brush.fillCircle(tx, ty, tRadius);
-      overlay.erase(brush);
-    }
+    // Loop over visionSources removed for massive performance gain. Vision footprints are now drawn 
+    // to the persistent trail texture incrementally during unit/structure sync.
   }
 
   autoEngageUnits(now: number) {
@@ -874,8 +865,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         if ((entity.hp ?? 0) <= 0) return;
         const ex = Number(entity.x);
         const ey = Number(entity.y);
-        // Only collect if visible to player (to respect fog of war)
-        if (!this.isVisibleToTeam(ex, ey)) return;
         const entry = { id, x: ex, y: ey, type };
         if (entity.team === "A") teamA.push(entry);
         else if (entity.team === "B") teamB.push(entry);
@@ -933,9 +922,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
       // Manual command override check (only for local units)
       if (String(u.ownerId || "") === this.currentPlayerId) {
-          const override = this.localUnitTargetOverride.get(id);
-          if (override && nearestDist > threatRange) {
-            const distToSlot = Math.hypot(override.x - ux, override.y - uy);
+          const manualTarget = this.getLocalUnitManualTarget(id);
+          if (manualTarget && nearestDist > threatRange) {
+            const distToSlot = Math.hypot(manualTarget.finalX - ux, manualTarget.finalY - uy);
             if (distToSlot > TILE_SIZE * 0.7) return;
           }
       }
@@ -1191,7 +1180,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.perfStart("syncPlayers");
     const seenPlayers = new Set<string>();
     if (players?.forEach) {
-      this.refreshVisionSources(myTeam);
+      // Build 245: Throttle vision refresh to 10 FPS (every 100ms)
+      const now = Date.now();
+      if (now - (this as any)._lastVisionRefreshAt > 100 || (this as any)._lastVisionRefreshAt === undefined) {
+          (this as any)._lastVisionRefreshAt = now;
+          this.refreshVisionSources(myTeam);
+      }
       players.forEach((p: any, id: string) => {
         seenPlayers.add(id);
         let e = this.playerEntities[id];
@@ -1262,14 +1256,26 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
     this.perfStart("syncUnits");
     const seenUnits = new Set<string>();
+    // Salt for Build 248 (5-Lane Rails): 1712924500
     
     // Build 218: Prepare shared graphics for batching
     this.unitUiGraphics?.clear();
     this.unitShadowGraphics?.clear();
     const camView = this.cameras.main.worldView;
-    const pad = 64;
+    const pad = TILE_SIZE * 3;
+    nowMs = Date.now();
+
+    // Build 238: Periodic shared path cache clearing (every 500ms) to ensure path results stay fresh
+    if (nowMs - (this as any)._lastSharedPathClearAt > 500 || (this as any)._lastSharedPathClearAt === undefined) {
+      this.sharedPathCache.clear();
+      (this as any)._lastSharedPathClearAt = nowMs;
+    }
     const vtt = this.visionTrailTexture;
     let needsRebuild = false;
+
+    // Build 228: Unit counters
+    let countSoldiers = 0;
+    let countTanks = 0;
 
     if (state.units?.forEach) {
       try {
@@ -1282,6 +1288,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const isFriendly = !!myTeam && u.team === myTeam;
           const isLocalOwned = isFriendly && String(u.ownerId || "") === this.currentPlayerId;
           const isDead = (u.hp ?? 0) <= 0;
+
+          // Build 228: Count friendly units
+          if (isFriendly && !isDead) {
+            if (isSoldier) countSoldiers += 1;
+            else if (isTank) countTanks += 1;
+          }
 
           const ux = Number(u.x);
           const uy = Number(u.y);
@@ -1380,14 +1392,20 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             }
           }
 
-          this.updateUnitRenderPos(id, e as any, u, delta, isLocalOwned, isTank);
-          const rs = this.localUnitRenderState.get(id);
-          
-          // Build 221 Fix: Recalculate Frustum Culling AFTER creation to ensure new units are visible
-          const inCamera = e.x > camView.x - pad && e.x < camView.right + pad && e.y > camView.y - pad && e.y < camView.bottom + pad;
+          // Build 228: Viewport Culling
+          // If a unit is far outside the camera and not selected, we skip expensive updates.
+          const isSelected = this.selectedUnitIds.has(id);
+          const inCamera = isSelected || (
+            ux >= camView.x - pad && ux <= camView.right + pad &&
+            uy >= camView.y - pad && uy <= camView.bottom + pad
+          );
 
           // 2. Visuals & Batching
           if (inCamera) {
+            this.updateUnitRenderPos(id, e as any, u, delta, isLocalOwned, isTank);
+            dir = this.unitFacing.get(id) ?? (typeof u.dir === "number" ? u.dir : 1);
+            const rs = this.localUnitRenderState.get(id);
+            
             if (isTank && e instanceof Phaser.GameObjects.Image) {
               const tank = e;
               tank.setTexture(this.getTankTextureKeyByDir(dir));
@@ -1418,7 +1436,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             } else if (isSoldier && e instanceof Phaser.GameObjects.Sprite) {
               const soldier = e;
               // Build 223: Use LOCAL simulation velocity (rs) for animation stopping to ensure we don't run in place in a slot.
-              const moving = (rs && Math.hypot(rs.vx, rs.vy) > 10) || (u.aiState === "walking" && !this.localUnitTargetOverride.has(id));
+              const moving = (rs && Math.hypot(rs.vx, rs.vy) > 10) || (u.aiState === "walking" && !this.hasLocalUnitManualCommand(id));
               if (moving) soldier.anims.play(this.getSoldierAnimKey("run", dir), true);
               else {
                   soldier.anims.stop();
@@ -1470,6 +1488,15 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         console.error("[BaseDefense] Error in units loop:", err);
       }
     }
+
+    // Build 230: Update consolidated HUD
+    this.soldierCount = countSoldiers;
+    this.tankCount = countTanks;
+    this.updateClientVersionDom(this.game.loop.actualFps);
+
+    // Build 234: Next segment trigger for chained movement (Persistent - works even if unselected)
+    // Build 243: The 'Next segment trigger' logic has been removed. 
+    // Movement is now direct and continuous to the final destination.
 
     // Cleanup and Trails Rebuild
     const trailIds = Array.from(this.unitVisionTrails.keys());
@@ -1615,6 +1642,20 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               enemyIcon.setPosition(e.x, topY - 14);
             } else if (enemyIcon) {
               enemyIcon.setVisible(false);
+            }
+
+            // Build 245: Contribute structure vision to the persistent discovery trail (once per structure)
+            if (isFriendly && (s.hp ?? 0) > 0) {
+              if (!(this as any)._structureVisionRendered) (this as any)._structureVisionRendered = new Set<string>();
+              if (!(this as any)._structureVisionRendered.has(id)) {
+                  (this as any)._structureVisionRendered.add(id);
+                  const vtt = this.visionTrailTexture;
+                  if (vtt && this.sharedTrailGraphics) {
+                      const vRadius = s.type === "base" ? TILE_SIZE * 9.2 : s.type === "turret" ? TILE_SIZE * 7.4 : TILE_SIZE * 5.8;
+                      this.sharedTrailGraphics.clear().fillStyle(0xffffff, 1).fillCircle(s.x / 4, s.y / 4, vRadius / 4);
+                      vtt.draw(this.sharedTrailGraphics as any);
+                  }
+              }
             }
           });
         } catch (err) {
@@ -1802,7 +1843,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   rebuildVisionTrailTexture() {
     const vtt = this.visionTrailTexture;
     if (!vtt) return;
-    vtt.clear();
+    // Build 245: Stop clearing! This makes the discovery persistent (Trails).
+    // vtt.clear();
     
     if (!this.sharedTrailGraphics) {
         this.sharedTrailGraphics = this.add.graphics().setVisible(false);
@@ -1855,7 +1897,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const idleUnits: string[] = [];
     this.room.state.units.forEach((u: any, id: string) => {
         if (u.team !== me.team || (u.hp ?? 0) <= 0) return;
-        if (this.localUnitTargetOverride.has(id)) return;
+        if (this.hasLocalUnitManualCommand(id)) return;
         
         const distToTarget = Math.hypot(Number(u.targetX ?? u.x) - u.x, Number(u.targetY ?? u.y) - u.y);
         if (distToTarget > TILE_SIZE) return; // Busy moving
