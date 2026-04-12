@@ -795,9 +795,14 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
     const brush = this.worldFogMaskGraphics;
 
-    // Draw persistent trails from living units
+    // Build 213 Fix: Coordinate mapping for trails. 
+    // Since trail.graphics contains World Coordinates, we must scale and shift 
+    // them to match the Texture Pixels (which correspond to the currently visible screen area).
     for (const trail of this.unitVisionTrails.values()) {
-        overlay.erase(trail.graphics);
+        const g = trail.graphics;
+        g.setScale(camZoom);
+        g.setPosition(-camView.x * camZoom, -camView.y * camZoom);
+        overlay.erase(g);
     }
 
     for (const src of this.visionSources) {
