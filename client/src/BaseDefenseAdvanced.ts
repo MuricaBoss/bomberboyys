@@ -779,8 +779,10 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (overlay.width !== screenW || overlay.height !== screenH) {
       overlay.resize(screenW, screenH);
     }
-    // Anchor the texture to cover exactly the visible world area
-    overlay.setDisplaySize(camView.width, camView.height);
+    // Correct scaling: The camera will multiply world coordinates by camZoom.
+    // To match screen pixels 1:1 and prevent distortion, we pre-scale the texture by 1/camZoom.
+    // This ensures that X and Y are scaled identically, preventing the "oval" effect.
+    overlay.setScale(1 / camZoom);
     overlay.clear();
     overlay.fill(0x000000, 0.88, 0, 0, screenW, screenH);
 
