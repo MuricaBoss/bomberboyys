@@ -943,26 +943,30 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         g.beginPath(); g.moveTo(sx - cs, sy); g.lineTo(sx + cs, sy); g.strokePath();
         g.beginPath(); g.moveTo(sx, sy - cs); g.lineTo(sx, sy + cs); g.strokePath();
         
-        // Path to slot (individual)
-        const cache = this.unitClientPathCache.get(unitId);
-        if (cache && cache.cells.length > 0) {
-          g.lineStyle(1.2, 0xffaa33, 0.45);
-          g.beginPath();
-          g.moveTo(ux, uy);
-          for (let ci = cache.idx; ci < cache.cells.length; ci++) {
-            const c = cache.cells[ci];
-            g.lineTo(c.x * TILE_SIZE + TILE_SIZE / 2, c.y * TILE_SIZE + TILE_SIZE / 2);
+        // Build 226: Path to slot (individual) - Only if toggled on
+        if (this.showDetailedPaths) {
+          const cache = this.unitClientPathCache.get(unitId);
+          if (cache && cache.cells.length > 0) {
+            g.lineStyle(1.2, 0xffaa33, 0.45);
+            g.beginPath();
+            g.moveTo(ux, uy);
+            for (let ci = cache.idx; ci < cache.cells.length; ci++) {
+              const c = cache.cells[ci];
+              g.lineTo(c.x * TILE_SIZE + TILE_SIZE / 2, c.y * TILE_SIZE + TILE_SIZE / 2);
+            }
+            g.lineTo(sx, sy);
+            g.strokePath();
+          } else {
+            g.lineStyle(1.2, 0xffaa33, 0.38);
+            g.beginPath(); g.moveTo(ux, uy); g.lineTo(sx, sy); g.strokePath();
           }
-          g.lineTo(sx, sy);
-          g.strokePath();
-        } else {
-          g.lineStyle(1.2, 0xffaa33, 0.38);
-          g.beginPath(); g.moveTo(ux, uy); g.lineTo(sx, sy); g.strokePath();
         }
       });
 
-      // Build 225: Single summary line for selected group
-      if (isGroupSelected && groupCount > 0) {
+      // Build 225/226: Single summary line for selected units
+      // If detailed paths are off, this is the ONLY line shown.
+      const shouldShowSummary = isGroupSelected || (this.selectedUnitIds.size === 1 && !this.showDetailedPaths);
+      if (shouldShowSummary && groupCount > 0) {
         const avgUX = groupUX / groupCount;
         const avgUY = groupUY / groupCount;
         const avgTX = targetCenterSumX / groupCount;
@@ -1019,58 +1023,60 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     }
 
 
-    for (const [unitId, slotPos] of this.formationPreviewAssignments.entries()) {
-      const rs = this.localUnitRenderState.get(unitId);
-      const u = this.room?.state?.units?.get ? this.room.state.units.get(unitId) : this.room?.state?.units?.[unitId];
-      if (!u || (u.hp ?? 0) <= 0) continue;
-      const ux = Number(rs?.x ?? u.x);
-      const uy = Number(rs?.y ?? u.y);
-      const dist = Math.hypot(slotPos.x - ux, slotPos.y - uy);
-
-      // If arrived, don't draw the line
-      if (dist < TILE_SIZE * 0.5) continue;
-
-      // Try to draw along the A* path if available
-      const cache = this.unitClientPathCache.get(unitId);
-      if (cache && cache.cells.length > 0) {
-        // Draw path segments
-        g.lineStyle(1.2, 0x00ffcc, 0.35 * alpha);
-        g.beginPath();
-        g.moveTo(ux, uy);
-        for (let ci = cache.idx; ci < cache.cells.length; ci++) {
-          const c = cache.cells[ci];
-          g.lineTo(c.x * TILE_SIZE + TILE_SIZE / 2, c.y * TILE_SIZE + TILE_SIZE / 2);
+    // Build 226: Assignment lines (transient) - only show if toggled on
+    if (this.showDetailedPaths) {
+      for (const [unitId, slotPos] of this.formationPreviewAssignments.entries()) {
+        const rs = this.localUnitRenderState.get(unitId);
+        const u = this.room?.state?.units?.get ? this.room.state.units.get(unitId) : this.room?.state?.units?.[unitId];
+        if (!u || (u.hp ?? 0) <= 0) continue;
+        const ux = Number(rs?.x ?? u.x);
+        const uy = Number(rs?.y ?? u.y);
+        const dist = Math.hypot(slotPos.x - ux, slotPos.y - uy);
+  
+        // If arrived, don't draw the line
+        if (dist < TILE_SIZE * 0.5) continue;
+  
+        // Try to draw along the A* path if available
+        const cache = this.unitClientPathCache.get(unitId);
+        if (cache && cache.cells.length > 0) {
+          // Draw path segments
+          g.lineStyle(1.2, 0x00ffcc, 0.35 * alpha);
+          g.beginPath();
+          g.moveTo(ux, uy);
+          for (let ci = cache.idx; ci < cache.cells.length; ci++) {
+            const c = cache.cells[ci];
+            g.lineTo(c.x * TILE_SIZE + TILE_SIZE / 2, c.y * TILE_SIZE + TILE_SIZE / 2);
+          }
+          // Final segment to the slot
+          g.lineTo(slotPos.x, slotPos.y);
+          g.strokePath();
+        } else {
+          // Fallback: straight line
+          g.lineStyle(1.2, 0x00ffcc, 0.3 * alpha);
+          g.beginPath();
+          g.moveTo(ux, uy);
+          g.lineTo(slotPos.x, slotPos.y);
+          g.strokePath();
         }
-        // Final segment to the slot
-        g.lineTo(slotPos.x, slotPos.y);
-        g.strokePath();
-      } else {
-        // Fallback: straight line
-        g.lineStyle(1.2, 0x00ffcc, 0.3 * alpha);
-        g.beginPath();
-        g.moveTo(ux, uy);
-        g.lineTo(slotPos.x, slotPos.y);
-        g.strokePath();
-      }
 
-      // Small arrow head at slot
-      const dx = slotPos.x - ux;
-      const dy = slotPos.y - uy;
-      const len = Math.hypot(dx, dy);
-      if (len > 1) {
-        const nx = dx / len;
-        const ny = dy / len;
-        const arrowLen = 6;
-        const tipX = slotPos.x;
-        const tipY = slotPos.y;
-        g.fillStyle(0x00ffcc, 0.5 * alpha);
-        g.fillTriangle(
-          tipX, tipY,
-          tipX - nx * arrowLen - ny * arrowLen * 0.5, tipY - ny * arrowLen + nx * arrowLen * 0.5,
-          tipX - nx * arrowLen + ny * arrowLen * 0.5, tipY - ny * arrowLen - nx * arrowLen * 0.5
-        );
+        // Small arrow head at slot
+        const dx = slotPos.x - ux;
+        const dy = slotPos.y - uy;
+        const len = Math.hypot(dx, dy);
+        if (len > 1) {
+          const nx = dx / len;
+          const ny = dy / len;
+          const arrowLen = 6;
+          const tipX = slotPos.x;
+          const tipY = slotPos.y;
+          g.fillStyle(0x00ffcc, 0.5 * alpha);
+          g.fillTriangle(
+            tipX, tipY,
+            tipX - nx * arrowLen - ny * arrowLen * 0.5, tipY - ny * arrowLen + nx * arrowLen * 0.5,
+            tipX - nx * arrowLen + ny * arrowLen * 0.5, tipY - ny * arrowLen - nx * arrowLen * 0.5
+          );
+        }
       }
     }
   }
-
 }

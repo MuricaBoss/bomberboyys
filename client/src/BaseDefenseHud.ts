@@ -27,6 +27,7 @@ import {
 import { BaseDefenseScene_Input } from "./BaseDefenseInput";
 
 export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
+  toggleDetailedPaths() {}
   setupBaseDefenseRuntimeUi() {
     this.fpsText = this.add.text(10, 5, "FPS: --", {
       fontSize: "12px",
@@ -331,6 +332,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       { id: "war_factory", label: "WF" },
       { id: "soldier", label: "SOLD" },
       { id: "tank", label: "TANK" },
+      { id: "paths", label: "PATHS" },
     ];
 
     for (const def of defs) {
@@ -400,6 +402,8 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
           this.room.send("produce_tank");
         } else if (def.id === "build") {
           this.actionMode = this.actionMode === "build" ? "move" : "build";
+        } else if (def.id === "paths") {
+          this.toggleDetailedPaths();
         }
         this.updateActionPanelDom();
       });
@@ -462,6 +466,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       const selected = (id === "build" && this.actionMode === "build")
         || (id === "fog" && this.fogEnabled)
         || (id === "dev" && !!me?.devMode)
+        || (id === "paths" && this.showDetailedPaths)
         || id === this.selectedBuild;
       if (id === "gfx") btn.textContent = `GFX ${getGraphicsQualityLabel(getGraphicsQuality()).toUpperCase()}`;
       const disabledReason = this.getActionButtonBlockedReason(id, me);

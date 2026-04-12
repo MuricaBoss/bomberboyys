@@ -197,6 +197,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.keyF = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F);
     this.keyF10 = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F10);
     this.keyEsc = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.keyL = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.L);
     this.input.mouse?.disableContextMenu();
 
     this.cameras.main.setBackgroundColor(0x1f5f1f);
@@ -985,6 +986,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
   verifyCurrentEngagements() {
     if (!this.room?.state?.units) return;
+    const now = Date.now();
     const engageRange = TILE_SIZE * 18.0;
     for (const id of Array.from(this.autoEngagedUnitIds)) {
         const u = this.room.state.units.get ? this.room.state.units.get(id) : (this.room.state.units as any)?.[id];
@@ -1013,11 +1015,18 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             this.autoEngagedUnitIds.delete(id);
             this.unitAttackTarget.delete(id);
         }
+        this.lastAvoidIntentSentAt = now;
     }
   }
 
+  toggleDetailedPaths() {
+    this.showDetailedPaths = !this.showDetailedPaths;
+    const msg = this.showDetailedPaths ? "Detailed paths enabled (Individual)" : "Simple paths enabled (Group line)";
+    this.showNotice(msg, "#8fccff");
+    this.updateActionPanelDom();
+  }
 
-    update(_time: number, delta: number) {
+  update(_time: number, delta: number) {
     const nowUpdate = Date.now();
     if (nowUpdate - this.lastResizePollAt > 2000) {
       this.lastResizePollAt = nowUpdate;
@@ -1141,6 +1150,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (this.keyP && Phaser.Input.Keyboard.JustDown(this.keyP)) this.toggleProfiling();
     if (Phaser.Input.Keyboard.JustDown(this.key4)) this.selectedBuild = "war_factory";
     if (Phaser.Input.Keyboard.JustDown(this.keyB)) this.actionMode = this.actionMode === "move" ? "build" : "move";
+    if (Phaser.Input.Keyboard.JustDown(this.keyL)) this.toggleDetailedPaths();
     if (Phaser.Input.Keyboard.JustDown(this.keyQ)) {
       const reason = this.getUnitProduceBlockedReason();
       if (reason) this.showNotice(`Cannot produce: ${reason}`, "#ffb080");
@@ -1359,8 +1369,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               if (bestDist < 96) {
                 this.localUnitRenderState.set(id, { x: spawnX, y: spawnY, vx: 0, vy: 0, lastAt: performance.now() });
                 if (e) { e.x = spawnX; e.y = spawnY; }
+                
+                // Build 226: Assign a defensive slot IMMEDIATELY on spawn
+                this.lastDefensiveSlotRefreshAt = 0; 
               } else {
-                 this.localUnitRenderState.set(id, { x: ux, y: uy, vx: 0, vy: 0, lastAt: performance.now() });
+                this.localUnitRenderState.set(id, { x: ux, y: uy, vx: 0, vy: 0, lastAt: performance.now() });
               }
             } else {
               this.localUnitRenderState.set(id, { x: ux, y: uy, vx: 0, vy: 0, lastAt: performance.now() });
@@ -1849,6 +1862,10 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         
         idleUnits.push(id);
     });
+
+    // Build 226: Stable Sorting by unit ID. This ensures that every unit
+    // maps to a consistent slot index, preventing "random shuffle" flickering.
+    idleUnits.sort();
 
     if (idleUnits.length <= 0) return;
 

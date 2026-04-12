@@ -110,6 +110,8 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   keyF!: Phaser.Input.Keyboard.Key;
   keyF10!: Phaser.Input.Keyboard.Key;
   keyEsc!: Phaser.Input.Keyboard.Key;
+  keyL!: Phaser.Input.Keyboard.Key;
+  showDetailedPaths = false;
   selectedBuild: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" = "ore_refinery";
   actionMode: "move" | "build" = "move";
   mobileCommandMode: "select" | "move" | "attack" = "select";
