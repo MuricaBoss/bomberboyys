@@ -39,6 +39,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   unitVisionTrails = new Map<string, { path: number[], lastX: number, lastY: number, radius: number }>();
   sharedTrailGraphics: Phaser.GameObjects.Graphics | null = null;
   visionTrailTexture: Phaser.GameObjects.RenderTexture | null = null;
+  visionTrailSprite: Phaser.GameObjects.Sprite | null = null;
   unitFacing = new Map<string, number>();
   // Hysteresis: tracks (tentativeDir, frameCount) to prevent rapid texture flipping.
   // Tank texture only switches after the same new direction appears 5+ consecutive frames.

@@ -609,6 +609,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (!this.sharedTrailGraphics) {
         this.sharedTrailGraphics = this.add.graphics().setVisible(false);
     }
+    if (!this.visionTrailSprite && this.visionTrailTexture) {
+        this.visionTrailSprite = this.add.sprite(0, 0, this.visionTrailTexture.texture)
+            .setOrigin(0)
+            .setVisible(false);
+    }
     
     const me = state.players?.get ? state.players.get(this.currentPlayerId) : state.players?.[this.currentPlayerId];
     if (me && !this.hasHadInitialCameraSnap && Number(me.x) > 10 && Number(me.y) > 10) {
@@ -806,15 +811,14 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
     const brush = this.worldFogMaskGraphics;
 
-    // Build 215 Fixed: Use the persistent world-space vision texture with correct erase mode.
-    const vtt = this.visionTrailTexture;
-    if (vtt) {
-        // Texture is 1/4 size of world, so it must be scaled up by 4, 
-        // then multiplied by camera zoom.
+    // Build 217 Fixed: Use a Sprite Proxy for the RenderTexture during erase.
+    // This is more reliable for coordinate mapping and scaling in Phaser 3.
+    const vts = this.visionTrailSprite;
+    if (vts) {
         const totalScale = 4 * camZoom;
-        vtt.setScale(totalScale);
-        vtt.setPosition(-camView.x * camZoom, -camView.y * camZoom);
-        overlay.erase(vtt);
+        vts.setScale(totalScale);
+        vts.setPosition(-camView.x * camZoom, -camView.y * camZoom);
+        overlay.erase(vts);
     }
 
     for (const src of this.visionSources) {
@@ -1645,10 +1649,15 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       }
     }
 
-    // --- Build 215: Incremental Vision Trails Tracking ---
+    // --- Build 217: Incremental Vision Trails Tracking ---
     const mePlayer = state.players.get(this.currentPlayerId);
     let needsRebuild = false;
     const vtt = this.visionTrailTexture;
+    
+    // Ensure shared graphics is ready
+    if (!this.sharedTrailGraphics) {
+        this.sharedTrailGraphics = this.add.graphics().setVisible(false);
+    }
 
     state.units.forEach((u: any, id: string) => {
       const isDead = (u.hp ?? 0) <= 0;
