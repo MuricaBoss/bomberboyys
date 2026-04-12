@@ -292,7 +292,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
     if (!this.clientVersionRootEl) return;
     const fpsLabel = Number.isFinite(fps) ? Math.round(Number(fps)) : "--";
     const unitStats = `[SOTILAAT: ${this.soldierCount} | TANKIT: ${this.tankCount}]`;
-    const groupStats = `[RYHMAT: ${this.lastMoveLeaderCount} | SEURAAJAT: ${this.lastMoveFollowerCount} | KOKO: ${this.lastMoveSubgroupSize}]`;
+    const groupStats = `[POLUT: ${this.lastMoveLeaderCount} | YKS: ${this.lastMoveFollowerCount} | KOKO: ${this.lastMoveSubgroupSize}]`;
     this.clientVersionRootEl.textContent = `BUILD ${DISPLAY_BUILD_NUMBER} · ${unitStats} · ${groupStats} · ${activeClientBuildId || CLIENT_BUNDLE_VERSION} · FPS ${fpsLabel}`;
   }
 

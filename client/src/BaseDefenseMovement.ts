@@ -1,0 +1,956 @@
+import Phaser from "phaser";
+import {
+  PRODUCED_UNIT_EXIT_GRACE_MS,
+  RTS_SOLDIER_PROJECTILE_RANGE,
+  RTS_TANK_PROJECTILE_RANGE,
+  TILE_SIZE,
+} from "./constants";
+import { BaseDefenseScene_Server } from "./BaseDefenseServer";
+
+export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
+  shouldKeepLocalUnitSimulationActive(id: string, u: any, ux: number, uy: number) {
+    const rs = this.localUnitRenderState.get(id);
+    return (String(u.ownerId || "") === this.currentPlayerId) && (u.hp ?? 0) > 0 && (
+      this.hasLocalUnitManualCommand(id)
+      || this.autoEngagedUnitIds.has(id)
+      || String(u.aiState || "") === "walking"
+      || Math.hypot(Number(rs?.vx ?? 0), Number(rs?.vy ?? 0)) > 4
+      || Math.hypot(Number(u.targetX ?? ux) - ux, Number(u.targetY ?? uy) - uy) > TILE_SIZE * 0.2
+    );
+  }
+
+  hasLocalUnitManualCommand(id: string) {
+    return this.localUnitTargetOverride.has(id) || this.localUnitFollowState.has(id);
+  }
+
+  getLocalUnitManualTarget(id: string) {
+    const override = this.localUnitTargetOverride.get(id);
+    if (override) {
+      return {
+        currentX: override.x,
+        currentY: override.y,
+        finalX: override.x,
+        finalY: override.y,
+        setAt: override.setAt,
+        isAuto: !!override.isAuto,
+        directSteer: false,
+        kind: "override" as const,
+        leaderAlive: true,
+        sharedPathKey: String(override.sharedPathKey || ""),
+        sharedPathCenterX: Number(override.sharedPathCenterX ?? override.x),
+        sharedPathCenterY: Number(override.sharedPathCenterY ?? override.y),
+        sharedPathOffsetX: Number(override.sharedPathOffsetX ?? 0),
+        sharedPathOffsetY: Number(override.sharedPathOffsetY ?? 0),
+        pathRadius: Number(override.pathRadius ?? 0),
+      };
+    }
+
+    const follow = this.localUnitFollowState.get(id);
+    if (!follow || !this.room?.state) return null;
+
+    const leader = this.room.state.units.get
+      ? this.room.state.units.get(follow.leaderId)
+      : this.room.state.units?.[follow.leaderId];
+    const leaderAlive = !!leader && (leader.hp ?? 0) > 0;
+
+    let currentX = follow.slotX;
+    let currentY = follow.slotY;
+    let directSteer = false;
+
+    if (leaderAlive) {
+      const leaderRs = this.localUnitRenderState.get(follow.leaderId);
+      const leaderX = Number(leaderRs?.x ?? leader?.x ?? follow.leaderGoalX);
+      const leaderY = Number(leaderRs?.y ?? leader?.y ?? follow.leaderGoalY);
+      const leaderGoalDist = Math.hypot(follow.leaderGoalX - leaderX, follow.leaderGoalY - leaderY);
+      if (leaderGoalDist > TILE_SIZE * 1.4) {
+        currentX = leaderX + follow.offsetX;
+        currentY = leaderY + follow.offsetY;
+        directSteer = true;
+      }
+    }
+
+    const minBound = TILE_SIZE * 0.5;
+    const maxX = Math.max(minBound, this.room.state.mapWidth * TILE_SIZE - minBound);
+    const maxY = Math.max(minBound, this.room.state.mapHeight * TILE_SIZE - minBound);
+    currentX = Math.max(minBound, Math.min(currentX, maxX));
+    currentY = Math.max(minBound, Math.min(currentY, maxY));
+
+    return {
+      currentX,
+      currentY,
+      finalX: follow.slotX,
+      finalY: follow.slotY,
+      setAt: follow.setAt,
+      isAuto: !!follow.isAuto,
+      directSteer,
+      kind: "follow" as const,
+      leaderAlive,
+      sharedPathKey: "",
+      sharedPathCenterX: follow.slotX,
+      sharedPathCenterY: follow.slotY,
+      sharedPathOffsetX: 0,
+      sharedPathOffsetY: 0,
+      pathRadius: 0,
+    };
+  }
+
+  localFormationRadiusForUnit(unit: any) {
+    const t = String(unit?.type || "");
+    if (t === "tank") return TILE_SIZE * 0.55;
+    if (t === "harvester") return TILE_SIZE * 0.45;
+    return TILE_SIZE * 0.35;
+  }
+
+  localFormationSpacingForIds(unitIds: string[]) {
+    if (!this.room?.state?.units) return TILE_SIZE * 0.8;
+    let maxRadius = TILE_SIZE * 0.42;
+    for (const id of unitIds) {
+      const unit = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
+      if (!unit || (unit.hp ?? 0) <= 0) continue;
+      maxRadius = Math.max(maxRadius, this.localFormationRadiusForUnit(unit));
+    }
+    return Math.max(TILE_SIZE * 0.8, maxRadius * 2 + 2);
+  }
+
+  localFormationSlot(centerX: number, centerY: number, gridIndex: number, _totalUnits: number, spacing: number, angle = 0) {
+    const sp = Math.max(TILE_SIZE * 0.8, spacing);
+    const cols = 5;
+    const col = gridIndex % cols;
+    const row = Math.floor(gridIndex / cols);
+    const lateralOffset = (col - 2) * sp;
+    const depthOffset = row * sp;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const rx = lateralOffset * (-sin) + (-depthOffset) * cos;
+    const ry = lateralOffset * cos + (-depthOffset) * sin;
+    return { x: centerX + rx, y: centerY + ry };
+  }
+
+  getSharedMovePathKey(now: number, targetX: number, targetY: number, unitCount: number) {
+    const tx = Math.round(targetX);
+    const ty = Math.round(targetY);
+    return `movecmd_${now}_${tx}_${ty}_${unitCount}`;
+  }
+
+  sharedPathStillUsed(pathKey: string, excludeIds = new Set<string>()) {
+    let used = false;
+    this.localUnitTargetOverride.forEach((override, id) => {
+      if (used || excludeIds.has(id)) return;
+      if (override.sharedPathKey === pathKey) used = true;
+    });
+    return used;
+  }
+
+  issueLocalUnitMoveCommand(targetX: number, targetY: number, isAutoSegment = false) {
+    if (!this.room?.state || this.selectedUnitIds.size <= 0) return;
+
+    const ids = Array.from(this.selectedUnitIds).filter((id) => {
+      const unit = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
+      return !!unit && (unit.hp ?? 0) > 0 && String(unit.ownerId || "") === this.currentPlayerId;
+    });
+    if (ids.length === 0) return;
+
+    this.lastCommandedUnitIds = new Set(ids);
+
+    const unitPositions = ids.map((id) => {
+      const s = this.localUnitRenderState.get(id);
+      const u = this.room?.state?.units?.get ? this.room.state.units.get(id) : this.room?.state?.units?.[id];
+      return { id, x: Number(s?.x ?? u?.x ?? 0), y: Number(s?.y ?? u?.y ?? 0) };
+    });
+
+    const groupCX = unitPositions.reduce((sum, unit) => sum + unit.x, 0) / Math.max(1, unitPositions.length);
+    const groupCY = unitPositions.reduce((sum, unit) => sum + unit.y, 0) / Math.max(1, unitPositions.length);
+    const angle = Math.atan2(targetY - groupCY, targetX - groupCX);
+    this.lastCommandGroupAngle = angle;
+
+    const spacing = this.localFormationSpacingForIds(ids);
+    const n = ids.length;
+    this.lastCommandGroupRadius = 3.0 * spacing;
+
+    let maxUnitRadius = TILE_SIZE * 0.17;
+    const unitRadiusById = new Map<string, number>();
+    for (const id of ids) {
+      const unit = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
+      const radius = this.localUnitBodyRadius(unit);
+      unitRadiusById.set(id, radius);
+      maxUnitRadius = Math.max(maxUnitRadius, radius);
+    }
+
+    const slots: Array<{ x: number; y: number; r: number }> = [];
+    const reserved: Array<{ x: number; y: number; radius: number }> = [];
+    const selectedSet = new Set(ids);
+    let gridIndex = 0;
+    const maxSlotIndex = Math.max(64, n * 24);
+    const slotCandidateIsFree = (x: number, y: number, radius: number) => {
+      if (this.room?.state?.units) {
+        for (const [otherId, otherUnit] of this.room.state.units.entries()) {
+          if (selectedSet.has(otherId) || (otherUnit.hp ?? 0) <= 0) continue;
+          const otherState = this.localUnitRenderState.get(otherId);
+          const ox = Number(otherState?.x ?? otherUnit.x);
+          const oy = Number(otherState?.y ?? otherUnit.y);
+          const otherRadius = this.localUnitBodyRadius(otherUnit);
+          if (Math.hypot(x - ox, y - oy) < radius + otherRadius + 2) return false;
+        }
+      }
+
+      const recentNow = Date.now();
+      for (const [recentId, recentSlot] of this.recentAssignedSlots.entries()) {
+        if (recentNow - recentSlot.at > 15000) {
+          this.recentAssignedSlots.delete(recentId);
+          continue;
+        }
+        if (Math.hypot(x - recentSlot.x, y - recentSlot.y) < radius + recentSlot.r + 2) return false;
+      }
+      return true;
+    };
+
+    for (let i = 0; i < n; i++) {
+      const slotRadius = Math.max(maxUnitRadius + 2, spacing * 0.35);
+      let slot: { x: number; y: number } | null = null;
+      while (!slot && gridIndex < maxSlotIndex) {
+        const base = this.localFormationSlot(targetX, targetY, gridIndex, n, spacing, angle);
+        slot = this.resolveLocalFormationSlot(base.x, base.y, slotRadius, ids[i], reserved, selectedSet, (sx, sy) => {
+          return slotCandidateIsFree(sx, sy, slotRadius);
+        });
+        gridIndex++;
+      }
+
+      if (!slot) {
+        const base = this.localFormationSlot(targetX, targetY, i, n, spacing, angle);
+        slot = {
+          x: Phaser.Math.Clamp(base.x, slotRadius, this.room.state.mapWidth * TILE_SIZE - slotRadius),
+          y: Phaser.Math.Clamp(base.y, slotRadius, this.room.state.mapHeight * TILE_SIZE - slotRadius),
+        };
+      }
+
+      reserved.push({ x: slot.x, y: slot.y, radius: slotRadius });
+      slots.push({ x: slot.x, y: slot.y, r: slotRadius });
+    }
+
+    const usedUnits = new Set<string>();
+    const usedSlots = new Set<number>();
+    const assignments = new Map<string, { x: number; y: number }>();
+    const priorityOrder: Array<{ id: string; slot: { x: number; y: number } }> = [];
+
+    for (let iteration = 0; iteration < unitPositions.length; iteration++) {
+      let bestUnitIdx = -1;
+      let bestSlotIdx = -1;
+      let minDistance = Infinity;
+
+      for (let unitIdx = 0; unitIdx < unitPositions.length; unitIdx++) {
+        if (usedUnits.has(unitPositions[unitIdx].id)) continue;
+        for (let slotIdx = 0; slotIdx < slots.length; slotIdx++) {
+          if (usedSlots.has(slotIdx)) continue;
+          const d = Math.hypot(unitPositions[unitIdx].x - slots[slotIdx].x, unitPositions[unitIdx].y - slots[slotIdx].y);
+          if (d < minDistance) {
+            minDistance = d;
+            bestUnitIdx = unitIdx;
+            bestSlotIdx = slotIdx;
+          }
+        }
+      }
+
+      if (bestUnitIdx === -1 || bestSlotIdx === -1) break;
+      const id = unitPositions[bestUnitIdx].id;
+      const slot = slots[bestSlotIdx];
+      usedUnits.add(id);
+      usedSlots.add(bestSlotIdx);
+      assignments.set(id, { x: slot.x, y: slot.y });
+      priorityOrder.push({ id, slot: { x: slot.x, y: slot.y } });
+      this.recentAssignedSlots.set(id, { x: slot.x, y: slot.y, r: slot.r, at: Date.now() });
+    }
+
+    if (assignments.size === 0) return;
+
+    let maxDist = 0;
+    for (const up of unitPositions) {
+      const slot = assignments.get(up.id);
+      if (slot) maxDist = Math.max(maxDist, Math.hypot(up.x - slot.x, up.y - slot.y));
+    }
+    const avgSpeed = 80;
+    const previewMs = Math.max(8000, (maxDist / avgSpeed) * 1000 * 2 + 4000);
+    this.formationPreviewSlots = slots;
+    this.formationPreviewAssignments = assignments;
+    this.formationPreviewCenter = { x: targetX, y: targetY };
+    this.formationPreviewUntil = Date.now() + previewMs;
+
+    const previousSharedKeys = new Set<string>();
+    for (const id of ids) {
+      const prev = this.localUnitTargetOverride.get(id);
+      if (prev?.sharedPathKey) previousSharedKeys.add(prev.sharedPathKey);
+    }
+
+    for (const id of ids) {
+      this.localUnitTargetOverride.delete(id);
+      this.localUnitFollowState.delete(id);
+      this.localUnitMovePriority.delete(id);
+      this.localUnitPathRadiusOverride.delete(id);
+      this.autoEngagedUnitIds.delete(id);
+      this.unitAttackTarget.delete(id);
+      this.unitClientPathCache.delete(id);
+    }
+
+    const pathRadius = Math.max(maxUnitRadius + 4, TILE_SIZE * 0.28);
+    let sharedPathCenterX = targetX;
+    let sharedPathCenterY = targetY;
+    const targetGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
+    if (!this.isPathWalkableForRadius(targetGrid.gx, targetGrid.gy, pathRadius)) {
+      let nearestSlot = slots[0];
+      let nearestDist = Infinity;
+      for (const slot of slots) {
+        const d = Math.hypot(slot.x - targetX, slot.y - targetY);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearestSlot = slot;
+        }
+      }
+      sharedPathCenterX = nearestSlot.x;
+      sharedPathCenterY = nearestSlot.y;
+    }
+
+    const startGrid = this.worldToGrid(groupCX, groupCY);
+    const goalGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
+    const now = Date.now();
+    const sharedPathKey = this.getSharedMovePathKey(now, sharedPathCenterX, sharedPathCenterY, ids.length);
+    const sharedPath = this.findPath(
+      startGrid.gx,
+      startGrid.gy,
+      goalGrid.gx,
+      goalGrid.gy,
+      false,
+      undefined,
+      pathRadius,
+    );
+    if (sharedPath && sharedPath.length > 0) {
+      this.sharedPathCache.set(sharedPathKey, sharedPath);
+    }
+
+    priorityOrder.sort((a, b) => {
+      const aPos = unitPositions.find((entry) => entry.id === a.id);
+      const bPos = unitPositions.find((entry) => entry.id === b.id);
+      const aDist = aPos ? Math.hypot(aPos.x - a.slot.x, aPos.y - a.slot.y) : 0;
+      const bDist = bPos ? Math.hypot(bPos.x - b.slot.x, bPos.y - b.slot.y) : 0;
+      return bDist - aDist;
+    });
+
+    this.lastMoveLeaderCount = sharedPath && sharedPath.length > 0 ? 1 : 0;
+    this.lastMoveFollowerCount = ids.length;
+    this.lastMoveSubgroupSize = ids.length;
+
+    let priority = 0;
+    for (const entry of priorityOrder) {
+      const slot = assignments.get(entry.id);
+      if (!slot) continue;
+      this.localUnitTargetOverride.set(entry.id, {
+        x: slot.x,
+        y: slot.y,
+        setAt: now,
+        isAuto: isAutoSegment,
+        sharedPathKey: sharedPath && sharedPath.length > 0 ? sharedPathKey : undefined,
+        sharedPathCenterX,
+        sharedPathCenterY,
+        sharedPathOffsetX: slot.x - sharedPathCenterX,
+        sharedPathOffsetY: slot.y - sharedPathCenterY,
+        pathRadius,
+      });
+      this.localUnitMovePriority.set(entry.id, priority);
+      this.localUnitPathRadiusOverride.set(entry.id, pathRadius);
+      this.room.send("command_units", {
+        unitIds: [entry.id],
+        targetX: slot.x,
+        targetY: slot.y,
+      });
+      priority++;
+    }
+
+    for (const key of previousSharedKeys) {
+      if (!this.sharedPathStillUsed(key)) this.sharedPathCache.delete(key);
+    }
+  }
+
+  getClientUnitWaypoint(unitId: string, unit: any, now: number, unitRadius = this.localUnitBodyRadius(unit)) {
+    const ux = Number(unit?.x ?? 0);
+    const uy = Number(unit?.y ?? 0);
+    const tx = Number(unit?.targetX ?? ux);
+    const ty = Number(unit?.targetY ?? uy);
+    const finalX = Number(unit?.finalX ?? tx);
+    const finalY = Number(unit?.finalY ?? ty);
+    const sharedPathKey = typeof unit?.sharedPathKey === "string" ? String(unit.sharedPathKey) : "";
+    const hasSharedPath = sharedPathKey.length > 0;
+    const sharedPathCenterX = Number(unit?.sharedPathCenterX ?? tx);
+    const sharedPathCenterY = Number(unit?.sharedPathCenterY ?? ty);
+    const pathTargetX = hasSharedPath ? sharedPathCenterX : tx;
+    const pathTargetY = hasSharedPath ? sharedPathCenterY : ty;
+    const startGX = Math.floor(ux / TILE_SIZE);
+    const startGY = Math.floor(uy / TILE_SIZE);
+    const goalGX = Math.floor(pathTargetX / TILE_SIZE);
+    const goalGY = Math.floor(pathTargetY / TILE_SIZE);
+
+    const radiusOverride = this.localUnitPathRadiusOverride.get(unitId);
+    const useRadius = radiusOverride ?? Number(unit?.pathRadius ?? unitRadius);
+    const radiusBucket = Math.max(4, Math.round(useRadius / 4) * 4);
+
+    let cache = this.unitClientPathCache.get(unitId);
+    const needRecalc = !cache
+      || cache.goalGX !== goalGX
+      || cache.goalGY !== goalGY
+      || cache.radiusBucket !== radiusBucket
+      || cache.sharedPathKey !== (hasSharedPath ? sharedPathKey : undefined)
+      || (now - cache.updatedAt) > 520
+      || cache.idx >= cache.cells.length;
+
+    if (needRecalc) {
+      let cells: Array<{ x: number; y: number }> | null = null;
+
+      if (hasSharedPath) {
+        cells = this.sharedPathCache.get(sharedPathKey) ?? null;
+        if ((!cells || cells.length === 0) && this.isPathWalkableForRadius(goalGX, goalGY, useRadius)) {
+          cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
+          if (cells && cells.length > 0) this.sharedPathCache.set(sharedPathKey, cells);
+        }
+      } else {
+        const sectorKey = `sector_${Math.floor(goalGX / 4)}_${Math.floor(goalGY / 4)}_r${radiusBucket}`;
+        cells = this.sharedPathCache.get(sectorKey) ?? null;
+        if ((!cells || cells.length === 0) && this.isPathWalkableForRadius(goalGX, goalGY, useRadius)) {
+          cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
+          if (cells && cells.length > 0) this.sharedPathCache.set(sectorKey, cells);
+        }
+      }
+
+      if (!cells || cells.length === 0) {
+        this.unitClientPathCache.delete(unitId);
+        return null;
+      }
+
+      let bestIdx = 0;
+      let minD = Infinity;
+      const railCenterX = hasSharedPath ? sharedPathCenterX : (goalGX * TILE_SIZE + TILE_SIZE / 2);
+      const railCenterY = hasSharedPath ? sharedPathCenterY : (goalGY * TILE_SIZE + TILE_SIZE / 2);
+      const railOffsetX = finalX - railCenterX;
+      const railOffsetY = finalY - railCenterY;
+
+      for (let i = 0; i < cells.length; i++) {
+        const wx = cells[i].x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
+        const wy = cells[i].y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
+        const d = Math.hypot(wx - ux, wy - uy);
+        if (d < minD) {
+          minD = d;
+          bestIdx = i;
+        }
+      }
+
+      cache = {
+        goalGX,
+        goalGY,
+        radiusBucket,
+        cells,
+        idx: bestIdx,
+        updatedAt: now,
+        sharedPathKey: hasSharedPath ? sharedPathKey : undefined,
+      };
+      this.unitClientPathCache.set(unitId, cache);
+    }
+
+    if (!cache) return null;
+
+    const railCenterX = hasSharedPath ? sharedPathCenterX : (goalGX * TILE_SIZE + TILE_SIZE / 2);
+    const railCenterY = hasSharedPath ? sharedPathCenterY : (goalGY * TILE_SIZE + TILE_SIZE / 2);
+    const railOffsetX = finalX - railCenterX;
+    const railOffsetY = finalY - railCenterY;
+
+    while (cache.idx < cache.cells.length) {
+      const c = cache.cells[cache.idx];
+      let wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
+      let wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
+
+      if (this.clearanceGrid && this.clearanceGrid.length > 0) {
+        const gridIdx = c.y * this.gridW + c.x;
+        const clearanceTiles = this.clearanceGrid[gridIdx];
+        if (clearanceTiles !== undefined) {
+          const maxDistPx = Math.max(TILE_SIZE * 0.1, (clearanceTiles * TILE_SIZE) - unitRadius - 6);
+          const currentOffsetDist = Math.hypot(railOffsetX, railOffsetY);
+          if (currentOffsetDist > maxDistPx && currentOffsetDist > 0.001) {
+            const scale = maxDistPx / currentOffsetDist;
+            wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX * scale;
+            wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY * scale;
+          }
+        }
+      }
+
+      if (Math.hypot(wx - ux, wy - uy) <= TILE_SIZE * 0.45) {
+        cache.idx += 1;
+      } else {
+        return { x: wx, y: wy };
+      }
+    }
+
+    return null;
+  }
+
+  updateUnitRenderPos(
+    id: string,
+    e: Phaser.GameObjects.GameObject & { x: number; y: number },
+    u: any,
+    delta: number,
+    isLocalOwned: boolean,
+    isTank: boolean
+  ) {
+    if ((u.hp ?? 0) <= 0) return;
+
+    if (delta > 500) {
+      const sx = Number(u.x);
+      const sy = Number(u.y);
+      const rs = this.localUnitRenderState.get(id);
+      if (rs) {
+        rs.x = sx;
+        rs.y = sy;
+        rs.vx = 0;
+        rs.vy = 0;
+        rs.lastAt = performance.now();
+      }
+      e.x = sx;
+      e.y = sy;
+      this.localUnitTargetOverride.delete(id);
+      this.localUnitFollowState.delete(id);
+      this.localUnitMovePriority.delete(id);
+      this.localUnitPathRadiusOverride.delete(id);
+      this.unitClientPathCache.delete(id);
+      this.autoEngagedUnitIds.delete(id);
+      this.unitAttackTarget.delete(id);
+      return;
+    }
+
+    const dt = Math.max(0.001, Math.min(0.05, delta / 1000));
+    if (!isLocalOwned) {
+      let rs = this.localUnitRenderState.get(id);
+      if (!rs) {
+        rs = { x: Number(u.x), y: Number(u.y), vx: 0, vy: 0, lastAt: performance.now() };
+        this.localUnitRenderState.set(id, rs);
+      }
+      const serverX = Number(u.x);
+      const serverY = Number(u.y);
+      const distToServer = Math.hypot(serverX - rs.x, serverY - rs.y);
+
+      if (distToServer > TILE_SIZE * 3) {
+        rs.x = serverX;
+        rs.y = serverY;
+        rs.vx = 0;
+        rs.vy = 0;
+      } else if (distToServer < 1.0 && String(u.aiState || "") !== "walking") {
+        rs.x = serverX;
+        rs.y = serverY;
+        rs.vx = 0;
+        rs.vy = 0;
+      } else {
+        const tx = Number(u.targetX ?? u.x);
+        const ty = Number(u.targetY ?? u.y);
+        const toTX = tx - rs.x;
+        const toTY = ty - rs.y;
+        const toTLen = Math.hypot(toTX, toTY);
+        const speed = Number(u.speed || 0);
+        const isWalking = String(u.aiState || "") === "walking";
+        const dx = serverX - rs.x;
+        const dy = serverY - rs.y;
+        const dot = dx * toTX + dy * toTY;
+
+        let multiplier = 1.0;
+        if (isWalking) {
+          if (dot < -5) multiplier = 0.45;
+          else if (distToServer > 20) multiplier = 1.35;
+          else if (distToServer > 8) multiplier = 1.15;
+        }
+
+        const desiredVX = (isWalking && toTLen > 2) ? (toTX / toTLen) * speed * multiplier : 0;
+        const desiredVY = (isWalking && toTLen > 2) ? (toTY / toTLen) * speed * multiplier : 0;
+        const accel = isWalking ? 12 : 20;
+        const blend = 1 - Math.exp(-accel * dt);
+        rs.vx += (desiredVX - rs.vx) * blend;
+        rs.vy += (desiredVY - rs.vy) * blend;
+        rs.x += rs.vx * dt;
+        rs.y += rs.vy * dt;
+
+        if (distToServer > 0.1) {
+          const corrPower = isWalking ? 0.006 : 0.016;
+          const corr = 1 - Math.exp(-delta * corrPower);
+          rs.x += (serverX - rs.x) * corr;
+          rs.y += (serverY - rs.y) * corr;
+        }
+      }
+
+      e.x = rs.x;
+      e.y = rs.y;
+      rs.lastAt = performance.now();
+      return;
+    }
+
+    let s = this.localUnitRenderState.get(id);
+    if (!s) {
+      s = { x: Number(u.x), y: Number(u.y), vx: 0, vy: 0, lastAt: performance.now() };
+      this.localUnitRenderState.set(id, s);
+    }
+
+    let tx = Number(u.targetX ?? u.x);
+    let ty = Number(u.targetY ?? u.y);
+
+    const isAutoEngaged = this.autoEngagedUnitIds.has(id);
+    const atkTargetId = this.unitAttackTarget.get(id);
+    const atkTarget = atkTargetId ? (this.room?.state?.units?.get ? this.room.state.units.get(atkTargetId) : this.room?.state?.units?.[atkTargetId])
+      || (this.room?.state?.structures?.get ? this.room.state.structures.get(atkTargetId) : this.room?.state?.structures?.[atkTargetId])
+      || (this.room?.state?.cores?.get ? this.room.state.cores.get(atkTargetId) : this.room?.state?.cores?.[atkTargetId]) : null;
+
+    const firingRange = isTank ? RTS_TANK_PROJECTILE_RANGE : RTS_SOLDIER_PROJECTILE_RANGE;
+    const distToAtkTarget = atkTarget ? Math.hypot(Number(atkTarget.x) - s.x, Number(atkTarget.y) - s.y) : 99999;
+    const inFiringRange = !!atkTarget && distToAtkTarget <= (firingRange * 0.95);
+
+    if (isAutoEngaged && atkTarget && !inFiringRange) {
+      tx = Number(atkTarget.x);
+      ty = Number(atkTarget.y);
+    }
+
+    const nowMs = Date.now();
+    const manualTarget = this.getLocalUnitManualTarget(id);
+    if (manualTarget) {
+      const prio = this.localUnitMovePriority.get(id) ?? 0;
+      const groupSize = Math.max(1, this.localUnitTargetOverride.size + this.localUnitFollowState.size);
+      const delayStep = groupSize >= 20 ? 20 : groupSize >= 10 ? 16 : 12;
+      const maxDelay = groupSize >= 20 ? 620 : groupSize >= 10 ? 420 : 220;
+      const startDelay = (manualTarget.isAuto || manualTarget.directSteer) ? 0 : Math.min(maxDelay, prio * delayStep);
+      if (manualTarget.isAuto || nowMs - manualTarget.setAt >= startDelay) {
+        tx = manualTarget.currentX;
+        ty = manualTarget.currentY;
+      }
+      const distToSlot = Math.hypot(manualTarget.finalX - s.x, manualTarget.finalY - s.y);
+      if (!manualTarget.directSteer && distToSlot <= TILE_SIZE * 0.48) {
+        if (!this.unitSlotLocked.has(String(id))) {
+          const velSpeed = Math.hypot(s.vx, s.vy);
+          let arrivalDir: number | null = null;
+          if (velSpeed > 0.2) {
+            arrivalDir = this.angleToDir8(Math.atan2(s.vy, s.vx));
+          } else if (distToSlot > 0.5) {
+            arrivalDir = this.angleToDir8(Math.atan2(manualTarget.finalY - s.y, manualTarget.finalX - s.x));
+          } else {
+            arrivalDir = (u.dir !== undefined) ? u.dir : 1;
+          }
+
+          if (arrivalDir !== null) this.unitFacing.set(String(id), arrivalDir);
+          this.unitSlotLocked.add(String(id));
+
+          const committedDir = this.unitFacing.get(id) ?? arrivalDir ?? (u.dir || 1);
+          this.room.send("unit_client_pose_batch", {
+            poses: [{
+              unitId: id,
+              x: manualTarget.finalX,
+              y: manualTarget.finalY,
+              dir: committedDir,
+              tx: manualTarget.finalX,
+              ty: manualTarget.finalY,
+              final: true,
+            }],
+          });
+        }
+
+        this.localUnitGhostMode?.delete(String(id));
+        if (Number(u.manualUntil || 0) > 0) u.manualUntil = 0;
+        s.x = manualTarget.finalX;
+        s.y = manualTarget.finalY;
+        s.vx = 0;
+        s.vy = 0;
+        e.x = s.x;
+        e.y = s.y;
+        s.lastAt = performance.now();
+        return;
+      }
+
+      this.unitSlotLocked.delete(String(id));
+    } else {
+      this.unitSlotLocked.delete(String(id));
+    }
+
+    const waypointInput = manualTarget
+      ? {
+        x: s.x,
+        y: s.y,
+        targetX: manualTarget.sharedPathKey ? manualTarget.sharedPathCenterX : tx,
+        targetY: manualTarget.sharedPathKey ? manualTarget.sharedPathCenterY : ty,
+        finalX: manualTarget.finalX,
+        finalY: manualTarget.finalY,
+        sharedPathKey: manualTarget.sharedPathKey,
+        sharedPathCenterX: manualTarget.sharedPathCenterX,
+        sharedPathCenterY: manualTarget.sharedPathCenterY,
+        pathRadius: manualTarget.pathRadius,
+      }
+      : { x: s.x, y: s.y, targetX: tx, targetY: ty };
+
+    const wp = manualTarget?.directSteer ? null : this.getClientUnitWaypoint(
+      id,
+      waypointInput,
+      nowMs,
+      this.localUnitBodyRadius(u),
+    );
+    const navX = Number(wp?.x ?? tx);
+    const navY = Number(wp?.y ?? ty);
+
+    const toTX = navX - s.x;
+    const toTY = navY - s.y;
+    const toTLen = Math.hypot(toTX, toTY);
+    const speed = Number(u.speed || 0);
+    const moving = toTLen > TILE_SIZE * 0.16 && speed > 1 && !(isAutoEngaged && inFiringRange);
+    const desiredVX = moving ? (toTX / toTLen) * speed : 0;
+    const desiredVY = moving ? (toTY / toTLen) * speed : 0;
+
+    const accel = moving ? 16 : 10;
+    const blend = 1 - Math.exp(-accel * dt);
+    s.vx += (desiredVX - s.vx) * blend;
+    s.vy += (desiredVY - s.vy) * blend;
+    const r = this.localUnitBodyRadius(u);
+    const stepX = s.vx * dt;
+    const stepY = s.vy * dt;
+    const nx = s.x + stepX;
+    const ny = s.y + stepY;
+    const uid = String(id);
+    const producedExitGraceActive = Number(u.manualUntil || 0) > nowMs;
+    if (producedExitGraceActive && Math.hypot(tx - s.x, ty - s.y) <= TILE_SIZE * 0.65) {
+      u.manualUntil = 0;
+    }
+    const isGhost = (this.localUnitGhostMode?.has(uid) ?? false) || producedExitGraceActive;
+    if (isGhost || this.canOccupyLocalUnit(nx, ny, r, uid)) {
+      s.x = nx;
+      s.y = ny;
+    } else {
+      let moved = false;
+      if (isGhost || this.canOccupyLocalUnit(nx, s.y, r, uid)) {
+        s.x = nx;
+        moved = true;
+      }
+      if (isGhost || this.canOccupyLocalUnit(s.x, ny, r, uid)) {
+        s.y = ny;
+        moved = true;
+      }
+      if (!moved && (Math.abs(stepX) > 0.001 || Math.abs(stepY) > 0.001)) {
+        const len = Math.hypot(stepX, stepY);
+        const dirX = stepX / Math.max(0.001, len);
+        const dirY = stepY / Math.max(0.001, len);
+        const side = Math.min(TILE_SIZE * 0.26, len * 1.15);
+        const lX = s.x - dirY * side;
+        const lY = s.y + dirX * side;
+        const rX = s.x + dirY * side;
+        const rY = s.y - dirX * side;
+        const canL = isGhost || this.canOccupyLocalUnit(lX, lY, r, uid);
+        const canR = isGhost || this.canOccupyLocalUnit(rX, rY, r, uid);
+        if (canL && canR) {
+          const dL = Math.hypot(lX - navX, lY - navY);
+          const dR = Math.hypot(rX - navX, rY - navY);
+          if (dL <= dR) {
+            s.x = lX;
+            s.y = lY;
+          } else {
+            s.x = rX;
+            s.y = rY;
+          }
+        } else if (canL) {
+          s.x = lX;
+          s.y = lY;
+        } else if (canR) {
+          s.x = rX;
+          s.y = rY;
+        } else {
+          s.vx *= 0.2;
+          s.vy *= 0.2;
+        }
+      } else if (!moved) {
+        s.vx *= 0.2;
+        s.vy *= 0.2;
+      }
+
+      if (s.jamRefX === undefined || !moving) {
+        s.jamRefX = s.x;
+        s.jamRefY = s.y;
+        this.localUnitJamTicks.set(uid, 0);
+      } else {
+        const distFromRef = Math.hypot(s.x - s.jamRefX!, s.y - s.jamRefY!);
+        if (distFromRef > TILE_SIZE * 0.85) {
+          s.jamRefX = s.x;
+          s.jamRefY = s.y;
+          this.localUnitJamTicks.set(uid, 0);
+        } else {
+          const ticks = (this.localUnitJamTicks.get(uid) ?? 0) + 1;
+          this.localUnitJamTicks.set(uid, ticks);
+          if (ticks > 40) {
+            if (!this.localUnitGhostMode) this.localUnitGhostMode = new Set<string>();
+            this.localUnitGhostMode.add(uid);
+          }
+        }
+      }
+    }
+
+    const hasOverride = this.hasLocalUnitManualCommand(id);
+    const errX = Number(u.x) - s.x;
+    const errY = Number(u.y) - s.y;
+    const err = Math.hypot(errX, errY);
+    const unitR = this.localUnitBodyRadius(u);
+    const unitType = String(u.type || "");
+    const isClientDriven = isLocalOwned && this.isClientAuthoritativeUnitType(unitType);
+    if (isClientDriven) {
+      const movingNow = Math.hypot(s.vx, s.vy) > 8 || moving;
+      if (!hasOverride && err > TILE_SIZE * 2.4) {
+        const snapX = Number(u.x);
+        const snapY = Number(u.y);
+        if (isGhost || this.canOccupyLocalUnit(snapX, snapY, unitR, id)) {
+          s.x = snapX;
+          s.y = snapY;
+          s.vx = 0;
+          s.vy = 0;
+        }
+      } else if (!movingNow && !hasOverride && err > 8) {
+        const corr = 1 - Math.exp(-delta * 0.0025);
+        const newCX = s.x + errX * corr;
+        const newCY = s.y + errY * corr;
+        if (isGhost || this.canOccupyLocalUnit(newCX, newCY, unitR, id)) {
+          s.x = newCX;
+          s.y = newCY;
+        }
+      }
+    } else if (!hasOverride && err > TILE_SIZE * 1.15) {
+      const snapX = Number(u.x);
+      const snapY = Number(u.y);
+      if (isGhost || this.canOccupyLocalUnit(snapX, snapY, unitR, id)) {
+        s.x = snapX;
+        s.y = snapY;
+        s.vx = 0;
+        s.vy = 0;
+      }
+    } else if (err > 0.5) {
+      const movingNow = Math.hypot(s.vx, s.vy) > 8;
+      const corr = hasOverride
+        ? (1 - Math.exp(-delta * 0.002))
+        : movingNow
+          ? (1 - Math.exp(-delta * 0.004))
+          : (1 - Math.exp(-delta * 0.012));
+      const newCX = s.x + errX * corr;
+      const newCY = s.y + errY * corr;
+      if (isGhost || this.canOccupyLocalUnit(newCX, newCY, unitR, id)) {
+        s.x = newCX;
+        s.y = newCY;
+      }
+    }
+
+    const inGracePeriod = manualTarget && (Date.now() - manualTarget.setAt) < 800;
+
+    if (!isGhost && isLocalOwned && !inGracePeriod && this.room?.state?.units?.forEach) {
+      const me = this.room.state.players?.get
+        ? this.room.state.players.get(this.currentPlayerId)
+        : this.room.state.players?.[this.currentPlayerId];
+      const myTeam = me?.team;
+      const myRadius = this.localUnitBodyRadius(u);
+      let pushX = 0;
+      let pushY = 0;
+      let yieldingPairs = 0;
+      const searchRadius = TILE_SIZE * 2;
+      const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
+      for (const oid of potentialNeighbors) {
+        if (oid === id) continue;
+        const ou = this.room.state.units.get ? this.room.state.units.get(oid) : (this.room.state.units as any)?.[oid];
+        if (!ou || (ou.hp ?? 0) <= 0) continue;
+        if (myTeam && ou.team !== myTeam) continue;
+        if (u.type === "soldier" && ou.type === "soldier") continue;
+
+        const ors = this.localUnitRenderState.get(oid);
+        const ox = Number(ors?.x ?? ou.x);
+        const oy = Number(ors?.y ?? ou.y);
+        const oRadius = this.localUnitBodyRadius(ou);
+        const minDist = myRadius + oRadius;
+        const yieldDist = minDist + TILE_SIZE * 0.14;
+        const dx = s.x - ox;
+        const dy = s.y - oy;
+        const dist = Math.hypot(dx, dy);
+        if (dist >= yieldDist || dist <= 0.01) continue;
+        if (!this.shouldYieldInPair(uid, String(oid))) continue;
+
+        const overlap = yieldDist - dist;
+        const awayStrength = (dist < minDist ? 0.9 : 0.5) * overlap;
+        let lPX = (dx / dist) * awayStrength;
+        let lPY = (dy / dist) * awayStrength;
+
+        if (moving && toTLen > 1) {
+          const aheadX = toTX / toTLen;
+          const aheadY = toTY / toTLen;
+          const dot = aheadX * (-dx / dist) + aheadY * (-dy / dist);
+          if (dot > 0.45) {
+            const latX = -aheadY;
+            const latY = aheadX;
+            const side = (id < oid) ? 1 : -1;
+            const fanForce = awayStrength * 1.25;
+            lPX += latX * side * fanForce;
+            lPY += latY * side * fanForce;
+          }
+        }
+        pushX += lPX;
+        pushY += lPY;
+        yieldingPairs += 1;
+      }
+      if (yieldingPairs > 0 && Math.hypot(pushX, pushY) > 0.01) {
+        const pushMag = Math.hypot(pushX, pushY);
+        const maxPush = TILE_SIZE * 0.18;
+        if (pushMag > maxPush) {
+          const scale = maxPush / pushMag;
+          pushX *= scale;
+          pushY *= scale;
+        }
+        const newX = s.x + pushX;
+        const newY = s.y + pushY;
+        if (this.canOccupyLocalUnit(newX, newY, myRadius, id)) {
+          s.x = newX;
+          s.y = newY;
+        } else if (this.canOccupyLocalUnit(s.x + pushX, s.y, myRadius, id)) {
+          s.x += pushX;
+        } else if (this.canOccupyLocalUnit(s.x, s.y + pushY, myRadius, id)) {
+          s.y += pushY;
+        }
+        s.vx *= 0.7;
+        s.vy *= 0.7;
+      }
+    }
+
+    if (!isGhost) {
+      const wallCheckR = Math.max(TILE_SIZE * 0.46, this.localUnitBodyRadius(u) + TILE_SIZE * 0.24);
+      const gx = Math.floor(s.x / TILE_SIZE);
+      const gy = Math.floor(s.y / TILE_SIZE);
+      let wallPX = 0;
+      let wallPY = 0;
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          if (dx === 0 && dy === 0) continue;
+          const cx = gx + dx;
+          const cy = gy + dy;
+          if (this.tileAt(cx, cy) !== 0 || this.hasStructureAt(cx, cy) || this.hasCoreAt(cx, cy)) {
+            const tileCX = (cx + 0.5) * TILE_SIZE;
+            const tileCY = (cy + 0.5) * TILE_SIZE;
+            const wdx = s.x - tileCX;
+            const wdy = s.y - tileCY;
+            const wdist = Math.hypot(wdx, wdy);
+            if (wdist < wallCheckR && wdist > 0.01) {
+              const overlap = wallCheckR - wdist;
+              wallPX += (wdx / wdist) * overlap * 1.2;
+              wallPY += (wdy / wdist) * overlap * 1.2;
+            }
+          }
+        }
+      }
+      if (Math.hypot(wallPX, wallPY) > 0.01) {
+        s.x += wallPX;
+        s.y += wallPY;
+      }
+    }
+
+    e.x = s.x;
+    e.y = s.y;
+
+    const velSpeedSq = s.vx * s.vx + s.vy * s.vy;
+    if (velSpeedSq > 25) {
+      const moveDir = this.angleToDir8(Math.atan2(s.vy, s.vx));
+      this.unitFacing.set(id, moveDir);
+    }
+
+    s.lastAt = performance.now();
+  }
+}

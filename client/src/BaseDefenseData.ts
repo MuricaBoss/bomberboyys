@@ -149,14 +149,33 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   soldierLastShotAt = new Map<string, number>();
   attackCursorGraphics: Phaser.GameObjects.Graphics | null = null;
   lastAvoidIntentSentAt = 0;
-  unitClientPathCache = new Map<string, { goalGX: number; goalGY: number; radiusBucket: number; cells: { x: number; y: number }[]; idx: number; updatedAt: number }>();
+  unitClientPathCache = new Map<string, {
+    goalGX: number;
+    goalGY: number;
+    radiusBucket: number;
+    cells: { x: number; y: number }[];
+    idx: number;
+    updatedAt: number;
+    sharedPathKey?: string;
+  }>();
   localUnitRenderState = new Map<string, { x: number; y: number; vx: number; vy: number; lastAt: number; jamRefX?: number; jamRefY?: number }>();
   unitEnemyIcons = new Map<string, Phaser.GameObjects.Graphics>();
   structureEnemyIcons = new Map<string, Phaser.GameObjects.Graphics>();
   hasLoggedTeam = false;
   lastUnitPoseSentAt = 0;
   lastUnitPoseState = new Map<string, { x: number; y: number; dir: number; tx: number; ty: number }>();
-  localUnitTargetOverride = new Map<string, { x: number; y: number; setAt: number; isAuto?: boolean }>();
+  localUnitTargetOverride = new Map<string, {
+    x: number;
+    y: number;
+    setAt: number;
+    isAuto?: boolean;
+    sharedPathKey?: string;
+    sharedPathCenterX?: number;
+    sharedPathCenterY?: number;
+    sharedPathOffsetX?: number;
+    sharedPathOffsetY?: number;
+    pathRadius?: number;
+  }>();
   localUnitFollowState = new Map<string, {
     leaderId: string;
     offsetX: number;

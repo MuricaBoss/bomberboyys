@@ -1392,21 +1392,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             }
           }
 
-          // Keep local movement simulation running even off-camera.
-          // Visual work can still be culled, but our own moving units must not freeze when zooming in.
-          const rsBeforeCull = this.localUnitRenderState.get(id);
           const isSelected = this.selectedUnitIds.has(id);
           const inCamera = isSelected || (
             ux >= camView.x - pad && ux <= camView.right + pad &&
             uy >= camView.y - pad && uy <= camView.bottom + pad
           );
-          const needsLocalSimulation = isLocalOwned && !isDead && (
-            this.hasLocalUnitManualCommand(id)
-            || this.autoEngagedUnitIds.has(id)
-            || String(u.aiState || "") === "walking"
-            || Math.hypot(Number(rsBeforeCull?.vx ?? 0), Number(rsBeforeCull?.vy ?? 0)) > 4
-            || Math.hypot(Number(u.targetX ?? ux) - ux, Number(u.targetY ?? uy) - uy) > TILE_SIZE * 0.2
-          );
+          const needsLocalSimulation = this.shouldKeepLocalUnitSimulationActive(id, u, ux, uy);
 
           // 2. Visuals & Batching
           if (inCamera || needsLocalSimulation) {
