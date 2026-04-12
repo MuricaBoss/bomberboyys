@@ -606,6 +606,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         this.visionTrailTexture = this.add.renderTexture(0, 0, Math.ceil(worldW / 4), Math.ceil(worldH / 4))
             .setVisible(false);
     }
+    if (!this.sharedTrailGraphics) {
+        this.sharedTrailGraphics = this.add.graphics().setVisible(false);
+    }
     
     const me = state.players?.get ? state.players.get(this.currentPlayerId) : state.players?.[this.currentPlayerId];
     if (me && !this.hasHadInitialCameraSnap && Number(me.x) > 10 && Number(me.y) > 10) {
@@ -803,12 +806,15 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
     const brush = this.worldFogMaskGraphics;
 
-    // Build 215 Optimized: Use the persistent world-space vision texture.
+    // Build 215 Fixed: Use the persistent world-space vision texture with correct erase mode.
     const vtt = this.visionTrailTexture;
     if (vtt) {
-        // Map the world-space texture onto the screen-space fog overlay.
-        // The texture is 1/4 size of world, so we scale it by 4 * camZoom.
-        overlay.draw(vtt, -camView.x * camZoom, -camView.y * camZoom, 1, 4 * camZoom);
+        // Texture is 1/4 size of world, so it must be scaled up by 4, 
+        // then multiplied by camera zoom.
+        const totalScale = 4 * camZoom;
+        vtt.setScale(totalScale);
+        vtt.setPosition(-camView.x * camZoom, -camView.y * camZoom);
+        overlay.erase(vtt);
     }
 
     for (const src of this.visionSources) {
