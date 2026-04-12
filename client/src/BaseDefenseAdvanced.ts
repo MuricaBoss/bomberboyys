@@ -587,7 +587,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (!this.worldFogOverlay) {
       this.worldFogOverlay = this.add.renderTexture(0, 0, this.cameras.main.width, this.cameras.main.height)
         .setOrigin(0)
-        .setScrollFactor(1)
+        .setScrollFactor(0)
         .setDepth(240);
     }
     if (!this.worldFogMaskGraphics) {
@@ -749,8 +749,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const cam = this.cameras.main.worldView;
     const camZoom = this.cameras.main.zoom;
     
-    // Always update position to follow camera perfectly (prevent lag)
-    this.worldFogOverlay.setPosition(cam.x, cam.y);
+    // Position 0,0 with scrollFactor 0 means it sticks to the screen perfectly
+    this.worldFogOverlay.setPosition(0, 0);
 
     // Throttled internal draw to save performance, but keep position updates every frame.
     // Redraw the fog texture less often (e.g. every 100ms = 10 FPS) for performance,
@@ -778,7 +778,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (overlay.width !== screenW || overlay.height !== screenH) {
       overlay.resize(screenW, screenH);
     }
-    overlay.setDisplaySize(cam.width, cam.height);
     overlay.clear();
     overlay.fill(0x000000, 0.88, 0, 0, screenW, screenH);
 
