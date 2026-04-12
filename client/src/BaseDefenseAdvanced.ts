@@ -587,7 +587,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (!this.worldFogOverlay) {
       this.worldFogOverlay = this.add.renderTexture(0, 0, this.cameras.main.width, this.cameras.main.height)
         .setOrigin(0)
-        .setScrollFactor(0)
+        .setScrollFactor(1)
         .setDepth(240);
     }
     if (!this.worldFogMaskGraphics) {
@@ -746,46 +746,49 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     }
     this.worldFogOverlay.setVisible(true);
 
-    const cam = this.cameras.main.worldView;
-    const camZoom = this.cameras.main.zoom;
+    const cam = this.cameras.main;
+    const camView = cam.worldView;
+    const camZoom = cam.zoom;
     
-    // Position 0,0 with scrollFactor 0 means it sticks to the screen perfectly
-    this.worldFogOverlay.setPosition(0, 0);
+    // Position exactly at camera's world position to follow it perfectly
+    this.worldFogOverlay.setPosition(camView.x, camView.y);
 
     // Throttled internal draw to save performance, but keep position updates every frame.
     // Redraw the fog texture less often (e.g. every 100ms = 10 FPS) for performance,
     // as requested by the user. Position follows camera at 60 FPS regardless.
     const zoomChanged = !Number.isFinite(this.lastFogZoom) || Math.abs(camZoom - this.lastFogZoom) > 0.001;
     const camMoved = !Number.isFinite(this.lastFogCamX)
-      || Math.abs(cam.x - this.lastFogCamX) >= 0.5
-      || Math.abs(cam.y - this.lastFogCamY) >= 0.5;
+      || Math.abs(camView.x - this.lastFogCamX) >= 0.5
+      || Math.abs(camView.y - this.lastFogCamY) >= 0.5;
     
     // Throttle redraw to 100ms (10 FPS)
     if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < 100) return; 
 
     this.lastWorldFogDrawAt = now;
-    this.lastFogCamX = cam.x;
-    this.lastFogCamY = cam.y;
+    this.lastFogCamX = camView.x;
+    this.lastFogCamY = camView.y;
     this.lastFogZoom = camZoom;
 
     const overlay = this.worldFogOverlay;
     
     // To keep fog sharp, internal texture resolution should match screen resolution, 
     // but its display size matches world view.
-    const screenW = this.cameras.main.width;
-    const screenH = this.cameras.main.height;
+    const screenW = cam.width;
+    const screenH = cam.height;
 
     if (overlay.width !== screenW || overlay.height !== screenH) {
       overlay.resize(screenW, screenH);
     }
+    // Anchor the texture to cover exactly the visible world area
+    overlay.setDisplaySize(camView.width, camView.height);
     overlay.clear();
     overlay.fill(0x000000, 0.88, 0, 0, screenW, screenH);
 
     const brush = this.worldFogMaskGraphics;
     for (const src of this.visionSources) {
       // Map world coords to the screen-resolution texture coordinates
-      const tx = (src.x - cam.x) * camZoom;
-      const ty = (src.y - cam.y) * camZoom;
+      const tx = (src.x - camView.x) * camZoom;
+      const ty = (src.y - camView.y) * camZoom;
       const tRadius = Math.sqrt(src.r2) * camZoom;
 
       if (tx + tRadius < 0 || tx - tRadius > screenW) continue;
