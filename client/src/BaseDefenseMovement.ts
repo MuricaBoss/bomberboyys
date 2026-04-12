@@ -391,12 +391,15 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const radiusBucket = Math.max(4, Math.round(useRadius / 4) * 4);
 
     let cache = this.unitClientPathCache.get(unitId);
+    const cacheExpired = hasSharedPath
+      ? false
+      : ((now - Number(cache?.updatedAt ?? 0)) > 520);
     const needRecalc = !cache
       || cache.goalGX !== goalGX
       || cache.goalGY !== goalGY
       || cache.radiusBucket !== radiusBucket
       || cache.sharedPathKey !== (hasSharedPath ? sharedPathKey : undefined)
-      || (now - cache.updatedAt) > 520
+      || cacheExpired
       || cache.idx >= cache.cells.length;
 
     if (needRecalc) {
@@ -422,17 +425,23 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         return null;
       }
 
-      let bestIdx = 0;
+      let bestIdx = Math.max(0, Math.min(cache?.idx ?? 0, cells.length - 1));
       let minD = Infinity;
       const railCenterX = hasSharedPath ? sharedPathCenterX : (goalGX * TILE_SIZE + TILE_SIZE / 2);
       const railCenterY = hasSharedPath ? sharedPathCenterY : (goalGY * TILE_SIZE + TILE_SIZE / 2);
       const railOffsetX = finalX - railCenterX;
       const railOffsetY = finalY - railCenterY;
+      const searchStart = hasSharedPath && cache ? Math.max(0, cache.idx - 1) : 0;
+      const searchEnd = hasSharedPath && cache ? cells.length : cells.length;
 
-      for (let i = 0; i < cells.length; i++) {
-        const wx = cells[i].x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
-        const wy = cells[i].y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
-        const d = Math.hypot(wx - ux, wy - uy);
+      for (let i = searchStart; i < searchEnd; i++) {
+        const centerWX = cells[i].x * TILE_SIZE + TILE_SIZE / 2;
+        const centerWY = cells[i].y * TILE_SIZE + TILE_SIZE / 2;
+        const wx = centerWX + railOffsetX;
+        const wy = centerWY + railOffsetY;
+        const d = hasSharedPath
+          ? Math.hypot(centerWX - ux, centerWY - uy)
+          : Math.hypot(wx - ux, wy - uy);
         if (d < minD) {
           minD = d;
           bestIdx = i;
@@ -449,6 +458,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         sharedPathKey: hasSharedPath ? sharedPathKey : undefined,
       };
       this.unitClientPathCache.set(unitId, cache);
+    } else if (cache && cache.sharedPathKey && cache.cells.length > 0) {
+      cache.updatedAt = now;
     }
 
     if (!cache) return null;

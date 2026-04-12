@@ -365,9 +365,21 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       if (!this.isClientAuthoritativeUnitType(String(u.type || ""))) return;
       const s = this.localUnitRenderState.get(id);
       if (!s) return;
-      const manualTarget = this.getLocalUnitManualTarget(id);
-      const tx = Number(manualTarget?.finalX ?? u.targetX ?? u.x);
-      const ty = Number(manualTarget?.finalY ?? u.targetY ?? u.y);
+      const manualTarget = this.getLocalUnitManualTarget(id) as any;
+      const distToFinal = manualTarget
+        ? Math.hypot(Number(manualTarget.finalX) - s.x, Number(manualTarget.finalY) - s.y)
+        : 0;
+      const useSharedPathTarget = !!manualTarget?.sharedPathKey && distToFinal > TILE_SIZE * 1.35;
+      const tx = Number(
+        useSharedPathTarget
+          ? manualTarget?.sharedPathCenterX
+          : (manualTarget?.finalX ?? u.targetX ?? u.x)
+      );
+      const ty = Number(
+        useSharedPathTarget
+          ? manualTarget?.sharedPathCenterY
+          : (manualTarget?.finalY ?? u.targetY ?? u.y)
+      );
       const vx = Number(s.vx || 0);
       const vy = Number(s.vy || 0);
       const speedNow = Math.hypot(vx, vy);
