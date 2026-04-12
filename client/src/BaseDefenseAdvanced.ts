@@ -1271,9 +1271,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const isLocalOwned = isFriendly && String(u.ownerId || "") === this.currentPlayerId;
           const isDead = (u.hp ?? 0) <= 0;
 
-          // Frustum Culling: Skip expensive visual updates for off-screen units
-          const inCamera = e && e.x > camView.x - pad && e.x < camView.right + pad && e.y > camView.y - pad && e.y < camView.bottom + pad;
-          const visible = u.visible && !isDead;
+          const ux = Number(u.x);
+          const uy = Number(u.y);
+
+          // Build 221 Fix: Use Fog of War for visibility, not non-existent server property
+          const visible = (isFriendly || this.isVisibleToTeamWithFogMemory(ux, uy)) && !isDead;
           const baseColor = isHarvester
             ? (isFriendly ? 0xe3c44a : 0xd4873c)
             : isTank
@@ -1287,26 +1289,26 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             let trail = this.unitVisionTrails.get(id);
             const vRadius = Math.sqrt(u.visionRangeSq || 40000);
             if (!trail) {
-              trail = { path: [u.x, u.y], lastX: u.x, lastY: u.y, radius: vRadius };
+              trail = { path: [ux, uy], lastX: ux, lastY: uy, radius: vRadius };
               this.unitVisionTrails.set(id, trail);
               if (vtt && this.sharedTrailGraphics) {
-                  this.sharedTrailGraphics.clear().fillStyle(0xffffff, 1).fillCircle(u.x / 4, u.y / 4, vRadius / 4);
+                  this.sharedTrailGraphics.clear().fillStyle(0xffffff, 1).fillCircle(ux / 4, uy / 4, vRadius / 4);
                   vtt.draw(this.sharedTrailGraphics as any);
               }
             } else {
-              const dx = u.x - trail.lastX;
-              const dy = u.y - trail.lastY;
+              const dx = ux - trail.lastX;
+              const dy = uy - trail.lastY;
               if (dx * dx + dy * dy > 400) { 
-                trail.path.push(u.x, u.y);
+                trail.path.push(ux, uy);
                 if (vtt && this.sharedTrailGraphics) {
                     const stg = this.sharedTrailGraphics;
                     stg.clear().lineStyle((vRadius * 2) / 4, 0xffffff, 1);
-                    stg.beginPath().moveTo(trail.lastX / 4, trail.lastY / 4).lineTo(u.x / 4, u.y / 4).strokePath();
-                    stg.fillStyle(0xffffff, 1).fillCircle(u.x / 4, u.y / 4, vRadius / 4);
+                    stg.beginPath().moveTo(trail.lastX / 4, trail.lastY / 4).lineTo(ux / 4, uy / 4).strokePath();
+                    stg.fillStyle(0xffffff, 1).fillCircle(ux / 4, uy / 4, vRadius / 4);
                     vtt.draw(stg);
                 }
-                trail.lastX = u.x;
-                trail.lastY = u.y;
+                trail.lastX = ux;
+                trail.lastY = uy;
                 if (trail.path.length > 2000) trail.path.splice(0, 2); 
               }
             }
@@ -1318,18 +1320,21 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           if (!e || (isTank && !(e instanceof Phaser.GameObjects.Image)) || (isSoldier && !(e instanceof Phaser.GameObjects.Sprite))) {
             if (e) e.destroy();
             if (isTank) {
-              e = this.add.image(u.x, u.y, this.getTankTextureKeyByDir(dir)).setOrigin(0.5, RTS_TANK_ORIGIN_Y);
+              e = this.add.image(ux, uy, this.getTankTextureKeyByDir(dir)).setOrigin(0.5, RTS_TANK_ORIGIN_Y);
             } else if (isSoldier) {
-              e = this.add.sprite(u.x, u.y, this.getSoldierSheetTextureKey("run"), 0).setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y).setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE);
+              e = this.add.sprite(ux, uy, this.getSoldierSheetTextureKey("run"), 0).setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y).setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE);
             } else {
-              e = this.add.arc(u.x, u.y, radius, 0, 360, false, baseColor).setStrokeStyle(1.5, 0xffffff);
+              e = this.add.arc(ux, uy, radius, 0, 360, false, baseColor).setStrokeStyle(1.5, 0xffffff);
             }
             this.unitEntities[id] = e;
-            this.applyWorldDepth(e, Number(u.y), WORLD_DEPTH_UNIT_OFFSET);
+            this.applyWorldDepth(e, uy, WORLD_DEPTH_UNIT_OFFSET);
           }
 
           // 1. Sync Position
           this.updateUnitRenderPos(id, e as any, u, delta, isLocalOwned, isTank);
+          
+          // Build 221 Fix: Recalculate Frustum Culling AFTER creation to ensure new units are visible
+          const inCamera = e.x > camView.x - pad && e.x < camView.right + pad && e.y > camView.y - pad && e.y < camView.bottom + pad;
 
           // 2. Visuals & Batching
           if (inCamera) {
