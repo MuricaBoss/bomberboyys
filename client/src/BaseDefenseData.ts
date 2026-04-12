@@ -35,7 +35,8 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   currentPlayerId = "";
   playerEntities: { [id: string]: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle | Phaser.GameObjects.Image } = {};
   playerLabels: { [id: string]: Phaser.GameObjects.Text } = {};
-  unitEntities: { [id: string]: Phaser.GameObjects.Arc | Phaser.GameObjects.Image | Phaser.GameObjects.Sprite } = {};
+  unitEntities: { [id: string]: Phaser.GameObjects.Sprite | Phaser.GameObjects.Image | Phaser.GameObjects.Arc } = {};
+  unitVisionTrails = new Map<string, { graphics: Phaser.GameObjects.Graphics, lastX: number, lastY: number, radius: number }>();
   unitFacing = new Map<string, number>();
   // Hysteresis: tracks (tentativeDir, frameCount) to prevent rapid texture flipping.
   // Tank texture only switches after the same new direction appears 5+ consecutive frames.

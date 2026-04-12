@@ -794,6 +794,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     overlay.fill(0x000000, 0.88, 0, 0, screenW, screenH);
 
     const brush = this.worldFogMaskGraphics;
+
+    // Draw persistent trails from living units
+    for (const trail of this.unitVisionTrails.values()) {
+        overlay.erase(trail.graphics);
+    }
+
     for (const src of this.visionSources) {
       // Map world coords to the screen-resolution texture coordinates
       const tx = (src.x - camView.x) * camZoom;
@@ -1451,9 +1457,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           
           if (u.hp <= 0) soldier.setTint(0x444444);
           else soldier.clearTint();
-        } else if ("setRadius" in e) {
-          (e as Phaser.GameObjects.Arc).setRadius(radius);
-          (e as Phaser.GameObjects.Arc).setFillStyle(u.hp <= 0 ? 0x444444 : baseColor, 1);
+        } else if (e instanceof Phaser.GameObjects.Arc) {
+          e.setRadius(radius);
+          e.setFillStyle(u.hp <= 0 ? 0x444444 : baseColor, 1);
         }
 
         if (e.visible !== visible) e.setVisible(visible);
@@ -1621,6 +1627,56 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         this.unitLastShotDir.delete(id);
       }
     }
+
+    // --- Build 211: Vision Trails Tracking ---
+    const mePlayer = state.players.get(this.currentPlayerId);
+    state.units.forEach((u: any, id: string) => {
+      const isDead = (u.hp ?? 0) <= 0;
+      if (mePlayer && u.team === mePlayer.team && !isDead) {
+        let trail = this.unitVisionTrails.get(id);
+        const radius = Math.sqrt(u.visionRangeSq || 40000);
+        
+        if (!trail) {
+          trail = { 
+            graphics: this.add.graphics().setVisible(false), 
+            lastX: u.x, 
+            lastY: u.y,
+            radius: radius
+          };
+          this.unitVisionTrails.set(id, trail);
+          trail.graphics.fillStyle(0xffffff, 1);
+          trail.graphics.fillCircle(u.x, u.y, radius);
+        } else {
+          const dx = u.x - trail.lastX;
+          const dy = u.y - trail.lastY;
+          if (dx * dx + dy * dy > 25) { // Move > 5 pixels
+            trail.graphics.lineStyle(radius * 2, 0xffffff, 1);
+            trail.graphics.beginPath();
+            trail.graphics.moveTo(trail.lastX, trail.lastY);
+            trail.graphics.lineTo(u.x, u.y);
+            trail.graphics.strokePath();
+            trail.graphics.fillStyle(0xffffff, 1);
+            trail.graphics.fillCircle(u.x, u.y, radius);
+            trail.lastX = u.x;
+            trail.lastY = u.y;
+          }
+        }
+      } else if (isDead && this.unitVisionTrails.has(id)) {
+        const trail = this.unitVisionTrails.get(id);
+        if (trail?.graphics) trail.graphics.destroy();
+        this.unitVisionTrails.delete(id);
+      }
+    });
+
+    // Clean up trails for units that were removed from state
+    for (const [id, trail] of Array.from(this.unitVisionTrails.entries())) {
+      if (!state.units.has(id)) {
+        trail.graphics.destroy();
+        this.unitVisionTrails.delete(id);
+      }
+    }
+    // ----------------------------------------
+
     for (const id of Object.keys(this.unitHpTexts)) {
       if (!seenUnitHp.has(id)) {
         this.unitHpTexts[id].destroy();
