@@ -593,6 +593,14 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (!this.worldFogMaskGraphics) {
       this.worldFogMaskGraphics = this.add.graphics().setVisible(false);
     }
+    if (!this.unitUiGraphics) {
+      this.unitUiGraphics = this.add.graphics().setDepth(WORLD_DEPTH_HP_OFFSET);
+    }
+    if (!this.unitShadowGraphics) {
+      this.unitShadowGraphics = this.add.graphics()
+        .setDepth(WORLD_DEPTH_BASE + WORLD_DEPTH_SHADOW_GAP)
+        .setAlpha(0.4);
+    }
     this.worldFogOverlay.setVisible(true);
     this.cameras.main.removeBounds();
     
@@ -1242,485 +1250,175 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
     this.perfStart("syncUnits");
     const seenUnits = new Set<string>();
-    const seenUnitHp = new Set<string>();
+    
+    // Build 218: Prepare shared graphics for batching
+    this.unitUiGraphics?.clear();
+    this.unitShadowGraphics?.clear();
+    const camView = this.cameras.main.worldView;
+    const pad = 64;
+    const vtt = this.visionTrailTexture;
+    let needsRebuild = false;
+
     if (state.units?.forEach) {
       try {
         state.units.forEach((u: any, id: string) => {
-        seenUnits.add(id);
-        let e = this.unitEntities[id];
-        const isTank = u.type === "tank";
-        const isSoldier = u.type === "soldier";
-        const isHarvester = u.type === "harvester";
-        const isFriendly = !!myTeam && u.team === myTeam;
-        const isLocalOwned = isFriendly && String(u.ownerId || "") === this.currentPlayerId;
-        // Build 149: Use render-state position + generous margin to prevent sprite edge-flicker.
-        // worldView.contains() is an exact-point test — a 64px tank anchored at its centre
-        // can be well inside the view while its server-position is already outside it.
-        const rsForCull = this.localUnitRenderState.get(id);
-        const cullX = rsForCull?.x ?? Number(u.x);
-        const cullY = rsForCull?.y ?? Number(u.y);
-        const CULL_MARGIN = 96;
-        const wv = this.cameras.main.worldView;
-        const inCamera = cullX >= wv.x - CULL_MARGIN && cullX <= wv.right + CULL_MARGIN
-          && cullY >= wv.y - CULL_MARGIN && cullY <= wv.bottom + CULL_MARGIN;
-        const visible = (isFriendly || this.isVisibleToTeamWithFogMemory(Number(u.x), Number(u.y))) && inCamera;
-        const baseColor = isHarvester
-          ? (isFriendly ? 0xe3c44a : 0xd4873c)
-          : isTank
-            ? (isFriendly ? 0x8ea7bf : 0xd24d2e)
-            : (isFriendly ? 0x6ec4ff : 0xff4f1a);
-        const radius = isHarvester ? TILE_SIZE * 0.18 : isTank ? TILE_SIZE * 0.3 : TILE_SIZE * 0.22;
-        let dir = this.unitFacing.get(id) ?? (typeof u.dir === "number" ? u.dir : 1);
-        // Build 147: Force Southeast default if dir is 0 and it's a fresh unit
-        if (!this.unitFacing.has(id)) {
-            if (dir === 0) dir = 1;
-            this.unitFacing.set(id, dir);
-        }
-        if (
-          !e
-          || (isTank && !(e instanceof Phaser.GameObjects.Image))
-          || (isSoldier && !(e instanceof Phaser.GameObjects.Sprite))
-          || (!isTank && !isSoldier && !(e instanceof Phaser.GameObjects.Arc))
-        ) {
-          if (e) e.destroy();
-          if (isTank) {
-            e = this.add.image(u.x, u.y, this.getTankTextureKeyByDir(this.unitFacing.get(id) ?? 1))
-              .setOrigin(0.5, RTS_TANK_ORIGIN_Y);
-            // Build 149: Apply correct world-depth immediately so new units start BEHIND
-            // the factory building they emerge from, not on top of it.
-            this.applyWorldDepth(e, Number(u.y), WORLD_DEPTH_UNIT_OFFSET);
-          } else if (isSoldier) {
-            e = this.add.sprite(u.x, u.y, this.getSoldierSheetTextureKey("run"), 0)
-              .setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y)
-              .setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE)
-              .setVisible(false);
-            this.applyWorldDepth(e, Number(u.y), WORLD_DEPTH_UNIT_OFFSET);
-          } else {
-            e = this.add.arc(u.x, u.y, radius, 0, 360, false, baseColor).setStrokeStyle(1.5, 0xffffff);
-            this.applyWorldDepth(e, Number(u.y), WORLD_DEPTH_UNIT_OFFSET);
-          }
-          this.unitEntities[id] = e;
+          seenUnits.add(id);
+          let e = this.unitEntities[id];
+          const isTank = u.type === "tank";
+          const isSoldier = u.type === "soldier";
+          const isHarvester = u.type === "harvester";
+          const isFriendly = !!myTeam && u.team === myTeam;
+          const isLocalOwned = isFriendly && String(u.ownerId || "") === this.currentPlayerId;
+          const isDead = (u.hp ?? 0) <= 0;
 
-          // ----- AUTOMATIC CLIENT RALLY POINT -----
-          if (isLocalOwned && (u.hp ?? 0) > 0 && !this.unitAutoRallied?.has(id)) {
-            if (!this.unitAutoRallied) this.unitAutoRallied = new Set();
-            this.unitAutoRallied.add(id);
-            // New unit just popped out of our factory. Tell it to move to a clear slot nearby!
-            // We use a fixed point slightly below the exit so the grid spiral naturally fills space
-            // downwards without random detours.
-            const tgtX = u.x;
-            const tgtY = u.y + 60;
-            
-            // Temporarily trick the client into running the full collision-aware movement dispatch for this unit
-            const tmpSelected = new Set(this.selectedUnitIds);
-            this.selectedUnitIds = new Set([id]);
-            // @ts-ignore
-            if (typeof this.issueLocalUnitMoveCommand === "function") {
-              // @ts-ignore
-              this.issueLocalUnitMoveCommand(tgtX, tgtY);
-            }
-            this.selectedUnitIds = tmpSelected;
-          }
-        }
+          // Frustum Culling: Skip expensive visual updates for off-screen units
+          const inCamera = e && e.x > camView.x - pad && e.x < camView.right + pad && e.y > camView.y - pad && e.y < camView.bottom + pad;
+          const visible = u.visible && !isDead;
+          const baseColor = isHarvester
+            ? (isFriendly ? 0xe3c44a : 0xd4873c)
+            : isTank
+              ? (isFriendly ? 0x8ea7bf : 0xd24d2e)
+              : (isFriendly ? 0x6ec4ff : 0xff4f1a);
+          const radius = isHarvester ? TILE_SIZE * 0.18 : isTank ? TILE_SIZE * 0.3 : TILE_SIZE * 0.22;
+          let dir = this.unitFacing.get(id) ?? (typeof u.dir === "number" ? u.dir : 1);
 
-        // 1. Synchronize Position (Interpolation)
-        this.updateUnitRenderPos(id, e as any, u, delta, isLocalOwned, isTank);
-        const rs = this.localUnitRenderState.get(id);
-        const ux = Number(rs?.x ?? u.x);
-        const uy = Number(rs?.y ?? u.y);
-
-        // 2. Calculate Orientation (Direction)
-        const atkTargetId = this.unitAttackTarget.get(id);
-        if (isTank || isSoldier) {
-          const vx = Number(rs?.vx ?? 0);
-          const vy = Number(rs?.vy ?? 0);
-          const speed = Math.hypot(vx, vy);
-          const isIdle = String(u.aiState || "") === "idle";
-          const committedDir = this.unitFacing.get(id);
-          const moving = (speed > 1) || (String(u.aiState || "") === "walking");
-
-          if (isLocalOwned) {
-            // AUTHORITATIVE LOCAL UNIT
-            // Build 148: If slot-locked, preserve the arrival heading set during snap.
-            // Server aiState may still be 'walking' even though vx/vy are zeroed,
-            // and atan2(0,0) = 0 would incorrectly flip to East.
-            const isSlotLocked = this.unitSlotLocked.has(String(id));
-            if (isSlotLocked && committedDir !== undefined) {
-              dir = committedDir;
-            } else if (moving) {
-              dir = this.angleToDir8(Math.atan2(vy, vx));
-            } else if (committedDir !== undefined) {
-              dir = committedDir; // Preferred: snapped or idle direction
-            } else if (typeof u.dir === "number") {
-              dir = u.dir;
-            }
-          } else {
-            // REMOTE NETWORK UNIT
-            if (typeof u.dir === "number" && u.dir >= 0 && u.dir < 8) {
-              dir = u.dir; // Always trust the owner's broadcasted direction
-            } else if (moving) {
-              dir = this.angleToDir8(Math.atan2(vy, vx));
-            } else if (committedDir !== undefined) {
-              dir = committedDir;
-            }
-          }
-
-          // Override if attacking
-          if (atkTargetId) {
-            const atkTarget = (this.room?.state?.units?.get ? this.room.state.units.get(atkTargetId) : this.room?.state?.units?.[atkTargetId]);
-            if (atkTarget && (atkTarget.hp ?? 0) > 0) {
-              const atkX = Number(atkTarget.x) - ux;
-              const atkY = Number(atkTarget.y) - uy;
-              if (Math.hypot(atkX, atkY) > 0.5) dir = this.angleToDir8(Math.atan2(atkY, atkX));
-            }
-          }
-
-          const lastShot = this.unitLastShotDir.get(id);
-          if (lastShot && (Date.now() - lastShot.at) < 800) {
-            dir = lastShot.dir;
-          }
-
-          // Build 147: Maintain 2-step history of unique directions
-          if (moving) {
-            const history = this.unitDirSnapshot.get(id) || [1]; // Start with Southeast default
-            if (history.length === 0 || history[0] !== dir) {
-              history.unshift(dir);
-              if (history.length > 2) history.pop();
-              this.unitDirSnapshot.set(id, history);
-            }
-          }
-
-          if (isLocalOwned && !moving && !atkTargetId) {
-            const vote = this.unitDirVote.get(id);
-            if (vote) {
-              this.unitFacing.set(id, vote.dir);
-              this.unitDirVote.delete(id);
-              dir = vote.dir;
-            }
-          }
-        }
-
-        // 3. Update Visuals
-        if (isTank) {
-          const moving = (Math.hypot(Number(rs?.vx ?? 0), Number(rs?.vy ?? 0)) > 1) || (String(u.aiState || "") === "walking");
-          const committedDir = this.unitFacing.get(id) ?? dir;
-          if (dir !== committedDir) {
-            const vote = this.unitDirVote.get(id) || { dir, count: 0 };
-            if (vote.dir === dir) {
-              vote.count += 1;
-              const threshold = moving ? 2 : 5;
-              if (vote.count >= threshold) {
-                this.unitFacing.set(id, dir);
-                this.unitDirVote.delete(id);
-              } else {
-                this.unitDirVote.set(id, vote);
-                dir = committedDir;
+          // Build 217 Support: Vision trail tracking (Always track regardless of camera)
+          if (isFriendly && !isDead) {
+            let trail = this.unitVisionTrails.get(id);
+            const vRadius = Math.sqrt(u.visionRangeSq || 40000);
+            if (!trail) {
+              trail = { path: [u.x, u.y], lastX: u.x, lastY: u.y, radius: vRadius };
+              this.unitVisionTrails.set(id, trail);
+              if (vtt && this.sharedTrailGraphics) {
+                  this.sharedTrailGraphics.clear().fillStyle(0xffffff, 1).fillCircle(u.x / 4, u.y / 4, vRadius / 4);
+                  vtt.draw(this.sharedTrailGraphics as any);
               }
             } else {
-              this.unitDirVote.set(id, { dir, count: 1 });
-              dir = committedDir;
-            }
-          } else {
-            this.unitDirVote.delete(id);
-            dir = committedDir;
-          }
-
-          const tankTextureKey = this.getTankTextureKeyByDir(dir);
-          const tank = e as Phaser.GameObjects.Image;
-          if (tank.texture?.key !== tankTextureKey) tank.setTexture(tankTextureKey);
-          tank.setOrigin(0.5, RTS_TANK_ORIGIN_Y);
-          tank.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
-          // Build 156: No longer coloring enemies red; only clear tint (friendly and enemy) or grey (dead)
-          if (u.hp <= 0) tank.setTint(0x444444);
-          else tank.clearTint();
-        } else if (isSoldier) {
-          const committedDir = this.unitFacing.get(id) ?? dir;
-          if (dir !== committedDir) {
-            const vote = this.unitDirVote.get(id);
-            if (vote && vote.dir === dir) {
-              vote.count += 1;
-              if (vote.count >= 5) {
-                this.unitFacing.set(id, dir);
-                this.unitDirVote.delete(id);
-              } else {
-                dir = committedDir;
-              }
-            } else {
-              this.unitDirVote.set(id, { dir, count: 1 });
-              dir = committedDir;
-            }
-          } else {
-            this.unitDirVote.delete(id);
-            dir = committedDir;
-          }
-
-          const soldier = e as Phaser.GameObjects.Sprite;
-          soldier.setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y);
-          soldier.setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE);
-          const targetDx = Number(u.targetX ?? u.x) - ux;
-          const targetDy = Number(u.targetY ?? u.y) - uy;
-          const isSlotLocked = this.unitSlotLocked.has(String(id));
-          const hasImmediateMoveTarget = !isSlotLocked && this.localUnitTargetOverride.has(id) && Math.hypot(targetDx, targetDy) > 2;
-          const moving = Math.hypot(Number(rs?.vx ?? 0), Number(rs?.vy ?? 0)) > 6
-            || hasImmediateMoveTarget
-            || (!isSlotLocked && String(u.aiState || "") === "walking" && Math.hypot(targetDx, targetDy) > TILE_SIZE * 0.08);
-          const isShooting = !moving && this.unitAttackTarget.has(id);
-          if (isShooting) {
-            const animKey = this.getSoldierAnimKey("shoot", dir);
-            if (soldier.anims.currentAnim?.key !== animKey) soldier.anims.play(animKey, true);
-          } else if (moving) {
-            const animKey = this.getSoldierAnimKey("run", dir);
-            if (soldier.anims.currentAnim?.key !== animKey) soldier.anims.play(animKey, true);
-          } else {
-            soldier.anims.stop();
-            soldier.setTexture(this.getSoldierSheetTextureKey("run"), this.getSoldierIdleFrame(dir));
-          }
-          
-          if (u.hp <= 0) soldier.setTint(0x444444);
-          else soldier.clearTint();
-        } else if (e instanceof Phaser.GameObjects.Arc) {
-          e.setRadius(radius);
-          e.setFillStyle(u.hp <= 0 ? 0x444444 : baseColor, 1);
-        }
-
-        if (e.visible !== visible) e.setVisible(visible);
-        this.applyWorldDepth(e, e.y, WORLD_DEPTH_UNIT_OFFSET);
-
-        // 4. Update Effects & Shadows
-        if (inCamera) {
-          if (isTank && e instanceof Phaser.GameObjects.Image) {
-            // Only update trail if it's NOT a brand new unit to avoid 0,0 glitches
-            const isNew = !this.tankTrailState.has(id);
-            this.updateTankTrailForUnit(id, e, visible && (u.hp ?? 0) > 0, dir);
-            if (isNew) {
-                const trailState = this.tankTrailState.get(id);
-                if (trailState) {
-                    trailState.lastSpawnX = e.x;
-                    trailState.lastSpawnY = e.y;
+              const dx = u.x - trail.lastX;
+              const dy = u.y - trail.lastY;
+              if (dx * dx + dy * dy > 400) { 
+                trail.path.push(u.x, u.y);
+                if (vtt && this.sharedTrailGraphics) {
+                    const stg = this.sharedTrailGraphics;
+                    stg.clear().lineStyle((vRadius * 2) / 4, 0xffffff, 1);
+                    stg.beginPath().moveTo(trail.lastX / 4, trail.lastY / 4).lineTo(u.x / 4, u.y / 4).strokePath();
+                    stg.fillStyle(0xffffff, 1).fillCircle(u.x / 4, u.y / 4, vRadius / 4);
+                    vtt.draw(stg);
                 }
+                trail.lastX = u.x;
+                trail.lastY = u.y;
+                if (trail.path.length > 2000) trail.path.splice(0, 2); 
+              }
             }
-            let tankShadow = this.tankShadowEntities[id];
-            if ((u.hp ?? 0) > 0 && visible) {
-              const pos = this.getTankShadowPosition(e, dir);
-              if (!tankShadow) {
-                tankShadow = this.add.image(pos.x, pos.y, this.getTankShadowTextureKey(dir))
-                  .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
-                  .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE)
-                  .setAlpha(RTS_IMAGE_SHADOW_ALPHA)
-                  .setBlendMode(Phaser.BlendModes.MULTIPLY)
-                  .setTint(0x000000);
-                this.tankShadowEntities[id] = tankShadow;
+          } else if (isDead && this.unitVisionTrails.has(id)) {
+            this.unitVisionTrails.delete(id);
+            needsRebuild = true;
+          }
+
+          if (!e || (isTank && !(e instanceof Phaser.GameObjects.Image)) || (isSoldier && !(e instanceof Phaser.GameObjects.Sprite))) {
+            if (e) e.destroy();
+            if (isTank) {
+              e = this.add.image(u.x, u.y, this.getTankTextureKeyByDir(dir)).setOrigin(0.5, RTS_TANK_ORIGIN_Y);
+            } else if (isSoldier) {
+              e = this.add.sprite(u.x, u.y, this.getSoldierSheetTextureKey("run"), 0).setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y).setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE);
+            } else {
+              e = this.add.arc(u.x, u.y, radius, 0, 360, false, baseColor).setStrokeStyle(1.5, 0xffffff);
+            }
+            this.unitEntities[id] = e;
+            this.applyWorldDepth(e, Number(u.y), WORLD_DEPTH_UNIT_OFFSET);
+          }
+
+          // 1. Sync Position
+          this.updateUnitRenderPos(id, e as any, u, delta, isLocalOwned, isTank);
+
+          // 2. Visuals & Batching
+          if (inCamera) {
+            if (isTank && e instanceof Phaser.GameObjects.Image) {
+              const tank = e;
+              tank.setTexture(this.getTankTextureKeyByDir(dir));
+              if (isDead) tank.setTint(0x444444); else tank.clearTint();
+              
+              const shadowPos = this.getTankShadowPosition(tank, dir);
+              let ts = this.tankShadowEntities[id];
+              if (!ts && visible) {
+                ts = this.add.image(shadowPos.x, shadowPos.y, this.getTankShadowTextureKey(dir)).setOrigin(0.5, RTS_TANK_ORIGIN_Y).setAlpha(0.4).setBlendMode(Phaser.BlendModes.MULTIPLY).setTint(0x000000);
+                this.tankShadowEntities[id] = ts;
               }
-              if (tankShadow.texture?.key !== this.getTankShadowTextureKey(dir)) {
-                tankShadow.setTexture(this.getTankShadowTextureKey(dir));
+              if (ts) {
+                  ts.setVisible(visible);
+                  if (visible) {
+                      ts.setPosition(shadowPos.x, shadowPos.y);
+                      ts.setTexture(this.getTankShadowTextureKey(dir));
+                      this.applyWorldDepth(ts, e.y, WORLD_DEPTH_UNIT_OFFSET - WORLD_DEPTH_SHADOW_GAP);
+                  }
               }
-              tankShadow.setPosition(pos.x, pos.y);
-              tankShadow.setOrigin(0.5, RTS_TANK_ORIGIN_Y);
-              tankShadow.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
-              this.applyWorldDepth(tankShadow, e.y, WORLD_DEPTH_UNIT_OFFSET - WORLD_DEPTH_SHADOW_GAP);
-              tankShadow.setVisible(true);
-              tankShadow.setTint(0x000000); // Ensure it stays black
-            } else if (tankShadow) {
-              tankShadow.setVisible(false);
+              this.maybeFireUnitProjectile(id, u, e, isFriendly, visible, dir, true);
+            } else if (isSoldier && e instanceof Phaser.GameObjects.Sprite) {
+              const soldier = e;
+              const moving = Math.hypot(Number(u.vx || 0), Number(u.vy || 0)) > 6 || String(u.aiState || "") === "walking";
+              if (moving) soldier.anims.play(this.getSoldierAnimKey("run", dir), true);
+              else { soldier.anims.stop(); soldier.setTexture(this.getSoldierSheetTextureKey("run"), this.getSoldierIdleFrame(dir)); }
+              if (isDead) soldier.setTint(0x444444); else soldier.clearTint();
+
+              if (visible && this.unitShadowGraphics) {
+                  this.unitShadowGraphics.fillStyle(0x000000, 0.5);
+                  this.unitShadowGraphics.fillEllipse(e.x, e.y + 4, 18, 10);
+              }
+              this.maybeFireUnitProjectile(id, u, e, isFriendly, visible, dir, false);
             }
             
-            this.maybeFireUnitProjectile(id, u, e, isFriendly, visible, dir, isTank);
-          } else if (isSoldier && e instanceof Phaser.GameObjects.Sprite) {
-            const shadowSpec = this.getSoldierShadowSpec(e);
-            const shadow = this.syncGroundShadow(
-              this.unitShadowEntities[id],
-              shadowSpec.x,
-              shadowSpec.y,
-              shadowSpec.width,
-              shadowSpec.height,
-              shadowSpec.y,
-              e.y,
-              WORLD_DEPTH_UNIT_OFFSET,
-              RTS_IMAGE_SHADOW_ALPHA,
-            );
-            shadow.setVisible(visible);
-            this.unitShadowEntities[id] = shadow;
-            this.maybeFireUnitProjectile(id, u, e, isFriendly, visible, dir, isTank);
-          } else if (this.unitShadowEntities[id]) {
-            this.destroyGroundShadow(this.unitShadowEntities[id]);
-            delete this.unitShadowEntities[id];
-          }
-        }
-        e.setVisible(visible);
+            if (visible && this.unitUiGraphics) {
+              const uig = this.unitUiGraphics;
+              const isSelected = this.selectedUnitIds.has(id);
+              
+              if (isSelected) {
+                const ringSize = isTank ? this.getTankSelectionBoxSize(e as any) : TILE_SIZE * 0.7;
+                const ringY = isTank ? this.getTankSelectionY(e as any, dir) : e.y + 2;
+                uig.lineStyle(2, 0x00ffcc, 1);
+                uig.strokeRect(e.x - ringSize / 2, ringY - ringSize / 2, ringSize, ringSize);
+              }
 
-        const shouldShowEnemyIcon = !isFriendly && visible && (u.hp ?? 0) > 0;
-        let enemyIcon = this.unitEnemyIcons.get(id);
-        if (shouldShowEnemyIcon) {
-          if (!enemyIcon) {
-            enemyIcon = this.add.graphics();
-            enemyIcon.fillStyle(0xff0000, 0.9);
-            enemyIcon.fillCircle(0, 0, 5); // Build 156: Consistent 5px radius
-            enemyIcon.lineStyle(1.5, 0xffffff, 0.7);
-            enemyIcon.strokeCircle(0, 0, 5);
-            enemyIcon.setDepth(20);
-            this.unitEnemyIcons.set(id, enemyIcon);
-          }
-          enemyIcon.setVisible(true);
-          const topY = this.getSpriteTopY(e as any);
-          enemyIcon.setPosition(e.x, topY - 14);
-        } else if (enemyIcon) {
-          enemyIcon.setVisible(false);
-        }
+              if (!isFriendly) {
+                const topY = this.getSpriteTopY(e as any);
+                uig.fillStyle(0xff0000, 0.9).fillCircle(e.x, topY - 14, 5);
+                uig.lineStyle(1.5, 0xffffff, 0.7).strokeCircle(e.x, topY - 14, 5);
+              }
 
-        const shouldShowRing = !!myTeam && u.team === myTeam && this.selectedUnitIds.has(id);
-        let ring = this.unitSelectionRings[id];
-        const showHp = visible && u.hp > 0 && (!isFriendly || shouldShowRing || isTank);
-        if (shouldShowRing && u.hp > 0) {
-          const ringSize = isTank && e instanceof Phaser.GameObjects.Image
-            ? this.getTankSelectionBoxSize(e)
-            : TILE_SIZE * 0.7;
-          const ringY = isTank && e instanceof Phaser.GameObjects.Image
-            ? this.getTankSelectionY(e, dir)
-            : e.y + 2;
-          if (!ring) {
-            ring = this.add.rectangle(e.x, ringY, ringSize, ringSize, 0x00ffcc, 0).setStrokeStyle(2, 0x00ffcc).setDepth(15);
-            this.unitSelectionRings[id] = ring;
+              const barW = isTank ? 40 : 20;
+              const barH = 4;
+              const barY = isTank ? this.getTankHpY(e as any) - barH : (e.y - TILE_SIZE * 0.45);
+              const hpRatio = Math.max(0, Math.min(1, (u.hp || 0) / (u.maxHp || 1)));
+              uig.fillStyle(0x000000, 0.6).fillRect(e.x - barW / 2, barY, barW, barH);
+              uig.fillStyle(hpRatio > 0.4 ? 0x00ff00 : 0xff0000, 0.9).fillRect(e.x - barW / 2, barY, barW * hpRatio, barH);
+            }
+            
+            e.setVisible(visible);
+            this.applyWorldDepth(e, e.y, WORLD_DEPTH_UNIT_OFFSET);
+          } else {
+              e.setVisible(false);
+              this.tankShadowEntities[id]?.setVisible(false);
           }
-          ring.setDisplaySize(ringSize, ringSize);
-          ring.x = e.x;
-          ring.y = ringY;
-          this.applyWorldDepth(ring, e.y, WORLD_DEPTH_SELECTION_OFFSET);
-          ring.setVisible(visible);
-        } else if (ring) {
-          ring.setVisible(false);
-        }
-        if (showHp) {
-          let hp = this.unitHpTexts[id];
-          if (!hp) {
-            hp = this.add.text(e.x, e.y - TILE_SIZE * 0.46, "", {
-              fontSize: "11px",
-              color: "#ffffff",
-              fontFamily: "Arial",
-              backgroundColor: "#00000088",
-            }).setPadding(3, 1, 3, 1).setOrigin(0.5, 1).setDepth(18);
-            this.unitHpTexts[id] = hp;
-          }
-          hp.setText(`${Math.max(0, Math.floor(u.hp || 0))}/${Math.max(1, Math.floor(u.maxHp || 1))}`);
-          hp.setPosition(
-            e.x,
-            isTank && e instanceof Phaser.GameObjects.Image
-              ? this.getTankHpY(e)
-              : e instanceof Phaser.GameObjects.Sprite
-                ? this.getSoldierHpY(e)
-                : e.y - TILE_SIZE * 0.46,
-          );
-          this.applyWorldDepth(hp, e.y, WORLD_DEPTH_HP_OFFSET);
-          hp.setVisible(true);
-          seenUnitHp.add(id);
-        }
-      });
+        });
       } catch (err) {
         console.error("[BaseDefense] Error in units loop:", err);
       }
     }
+
+    // Cleanup and Trails Rebuild
+    const trailIds = Array.from(this.unitVisionTrails.keys());
+    for (const tid of trailIds) {
+        if (!state.units.has(tid)) { this.unitVisionTrails.delete(tid); needsRebuild = true; }
+    }
+    if (needsRebuild) this.rebuildVisionTrailTexture();
+
     for (const id of Object.keys(this.unitEntities)) {
-      if (!seenUnits.has(id)) {
+      if (!state.units.has(id)) {
         this.unitEntities[id].destroy();
         delete this.unitEntities[id];
-        this.destroyGroundShadow(this.unitShadowEntities[id]);
-        delete this.unitShadowEntities[id];
         this.tankShadowEntities[id]?.destroy();
         delete this.tankShadowEntities[id];
         this.unitFacing.delete(id);
-        this.unitDirVote.delete(id);
-        this.tankTrailState.delete(id);
-        this.unitClientPathCache.delete(id);
-        this.localUnitRenderState.delete(id);
-        this.lastUnitPoseState.delete(id);
-        this.localUnitJamTicks.delete(id);
-        this.localUnitTargetOverride.delete(id);
-        this.soldierLastShotAt.delete(id);
-        this.localUnitMovePriority.delete(id);
-        this.unitSelectionRings[id]?.destroy();
-        delete this.unitSelectionRings[id];
-        this.unitHpTexts[id]?.destroy();
-        delete this.unitHpTexts[id];
-        this.unitEnemyIcons.get(id)?.destroy();
-        this.unitEnemyIcons.delete(id);
         this.selectedUnitIds.delete(id);
-        this.autoEngagedUnitIds.delete(id);
-        this.unitAttackTarget.delete(id);
-        this.unitLastShotDir.delete(id);
-      }
-    }
-
-    // --- Build 217: Incremental Vision Trails Tracking ---
-    const mePlayer = state.players.get(this.currentPlayerId);
-    let needsRebuild = false;
-    const vtt = this.visionTrailTexture;
-    
-    // Ensure shared graphics is ready
-    if (!this.sharedTrailGraphics) {
-        this.sharedTrailGraphics = this.add.graphics().setVisible(false);
-    }
-
-    state.units.forEach((u: any, id: string) => {
-      const isDead = (u.hp ?? 0) <= 0;
-      if (mePlayer && u.team === mePlayer.team && !isDead) {
-        let trail = this.unitVisionTrails.get(id);
-        const radius = Math.sqrt(u.visionRangeSq || 40000);
-        
-        if (!trail) {
-          trail = { 
-            path: [u.x, u.y], 
-            lastX: u.x, 
-            lastY: u.y,
-            radius: radius
-          };
-          this.unitVisionTrails.set(id, trail);
-          // Initial point painting (Scale world to texture: / 4)
-          if (vtt) {
-              this.sharedTrailGraphics?.clear().fillStyle(0xffffff, 1).fillCircle(u.x / 4, u.y / 4, radius / 4);
-              vtt.draw(this.sharedTrailGraphics as any);
-          }
-        } else {
-          const dx = u.x - trail.lastX;
-          const dy = u.y - trail.lastY;
-          if (dx * dx + dy * dy > 400) { 
-            trail.path.push(u.x, u.y);
-            // Incremental paint of the NEW segment into the persistent texture
-            if (vtt && this.sharedTrailGraphics) {
-                const stg = this.sharedTrailGraphics;
-                stg.clear();
-                // Draw line and cap in texture space (/ 4)
-                stg.lineStyle((radius * 2) / 4, 0xffffff, 1);
-                stg.beginPath().moveTo(trail.lastX / 4, trail.lastY / 4).lineTo(u.x / 4, u.y / 4).strokePath();
-                stg.fillStyle(0xffffff, 1).fillCircle(u.x / 4, u.y / 4, radius / 4);
-                vtt.draw(stg);
-            }
-            trail.lastX = u.x;
-            trail.lastY = u.y;
-            if (trail.path.length > 2000) trail.path.splice(0, 2); 
-          }
-        }
-      } else if (isDead && this.unitVisionTrails.has(id)) {
-        this.unitVisionTrails.delete(id);
-        needsRebuild = true;
-      }
-    });
-
-    const trailIds = Array.from(this.unitVisionTrails.keys());
-    for (const tid of trailIds) {
-      if (!state.units.has(tid)) {
-        this.unitVisionTrails.delete(tid);
-        needsRebuild = true;
-      }
-    }
-
-    if (needsRebuild) {
-        this.rebuildVisionTrailTexture();
-    }
-    // ----------------------------------------
-
-    for (const id of Object.keys(this.unitHpTexts)) {
-      if (!seenUnitHp.has(id)) {
-        this.unitHpTexts[id].destroy();
-        delete this.unitHpTexts[id];
       }
     }
     this.perfEnd("syncUnits");
