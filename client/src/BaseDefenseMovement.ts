@@ -433,6 +433,13 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const railOffsetY = finalY - railCenterY;
       const searchStart = hasSharedPath && cache ? Math.max(0, cache.idx - 1) : 0;
       const searchEnd = hasSharedPath && cache ? cells.length : cells.length;
+      const goalDirX = pathTargetX - ux;
+      const goalDirY = pathTargetY - uy;
+      const goalDirLen = Math.hypot(goalDirX, goalDirY);
+      const goalDirNX = goalDirLen > 0.001 ? (goalDirX / goalDirLen) : 0;
+      const goalDirNY = goalDirLen > 0.001 ? (goalDirY / goalDirLen) : 0;
+      let bestForwardIdx = -1;
+      let bestForwardDist = Infinity;
 
       for (let i = searchStart; i < searchEnd; i++) {
         const centerWX = cells[i].x * TILE_SIZE + TILE_SIZE / 2;
@@ -442,10 +449,21 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         const d = hasSharedPath
           ? Math.hypot(centerWX - ux, centerWY - uy)
           : Math.hypot(wx - ux, wy - uy);
+        const centerDX = centerWX - ux;
+        const centerDY = centerWY - uy;
+        const forwardDot = centerDX * goalDirNX + centerDY * goalDirNY;
         if (d < minD) {
           minD = d;
           bestIdx = i;
         }
+        if (hasSharedPath && forwardDot >= -TILE_SIZE * 0.12 && d < bestForwardDist) {
+          bestForwardDist = d;
+          bestForwardIdx = i;
+        }
+      }
+
+      if (hasSharedPath && !cache && bestForwardIdx >= 0) {
+        bestIdx = bestForwardIdx;
       }
 
       cache = {
@@ -620,6 +638,25 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
 
     const nowMs = Date.now();
     const manualTarget = this.getLocalUnitManualTarget(id);
+    const distToSlot = manualTarget
+      ? Math.hypot(manualTarget.finalX - s.x, manualTarget.finalY - s.y)
+      : 0;
+    const distToSharedCenter = manualTarget?.sharedPathKey
+      ? Math.hypot(manualTarget.sharedPathCenterX - s.x, manualTarget.sharedPathCenterY - s.y)
+      : 0;
+    const finalApproachRadius = manualTarget?.sharedPathKey
+      ? Math.max(
+        TILE_SIZE * 4.5,
+        Math.hypot(
+          Number(manualTarget.sharedPathOffsetX ?? 0),
+          Number(manualTarget.sharedPathOffsetY ?? 0),
+        ) + TILE_SIZE * 2.25,
+      )
+      : 0;
+    const useFinalApproachPath = !!manualTarget?.sharedPathKey && !manualTarget.directSteer && (
+      distToSharedCenter <= finalApproachRadius
+      || distToSlot <= finalApproachRadius * 1.35
+    );
     if (manualTarget) {
       const prio = this.localUnitMovePriority.get(id) ?? 0;
       const groupSize = Math.max(1, this.localUnitTargetOverride.size + this.localUnitFollowState.size);
@@ -630,7 +667,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         tx = manualTarget.currentX;
         ty = manualTarget.currentY;
       }
-      const distToSlot = Math.hypot(manualTarget.finalX - s.x, manualTarget.finalY - s.y);
       if (!manualTarget.directSteer && distToSlot <= TILE_SIZE * 0.48) {
         if (!this.unitSlotLocked.has(String(id))) {
           const velSpeed = Math.hypot(s.vx, s.vy);
@@ -681,11 +717,15 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       ? {
         x: s.x,
         y: s.y,
-        targetX: manualTarget.sharedPathKey ? manualTarget.sharedPathCenterX : tx,
-        targetY: manualTarget.sharedPathKey ? manualTarget.sharedPathCenterY : ty,
+        targetX: useFinalApproachPath
+          ? manualTarget.finalX
+          : (manualTarget.sharedPathKey ? manualTarget.sharedPathCenterX : tx),
+        targetY: useFinalApproachPath
+          ? manualTarget.finalY
+          : (manualTarget.sharedPathKey ? manualTarget.sharedPathCenterY : ty),
         finalX: manualTarget.finalX,
         finalY: manualTarget.finalY,
-        sharedPathKey: manualTarget.sharedPathKey,
+        sharedPathKey: useFinalApproachPath ? "" : manualTarget.sharedPathKey,
         sharedPathCenterX: manualTarget.sharedPathCenterX,
         sharedPathCenterY: manualTarget.sharedPathCenterY,
         pathRadius: manualTarget.pathRadius,

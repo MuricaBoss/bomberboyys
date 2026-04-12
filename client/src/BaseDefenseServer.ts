@@ -369,7 +369,21 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       const distToFinal = manualTarget
         ? Math.hypot(Number(manualTarget.finalX) - s.x, Number(manualTarget.finalY) - s.y)
         : 0;
-      const useSharedPathTarget = !!manualTarget?.sharedPathKey && distToFinal > TILE_SIZE * 1.35;
+      const distToSharedCenter = manualTarget?.sharedPathKey
+        ? Math.hypot(Number(manualTarget.sharedPathCenterX) - s.x, Number(manualTarget.sharedPathCenterY) - s.y)
+        : 0;
+      const finalApproachRadius = manualTarget?.sharedPathKey
+        ? Math.max(
+          TILE_SIZE * 4.5,
+          Math.hypot(
+            Number(manualTarget.sharedPathOffsetX ?? 0),
+            Number(manualTarget.sharedPathOffsetY ?? 0),
+          ) + TILE_SIZE * 2.25,
+        )
+        : 0;
+      const useSharedPathTarget = !!manualTarget?.sharedPathKey
+        && distToSharedCenter > finalApproachRadius
+        && distToFinal > TILE_SIZE * 1.35;
       const tx = Number(
         useSharedPathTarget
           ? manualTarget?.sharedPathCenterX
