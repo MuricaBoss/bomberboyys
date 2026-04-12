@@ -795,15 +795,35 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
     const brush = this.worldFogMaskGraphics;
 
-    // Build 213 Fix: Coordinate mapping for trails. 
-    // Since trail.graphics contains World Coordinates, we must scale and shift 
-    // them to match the Texture Pixels (which correspond to the currently visible screen area).
-    for (const trail of this.unitVisionTrails.values()) {
-        const g = trail.graphics;
-        g.setScale(camZoom);
-        g.setPosition(-camView.x * camZoom, -camView.y * camZoom);
-        overlay.erase(g);
+    // Build 214 Optimized: Single-pass batched trail rendering.
+    if (!this.sharedTrailGraphics) {
+        this.sharedTrailGraphics = this.add.graphics().setVisible(false);
     }
+    const stg = this.sharedTrailGraphics;
+    stg.clear();
+    stg.setScale(camZoom);
+    stg.setPosition(-camView.x * camZoom, -camView.y * camZoom);
+
+    // Grouping by radius could be faster but most units share the same radius anyway.
+    for (const trail of this.unitVisionTrails.values()) {
+        const pts = trail.path;
+        if (pts.length < 2) continue;
+        
+        stg.lineStyle(trail.radius * 2, 0xffffff, 1);
+        stg.beginPath();
+        stg.moveTo(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) {
+            stg.lineTo(pts[i], pts[i+1]);
+        }
+        stg.strokePath();
+        
+        // Draw circles at nodes for smooth joints
+        stg.fillStyle(0xffffff, 1);
+        for (let i = 0; i < pts.length; i += 2) {
+            stg.fillCircle(pts[i], pts[i+1], trail.radius);
+        }
+    }
+    overlay.erase(stg);
 
     for (const src of this.visionSources) {
       // Map world coords to the screen-resolution texture coordinates
@@ -1633,7 +1653,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       }
     }
 
-    // --- Build 211: Vision Trails Tracking ---
+    // --- Build 214: Optimized Vision Trails Tracking ---
     const mePlayer = state.players.get(this.currentPlayerId);
     state.units.forEach((u: any, id: string) => {
       const isDead = (u.hp ?? 0) <= 0;
@@ -1643,41 +1663,36 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         
         if (!trail) {
           trail = { 
-            graphics: this.add.graphics().setVisible(false), 
+            path: [u.x, u.y], 
             lastX: u.x, 
             lastY: u.y,
             radius: radius
           };
           this.unitVisionTrails.set(id, trail);
-          trail.graphics.fillStyle(0xffffff, 1);
-          trail.graphics.fillCircle(u.x, u.y, radius);
         } else {
           const dx = u.x - trail.lastX;
           const dy = u.y - trail.lastY;
-          if (dx * dx + dy * dy > 25) { // Move > 5 pixels
-            trail.graphics.lineStyle(radius * 2, 0xffffff, 1);
-            trail.graphics.beginPath();
-            trail.graphics.moveTo(trail.lastX, trail.lastY);
-            trail.graphics.lineTo(u.x, u.y);
-            trail.graphics.strokePath();
-            trail.graphics.fillStyle(0xffffff, 1);
-            trail.graphics.fillCircle(u.x, u.y, radius);
+          // Threshold increased to 20 pixels for better performance
+          if (dx * dx + dy * dy > 400) { 
+            trail.path.push(u.x, u.y);
             trail.lastX = u.x;
             trail.lastY = u.y;
+            // Cap path length to 800 segments (1600 numbers) to prevent infinite growth
+            if (trail.path.length > 1600) {
+                trail.path.splice(0, 2); 
+            }
           }
         }
       } else if (isDead && this.unitVisionTrails.has(id)) {
-        const trail = this.unitVisionTrails.get(id);
-        if (trail?.graphics) trail.graphics.destroy();
         this.unitVisionTrails.delete(id);
       }
     });
 
     // Clean up trails for units that were removed from state
-    for (const [id, trail] of Array.from(this.unitVisionTrails.entries())) {
-      if (!state.units.has(id)) {
-        trail.graphics.destroy();
-        this.unitVisionTrails.delete(id);
+    const trailIds = Array.from(this.unitVisionTrails.keys());
+    for (const tid of trailIds) {
+      if (!state.units.has(tid)) {
+        this.unitVisionTrails.delete(tid);
       }
     }
     // ----------------------------------------
