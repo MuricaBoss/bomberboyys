@@ -1320,7 +1320,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           if (!e || (isTank && !(e instanceof Phaser.GameObjects.Image)) || (isSoldier && !(e instanceof Phaser.GameObjects.Sprite))) {
             if (e) e.destroy();
             if (isTank) {
-              e = this.add.image(ux, uy, this.getTankTextureKeyByDir(dir)).setOrigin(0.5, RTS_TANK_ORIGIN_Y);
+              e = this.add.image(ux, uy, this.getTankTextureKeyByDir(dir))
+                .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
+                .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
             } else if (isSoldier) {
               e = this.add.sprite(ux, uy, this.getSoldierSheetTextureKey("run"), 0).setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y).setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE);
             } else {
@@ -1331,6 +1333,34 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           }
 
           // 1. Sync Position
+          if (!this.localUnitRenderState.has(id)) {
+            // Build 222: Spawn Interpolation (Birth Glide)
+            // If the unit was just produced (manualUntil is active and it's our first time seeing it),
+            // start its visual position at a nearby production building.
+            const now = Date.now();
+            if (u.manualUntil && Number(u.manualUntil) > now) {
+              let spawnX = ux;
+              let spawnY = uy;
+              let bestDist = 200;
+              const targetType = isTank ? "war_factory" : "barracks";
+              
+              if (state.structures?.forEach) {
+                state.structures.forEach((s: any) => {
+                  if (s.type === targetType && s.team === u.team) {
+                    const d = Math.hypot(s.x - ux, s.y - uy);
+                    if (d < bestDist) {
+                      bestDist = d;
+                      spawnX = s.x;
+                      spawnY = s.y;
+                    }
+                  }
+                });
+              }
+              this.localUnitRenderState.set(id, { x: spawnX, y: spawnY, vx: 0, vy: 0, lastAt: performance.now() });
+              if (e) { e.x = spawnX; e.y = spawnY; }
+            }
+          }
+
           this.updateUnitRenderPos(id, e as any, u, delta, isLocalOwned, isTank);
           
           // Build 221 Fix: Recalculate Frustum Culling AFTER creation to ensure new units are visible
@@ -1341,6 +1371,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             if (isTank && e instanceof Phaser.GameObjects.Image) {
               const tank = e;
               tank.setTexture(this.getTankTextureKeyByDir(dir));
+              tank.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
               if (isDead) tank.setTint(0x444444); else tank.clearTint();
               
               const shadowPos = this.getTankShadowPosition(tank, dir);
@@ -1391,7 +1422,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
               const barW = isTank ? 40 : 20;
               const barH = 4;
-              const barY = isTank ? this.getTankHpY(e as any) - barH : (e.y - TILE_SIZE * 0.45);
+              const barY = isTank ? this.getTankHpY(e as any) - barH : (e.y - TILE_SIZE * 0.7);
               const hpRatio = Math.max(0, Math.min(1, (u.hp || 0) / (u.maxHp || 1)));
               uig.fillStyle(0x000000, 0.6).fillRect(e.x - barW / 2, barY, barW, barH);
               uig.fillStyle(hpRatio > 0.4 ? 0x00ff00 : 0xff0000, 0.9).fillRect(e.x - barW / 2, barY, barW * hpRatio, barH);

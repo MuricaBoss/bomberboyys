@@ -871,6 +871,14 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
 
     e.x = s.x;
     e.y = s.y;
+    
+    // Build 222: Update facing direction while moving
+    const velSpeedSq = s.vx * s.vx + s.vy * s.vy;
+    if (velSpeedSq > 25) { // Only update if moving at a significant speed
+      const moveDir = this.angleToDir8(Math.atan2(s.vy, s.vx));
+      this.unitFacing.set(id, moveDir);
+    }
+
     s.lastAt = performance.now();
   }
 
