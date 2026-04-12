@@ -39,6 +39,7 @@ import {
 export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   public tankTrailState = new Map<string, any>();
   protected unitAutoRallied?: Set<string>;
+  protected lastDefensiveSlotRefreshAt = 0;
 
   constructor() {
     super("BaseDefenseScene_Advanced");
@@ -1093,6 +1094,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.perfEnd("camera");
     let nowMs = Date.now();
     this.drawMoveClickMarker(nowMs);
+    this.reflowDefensiveAssignments(nowMs);
     this.drawFormationPreview(nowMs);
     if (this.phaserHudEnabled && this.attackCursorGraphics) {
       this.attackCursorGraphics.clear();
@@ -1334,14 +1336,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
           // 1. Sync Position
           if (!this.localUnitRenderState.has(id)) {
-            // Build 222: Spawn Interpolation (Birth Glide)
-            // If the unit was just produced (manualUntil is active and it's our first time seeing it),
-            // start its visual position at a nearby production building.
             const now = Date.now();
             if (u.manualUntil && Number(u.manualUntil) > now) {
               let spawnX = ux;
               let spawnY = uy;
-              let bestDist = 200;
+              let bestDist = 96; // Build 223: Reduced search radius to prevent units flying from too far
               const targetType = isTank ? "war_factory" : "barracks";
               
               if (state.structures?.forEach) {
@@ -1356,12 +1355,20 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
                   }
                 });
               }
-              this.localUnitRenderState.set(id, { x: spawnX, y: spawnY, vx: 0, vy: 0, lastAt: performance.now() });
-              if (e) { e.x = spawnX; e.y = spawnY; }
+              // Only apply if we actually found a nearby building
+              if (bestDist < 96) {
+                this.localUnitRenderState.set(id, { x: spawnX, y: spawnY, vx: 0, vy: 0, lastAt: performance.now() });
+                if (e) { e.x = spawnX; e.y = spawnY; }
+              } else {
+                 this.localUnitRenderState.set(id, { x: ux, y: uy, vx: 0, vy: 0, lastAt: performance.now() });
+              }
+            } else {
+              this.localUnitRenderState.set(id, { x: ux, y: uy, vx: 0, vy: 0, lastAt: performance.now() });
             }
           }
 
           this.updateUnitRenderPos(id, e as any, u, delta, isLocalOwned, isTank);
+          const rs = this.localUnitRenderState.get(id);
           
           // Build 221 Fix: Recalculate Frustum Culling AFTER creation to ensure new units are visible
           const inCamera = e.x > camView.x - pad && e.x < camView.right + pad && e.y > camView.y - pad && e.y < camView.bottom + pad;
@@ -1377,7 +1384,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               const shadowPos = this.getTankShadowPosition(tank, dir);
               let ts = this.tankShadowEntities[id];
               if (!ts && visible) {
-                ts = this.add.image(shadowPos.x, shadowPos.y, this.getTankShadowTextureKey(dir)).setOrigin(0.5, RTS_TANK_ORIGIN_Y).setAlpha(0.4).setBlendMode(Phaser.BlendModes.MULTIPLY).setTint(0x000000);
+                ts = this.add.image(shadowPos.x, shadowPos.y, this.getTankShadowTextureKey(dir))
+                  .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
+                  .setAlpha(0.4)
+                  .setBlendMode(Phaser.BlendModes.MULTIPLY)
+                  .setTint(0x000000)
+                  .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
                 this.tankShadowEntities[id] = ts;
               }
               if (ts) {
@@ -1385,20 +1397,25 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
                   if (visible) {
                       ts.setPosition(shadowPos.x, shadowPos.y);
                       ts.setTexture(this.getTankShadowTextureKey(dir));
+                      ts.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
                       this.applyWorldDepth(ts, e.y, WORLD_DEPTH_UNIT_OFFSET - WORLD_DEPTH_SHADOW_GAP);
                   }
               }
               this.maybeFireUnitProjectile(id, u, e, isFriendly, visible, dir, true);
             } else if (isSoldier && e instanceof Phaser.GameObjects.Sprite) {
               const soldier = e;
-              const moving = Math.hypot(Number(u.vx || 0), Number(u.vy || 0)) > 6 || String(u.aiState || "") === "walking";
+              // Build 223: Use LOCAL simulation velocity (rs) for animation stopping to ensure we don't run in place in a slot.
+              const moving = (rs && Math.hypot(rs.vx, rs.vy) > 10) || (u.aiState === "walking" && !this.localUnitTargetOverride.has(id));
               if (moving) soldier.anims.play(this.getSoldierAnimKey("run", dir), true);
-              else { soldier.anims.stop(); soldier.setTexture(this.getSoldierSheetTextureKey("run"), this.getSoldierIdleFrame(dir)); }
+              else {
+                  soldier.anims.stop();
+                  soldier.setTexture(this.getSoldierSheetTextureKey("run"), this.getSoldierIdleFrame(dir));
+              }
               if (isDead) soldier.setTint(0x444444); else soldier.clearTint();
-
+              
               if (visible && this.unitShadowGraphics) {
-                  this.unitShadowGraphics.fillStyle(0x000000, 0.5);
-                  this.unitShadowGraphics.fillEllipse(e.x, e.y + 4, 18, 10);
+                  this.unitShadowGraphics.fillStyle(0x000000, 0.45);
+                  this.unitShadowGraphics.fillEllipse(e.x, e.y + 3, 16, 8);
               }
               this.maybeFireUnitProjectile(id, u, e, isFriendly, visible, dir, false);
             }
@@ -1422,7 +1439,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
               const barW = isTank ? 40 : 20;
               const barH = 4;
-              const barY = isTank ? this.getTankHpY(e as any) - barH : (e.y - TILE_SIZE * 0.7);
+              const barY = isTank ? this.getTankHpY(e as any) - barH : (e.y - TILE_SIZE * 0.95);
               const hpRatio = Math.max(0, Math.min(1, (u.hp || 0) / (u.maxHp || 1)));
               uig.fillStyle(0x000000, 0.6).fillRect(e.x - barW / 2, barY, barW, barH);
               uig.fillStyle(hpRatio > 0.4 ? 0x00ff00 : 0xff0000, 0.9).fillRect(e.x - barW / 2, barY, barW * hpRatio, barH);
@@ -1797,6 +1814,63 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             stg.fillCircle(pts[i] / 4, pts[i+1] / 4, trail.radius / 4);
         }
         vtt.draw(stg);
+    }
+  }
+
+  reflowDefensiveAssignments(now: number) {
+    if (now - this.lastDefensiveSlotRefreshAt < 4000) return;
+    this.lastDefensiveSlotRefreshAt = now;
+    if (!this.room?.state?.units?.forEach) return;
+
+    const me = this.room.state.players.get ? this.room.state.players.get(this.currentPlayerId) : this.room.state.players?.[this.currentPlayerId];
+    if (!me) return;
+
+    const defensiveStructures: Array<{ x: number, y: number }> = [];
+    if (this.room.state.cores?.forEach) {
+        this.room.state.cores.forEach((c: any) => { if (c.team === me.team) defensiveStructures.push({ x: c.x, y: c.y }); });
+    }
+    if (this.room.state.structures?.forEach) {
+        this.room.state.structures.forEach((s: any) => { 
+            if (s.team === me.team && (s.type === "barracks" || s.type === "war_factory")) {
+                defensiveStructures.push({ x: s.x, y: s.y });
+            }
+        });
+    }
+    if (defensiveStructures.length <= 0) return;
+
+    const idleUnits: string[] = [];
+    this.room.state.units.forEach((u: any, id: string) => {
+        if (u.team !== me.team || (u.hp ?? 0) <= 0) return;
+        if (this.localUnitTargetOverride.has(id)) return;
+        
+        const distToTarget = Math.hypot(Number(u.targetX ?? u.x) - u.x, Number(u.targetY ?? u.y) - u.y);
+        if (distToTarget > TILE_SIZE) return; // Busy moving
+        
+        idleUnits.push(id);
+    });
+
+    if (idleUnits.length <= 0) return;
+
+    // Distribute units among defensive structures
+    const unitsPerStructure = Math.ceil(idleUnits.length / defensiveStructures.length);
+    let unitIdx = 0;
+    for (const struct of defensiveStructures) {
+        const count = Math.min(unitsPerStructure, idleUnits.length - unitIdx);
+        for (let i = 0; i < count; i++) {
+            const id = idleUnits[unitIdx++];
+            const u = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
+            const spacing = u.type === "tank" ? TILE_SIZE * 1.8 : TILE_SIZE * 1.15;
+            const slot = this.localFormationSlot(struct.x, struct.y, i, count, spacing);
+            
+            // Only assign if not already very close to the defensive slot
+            const rs = this.localUnitRenderState.get(id);
+            const ux = Number(rs?.x ?? u.x);
+            const uy = Number(rs?.y ?? u.y);
+            if (Math.hypot(slot.x - ux, slot.y - uy) > TILE_SIZE * 1.5) {
+                this.localUnitTargetOverride.set(id, { x: slot.x, y: slot.y, setAt: now });
+                this.localUnitMovePriority.set(id, i % 10);
+            }
+        }
     }
   }
 }
