@@ -27,6 +27,8 @@ const gameServer = new Server({
   transport: new WebSocketTransport({
     server,
     maxPayload: 1024 * 1024,
+    pingInterval: 5000,
+    pingMaxRetries: 4,
   })
 });
 

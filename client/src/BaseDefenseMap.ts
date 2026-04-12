@@ -877,9 +877,12 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       { dx: -1, dy: -1, c: 1.4142 },
     ];
 
-    // Build 228: Iteration limit to prevent spikes on unreachable paths
+    // Build 258: Chunking by capturing the node closest to the goal
     let iters = 0;
-    while (open.length > 0 && iters < 2000) {
+    let closestNode = { x: startGX, y: startGY };
+    let minH = h(startGX, startGY);
+
+    while (open.length > 0 && iters < 800) {
       iters++;
       let best = 0;
       for (let i = 1; i < open.length; i++) {
@@ -887,6 +890,13 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       }
       const current = open.splice(best, 1)[0];
       const cKey = key(current.x, current.y);
+      
+      const currentH = h(current.x, current.y);
+      if (currentH < minH) {
+          minH = currentH;
+          closestNode = current;
+      }
+
       if (cKey === goalKey) {
         const path: { x: number; y: number }[] = [];
         let walk = goalKey;
@@ -927,6 +937,21 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         }
       }
     }
+
+    if (closestNode.x !== startGX || closestNode.y !== startGY) {
+      const path: { x: number; y: number }[] = [];
+      let walk = key(closestNode.x, closestNode.y);
+      while (walk !== startKey) {
+        const [px, py] = walk.split(",").map(Number);
+        path.push({ x: px, y: py });
+        const prev = came.get(walk);
+        if (!prev) break;
+        walk = prev;
+      }
+      path.reverse();
+      return path;
+    }
+
     return null;
   }
 
@@ -961,13 +986,16 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       const targetSectorGX = Math.floor(goalGX / 4);
       const targetSectorGY = Math.floor(goalGY / 4);
       const sectorKey = `sector_${targetSectorGX}_${targetSectorGY}_r${radiusBucket}`;
+      
+      // Build 258: Fix severe cache miss by using precisely calculated shared path key instead of generic sector
+      const pathCacheKey = unit.sharedPathKey || sectorKey;
 
-      let cells = this.sharedPathCache.get(sectorKey);
+      let cells = this.sharedPathCache.get(pathCacheKey);
       
       if (!cells) {
         cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
         if (cells && cells.length > 0) {
-          this.sharedPathCache.set(sectorKey, cells);
+          this.sharedPathCache.set(pathCacheKey, cells);
         }
       }
 

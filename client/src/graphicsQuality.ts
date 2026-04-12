@@ -153,17 +153,17 @@ export function getAssetBasePath(tier: GraphicsAssetTier) {
 //   Ultra  → 256×256 frames (maximum quality, full zoom range)
 
 export function getSoldierRunFrameSize(tier: GraphicsAssetTier): number {
-  if (tier === "low") return 32;
-  if (tier === "medium") return 64;
-  if (tier === "high") return 128;
-  return 256; // ultra
+  if (tier === "low") return 16;
+  if (tier === "medium") return 32;
+  if (tier === "high") return 64;
+  return 128; // ultra (Build 256: reduced from 256px to 128px)
 }
 
 export function getSoldierShootFrameSize(tier: GraphicsAssetTier): number {
-  if (tier === "low") return 32;
-  if (tier === "medium") return 64;
-  if (tier === "high") return 128;
-  return 256; // ultra
+  if (tier === "low") return 16;
+  if (tier === "medium") return 32;
+  if (tier === "high") return 64;
+  return 128; // ultra (Build 256: reduced from 256px to 128px)
 }
 
 /**
@@ -171,10 +171,10 @@ export function getSoldierShootFrameSize(tier: GraphicsAssetTier): number {
  * Tanks are displayed at RTS_TANK_DISPLAY_SIZE = 64px.
  */
 export function getTankTextureSize(tier: GraphicsAssetTier): number {
-  if (tier === "low") return 64;
-  if (tier === "medium") return 128;
-  if (tier === "high") return 256;
-  return 512; // ultra
+  if (tier === "low") return 32;
+  if (tier === "medium") return 64;
+  if (tier === "high") return 128;
+  return 256; // ultra (Build 256: reduced from 512px to 256px)
 }
 
 /**

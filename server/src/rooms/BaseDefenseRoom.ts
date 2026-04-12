@@ -380,8 +380,20 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     this.logStateSummary("onJoin", `client=${client.sessionId} team=${player.team}`);
   }
 
-  onLeave(client: Client, consented: boolean) {
-    console.log(client.sessionId, "left BaseDefenseRoom!");
+  async onLeave(client: Client, consented: boolean) {
+    console.log(client.sessionId, consented ? "consented leave" : "accidental disconnect");
+    
+    // Build 257: Allow 20 seconds for reconnection if disconnect was accidental
+    if (!consented) {
+      try {
+        await this.allowReconnection(client, 20);
+        console.log(`[BaseDefense] client RECONNECTED: ${client.sessionId}`);
+        return; 
+      } catch (e) {
+        console.log(`[BaseDefense] client reconnection TIMED OUT: ${client.sessionId}`);
+      }
+    }
+
     this.state.players.delete(client.sessionId);
     
     // Clean up units, structures, cores
@@ -403,7 +415,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
         if (id === `core_${client.sessionId}`) toDeleteCores.push(id);
     });
     toDeleteCores.forEach(id => this.state.cores.delete(id));
-    this.logStateSummary("onLeave", `client=${client.sessionId} consented=${consented}`);
+    this.logStateSummary("onLeaveFinal", `client=${client.sessionId} consented=${consented}`);
   }
 
   update(deltaTime: number) {

@@ -204,6 +204,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.muzzlePool = this.add.group({ classType: Phaser.GameObjects.Arc, maxSize: 50 });
     this.projectilePool = this.add.group({ classType: Phaser.GameObjects.Arc, maxSize: 120 });
     this.setupBaseDefenseRuntimeUi();
+
     const finishWorldInit = () => {
       const state = this.room?.state;
       if (this.hasInitialized || !this.hasReadyWorldState(state)) return;
@@ -232,37 +233,13 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       });
     };
     if (this.localOnly) {
-      this.currentPlayerId = "local-player";
-      this.room = this.createLocalBaseDefenseRoom();
+      const localRoom = this.createLocalBaseDefenseRoom();
+      this.setupRoom(localRoom, finishWorldInit);
       finishWorldInit();
     } else {
       try {
-        this.room = await this.withTimeout(client.joinOrCreate("base_defense_room"), 8000, "joinOrCreate");
-        this.currentPlayerId = this.room.sessionId;
-        
-        // Build 99: Initialize O(1) grids
-        this.gridW = Number(this.room.state.mapWidth || 100);
-        this.gridH = Number(this.room.state.mapHeight || 100);
-        this.obstacleGrid = new Uint8Array(this.gridW * this.gridH);
-        this.currentVisionGrid = new Uint8Array(this.gridW * this.gridH);
-
-        this.room.onStateChange(() => {
-          const wasInitialized = this.hasInitialized;
-          finishWorldInit();
-          // Build 247: Bake the NavMesh 1 second after the map is first stable
-          if (!wasInitialized && this.hasInitialized) {
-              setTimeout(() => this.bakeNavMesh(), 1000);
-          }
-        });
-        this.room.onLeave((code) => {
-          console.warn("[BaseDefense] DISCONNECTED:", code);
-          const overlay = this.add.container(this.cameras.main.centerX, this.cameras.main.centerY).setScrollFactor(0).setDepth(5000);
-          const bg = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.7);
-          const txt = this.add.text(0, -30, "CONNECTION LOST", { fontSize: "32px", color: "#ff4444", fontStyle: "bold" }).setOrigin(0.5);
-          const btn = this.add.text(0, 40, "TAP TO RETRY", { fontSize: "24px", color: "#ffffff", backgroundColor: "#333333" }).setPadding(10).setOrigin(0.5).setInteractive();
-          btn.on("pointerdown", () => window.location.reload());
-          overlay.add([bg, txt, btn]);
-        });
+        const initialRoom = await this.withTimeout(client.joinOrCreate("base_defense_room"), 8000, "joinOrCreate");
+        this.setupRoom(initialRoom, finishWorldInit);
         ensureWorldInitRetry();
         finishWorldInit();
       } catch (error) {
@@ -279,22 +256,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.worldInitRetryTimer?.remove(false);
       this.worldInitRetryTimer = null;
-    });
-
-    this.room.onMessage("unit_damaged", (data: { victimId: string; shooterId: string }) => {
-      const victim = (this.room.state.units as any)?.get ? (this.room.state.units as any).get(data.victimId) : (this.room.state.units as any)?.[data.victimId];
-      if (victim && String(victim.ownerId || "") === this.currentPlayerId) {
-          // My unit was hit! Automatically retaliate if not busy with a manual move far away.
-          const attacker = (this.room.state.units as any)?.get ? (this.room.state.units as any).get(data.shooterId) : (this.room.state.units as any)?.[data.shooterId];
-          if (attacker && (attacker.hp ?? 0) > 0) {
-             // Only switch if we don't have a high-priority manual move target close by
-             const manualTarget = this.getLocalUnitManualTarget(data.victimId);
-             if (!manualTarget || Math.hypot(attacker.x - victim.x, attacker.y - victim.y) < TILE_SIZE * 8) {
-                 this.unitAttackTarget.set(data.victimId, data.shooterId);
-                 this.autoEngagedUnitIds.add(data.victimId);
-             }
-          }
-      }
     });
 
     this.selectionRectGraphics = this.add.graphics().setDepth(200).setScrollFactor(0).setVisible(true);
@@ -1262,7 +1223,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.unitUiGraphics?.clear();
     this.unitShadowGraphics?.clear();
     const camView = this.cameras.main.worldView;
-    const pad = TILE_SIZE * 3;
+    const pad = TILE_SIZE * 8; // Build 255: Increased padding for smoother transitions
     nowMs = Date.now();
 
     // Build 238: Periodic shared path cache clearing (every 500ms) to ensure path results stay fresh
@@ -1393,9 +1354,13 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           }
 
           const isSelected = this.selectedUnitIds.has(id);
+          const rs = this.localUnitRenderState.get(id);
+          const rx = Number(rs?.x ?? ux);
+          const ry = Number(rs?.y ?? uy);
+
           const inCamera = isSelected || (
-            ux >= camView.x - pad && ux <= camView.right + pad &&
-            uy >= camView.y - pad && uy <= camView.bottom + pad
+            rx >= camView.x - pad && rx <= camView.right + pad &&
+            ry >= camView.y - pad && ry <= camView.bottom + pad
           );
           const needsLocalSimulation = this.shouldKeepLocalUnitSimulationActive(id, u, ux, uy);
 
@@ -2007,5 +1972,90 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             }
         }
     }
+  }
+
+  // --- RECONNECTION LOGIC Build 257 ---
+  protected reconnectingOverlay?: Phaser.GameObjects.Container;
+  protected isReconnecting = false;
+
+  handleAccidentalDisconnect() {
+    if (this.isReconnecting) return;
+    this.isReconnecting = true;
+    this.showNotice("Connection lost! Reconnecting...", "#ffcc00");
+    this.tryToReconnect(1, 5);
+  }
+
+  async tryToReconnect(attempt: number, maxAttempts: number) {
+    if (!this.room) return;
+    console.log(`[BaseDefense] Reconnection attempt ${attempt}/${maxAttempts}...`);
+    
+    try {
+      // client and activeClientBuildId come from network.ts
+      const newRoom = await client.reconnect(this.room.roomId, this.room.sessionId);
+      console.log("[BaseDefense] RECONNECTED successfully!");
+      
+      this.isReconnecting = false;
+      this.showNotice("Reconnected successfully!", "#00ff00");
+      
+      // Re-initialize with new room without restarting the whole scene
+      // We pass a no-op as onReady because the state is already current
+      this.setupRoom(newRoom, () => {}); 
+    } catch (e) {
+      if (attempt < maxAttempts) {
+        this.time.delayedCall(2000, () => this.tryToReconnect(attempt + 1, maxAttempts));
+      } else {
+        this.isReconnecting = false;
+        this.showConnectionLostOverlay();
+      }
+    }
+  }
+
+  showConnectionLostOverlay() {
+    if (this.reconnectingOverlay) return;
+    const cam = this.cameras.main;
+    const overlay = this.add.container(cam.centerX, cam.centerY).setScrollFactor(0).setDepth(5000);
+    const bg = this.add.rectangle(0, 0, cam.width, cam.height, 0x000000, 0.75);
+    const txt = this.add.text(0, -30, "CONNECTION LOST", { fontSize: "32px", color: "#ff4444", fontStyle: "bold" }).setOrigin(0.5);
+    const btn = this.add.text(0, 40, "TAP TO RETRY", { fontSize: "24px", color: "#ffffff", backgroundColor: "#333333" }).setPadding(10).setOrigin(0.5).setInteractive();
+    btn.on("pointerdown", () => window.location.reload());
+    overlay.add([bg, txt, btn]);
+    this.reconnectingOverlay = overlay;
+  }
+
+  setupRoom(room: Room<any>, onReady: () => void) {
+    this.room = room;
+    this.currentPlayerId = room.sessionId;
+    
+    this.gridW = Number(this.room.state.mapWidth || 100);
+    this.gridH = Number(this.room.state.mapHeight || 100);
+    this.obstacleGrid = new Uint8Array(this.gridW * this.gridH);
+    this.currentVisionGrid = new Uint8Array(this.gridW * this.gridH);
+
+    this.room.onStateChange(() => {
+      onReady();
+    });
+
+    this.room.onMessage("unit_damaged", (data: { victimId: string; shooterId: string }) => {
+      const victim = (this.room.state.units as any)?.get ? (this.room.state.units as any).get(data.victimId) : (this.room.state.units as any)?.[data.victimId];
+      if (victim && String(victim.ownerId || "") === this.currentPlayerId) {
+          const attacker = (this.room.state.units as any)?.get ? (this.room.state.units as any).get(data.shooterId) : (this.room.state.units as any)?.[data.shooterId];
+          if (attacker && (attacker.hp ?? 0) > 0) {
+             const manualTarget = this.getLocalUnitManualTarget(data.victimId);
+             if (!manualTarget || Math.hypot(attacker.x - victim.x, attacker.y - victim.y) < TILE_SIZE * 8) {
+                 this.unitAttackTarget.set(data.victimId, data.shooterId);
+                 this.autoEngagedUnitIds.add(data.victimId);
+             }
+          }
+      }
+    });
+
+    this.room.onLeave((code) => {
+      console.warn("[BaseDefense] DISCONNECTED:", code);
+      if (code > 1001 && !this.localOnly) {
+          this.handleAccidentalDisconnect();
+      } else {
+          this.showConnectionLostOverlay();
+      }
+    });
   }
 }
