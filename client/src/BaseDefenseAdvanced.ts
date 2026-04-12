@@ -769,20 +769,27 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.lastFogCamY = camView.y;
     this.lastFogZoom = camZoom;
 
-    const overlay = this.worldFogOverlay;
-    
-    // To keep fog sharp, internal texture resolution should match screen resolution, 
-    // but its display size matches world view.
+    let overlay = this.worldFogOverlay;
     const screenW = cam.width;
     const screenH = cam.height;
 
-    if (overlay.width !== screenW || overlay.height !== screenH) {
-      overlay.resize(screenW, screenH);
+    // Build 210: DESTROY AND RE-CREATE on resolution change as requested by the user.
+    // This prevents any inherited transformation artifacts (ovals) from resize/scaling.
+    if (overlay && (overlay.width !== screenW || overlay.height !== screenH)) {
+        overlay.destroy();
+        this.worldFogOverlay = null as any;
+        overlay = null as any;
     }
-    // Correct scaling: The camera will multiply world coordinates by camZoom.
-    // To match screen pixels 1:1 and prevent distortion, we pre-scale the texture by 1/camZoom.
-    // This ensures that X and Y are scaled identically, preventing the "oval" effect.
-    overlay.setScale(1 / camZoom);
+
+    if (!this.worldFogOverlay) {
+      this.worldFogOverlay = this.add.renderTexture(0, 0, screenW, screenH)
+        .setOrigin(0)
+        .setScrollFactor(1)
+        .setDepth(240);
+      overlay = this.worldFogOverlay;
+    }
+    overlay.setPosition(camView.x, camView.y);
+    overlay.setDisplaySize(camView.width, camView.height);
     overlay.clear();
     overlay.fill(0x000000, 0.88, 0, 0, screenW, screenH);
 
