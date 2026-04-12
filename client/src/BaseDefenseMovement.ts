@@ -115,10 +115,16 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
   localFormationSlot(centerX: number, centerY: number, gridIndex: number, _totalUnits: number, spacing: number, angle = 0) {
     const sp = Math.max(TILE_SIZE * 0.8, spacing);
     const cols = 5;
-    const col = gridIndex % cols;
+    const totalRows = Math.ceil(_totalUnits / cols);
     const row = Math.floor(gridIndex / cols);
-    const lateralOffset = (col - 2) * sp;
-    const depthOffset = row * sp;
+    const isLastExpectedRow = row === totalRows - 1;
+    const unitsInThisRow = (isLastExpectedRow && _totalUnits % cols !== 0) 
+      ? _totalUnits % cols 
+      : cols;
+    const col = gridIndex % cols;
+    const lateralOffset = (col - (unitsInThisRow - 1) / 2) * sp;
+    const depthCenter = Math.max(0, totalRows - 1) / 2;
+    const depthOffset = (row - depthCenter) * sp;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     const rx = lateralOffset * (-sin) + (-depthOffset) * cos;
@@ -232,29 +238,24 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const assignments = new Map<string, { x: number; y: number }>();
     const priorityOrder: Array<{ id: string; slot: { x: number; y: number } }> = [];
 
-    for (let iteration = 0; iteration < unitPositions.length; iteration++) {
+    for (let slotIdx = 0; slotIdx < slots.length; slotIdx++) {
       let bestUnitIdx = -1;
-      let bestSlotIdx = -1;
       let minDistance = Infinity;
 
       for (let unitIdx = 0; unitIdx < unitPositions.length; unitIdx++) {
         if (usedUnits.has(unitPositions[unitIdx].id)) continue;
-        for (let slotIdx = 0; slotIdx < slots.length; slotIdx++) {
-          if (usedSlots.has(slotIdx)) continue;
-          const d = Math.hypot(unitPositions[unitIdx].x - slots[slotIdx].x, unitPositions[unitIdx].y - slots[slotIdx].y);
-          if (d < minDistance) {
-            minDistance = d;
-            bestUnitIdx = unitIdx;
-            bestSlotIdx = slotIdx;
-          }
+        const d = Math.hypot(unitPositions[unitIdx].x - slots[slotIdx].x, unitPositions[unitIdx].y - slots[slotIdx].y);
+        if (d < minDistance) {
+          minDistance = d;
+          bestUnitIdx = unitIdx;
         }
       }
 
-      if (bestUnitIdx === -1 || bestSlotIdx === -1) break;
+      if (bestUnitIdx === -1) break;
       const id = unitPositions[bestUnitIdx].id;
-      const slot = slots[bestSlotIdx];
+      const slot = slots[slotIdx];
       usedUnits.add(id);
-      usedSlots.add(bestSlotIdx);
+      usedSlots.add(slotIdx);
       assignments.set(id, { x: slot.x, y: slot.y });
       priorityOrder.push({ id, slot: { x: slot.x, y: slot.y } });
       this.recentAssignedSlots.set(id, { x: slot.x, y: slot.y, r: slot.r, at: Date.now() });
