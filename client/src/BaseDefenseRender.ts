@@ -402,26 +402,6 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     });
   }
 
-  drawMap(state: any) {
-    for (const tile of this.tileEntities) tile?.destroy();
-    for (const shadow of this.tileShadowEntities) this.destroyGroundShadow(shadow);
-    this.tileEntities = [];
-    this.tileShadowEntities = [];
-    const width = state.mapWidth;
-    const height = state.mapHeight;
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const tile = state.map[y * width + x];
-        if (tile === 1) {
-          this.tileEntities[y * width + x] = this.createWallTile(x, y, width, height);
-          this.tileShadowEntities[y * width + x] = this.createWallTileShadow(x, y, width, height);
-        } else {
-          this.tileEntities[y * width + x] = undefined as unknown as Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
-          this.tileShadowEntities[y * width + x] = undefined;
-        }
-      }
-    }
-  }
 
   ensureTankTextures() {
   }

@@ -111,7 +111,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const state = this.room?.state;
     if (!state || !this.hasInitialized) return;
     this.syncWorldBackground(state.mapWidth * TILE_SIZE, state.mapHeight * TILE_SIZE);
-    this.drawMap(state);
+    this.syncMap();
     this.mapSyncPending = false;
     for (const entity of Object.values(this.playerEntities)) {
         if (entity instanceof Phaser.GameObjects.Image) {
@@ -581,7 +581,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const state = this.room.state;
     this.cameras.main.setBackgroundColor(0x1f5f1f);
     this.syncWorldBackground(state.mapWidth * TILE_SIZE, state.mapHeight * TILE_SIZE);
-    this.drawMap(state);
+    this.syncMap();
     this.mapCache = Array.from(state.map as number[]);
     this.mapSyncPending = false;
     if (!this.worldFogOverlay) {
@@ -1043,6 +1043,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (!me) this.updateBuildPanel(null);
     this.perfStart("camera");
     this.updateRtsCamera(delta);
+    this.updateMapCulling();
     this.perfEnd("camera");
     let nowMs = Date.now();
     this.drawMoveClickMarker(nowMs);

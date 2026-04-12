@@ -273,26 +273,120 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     const state = this.room.state;
     if (!state?.map) return;
     const width = state.mapWidth;
-    const total = state.mapWidth * state.mapHeight;
+    const height = state.mapHeight;
+    const total = width * height;
+
+    // Use a fresh cache to detect changes
+    if (this.mapCache.length !== total) {
+      this.mapCache = new Array(total).fill(-1);
+      // Clear all existing entities if map size changed
+      for (const ent of this.tileEntities) ent?.destroy();
+      for (const ent of this.tileShadowEntities) ent?.destroy();
+      this.tileEntities = new Array(total);
+      this.tileShadowEntities = new Array(total);
+      this.activeTileIndices.clear();
+    }
+
+    let changed = false;
     for (let i = 0; i < total; i++) {
       const tile = state.map[i] ?? 0;
-      const prev = this.mapCache[i];
-      if (prev === tile) continue;
-      if (this.tileEntities[i]) {
-        this.tileEntities[i].destroy();
-        this.tileEntities[i] = undefined as unknown as Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle;
+      if (this.mapCache[i] !== tile) {
+        this.mapCache[i] = tile;
+        changed = true;
+        
+        // If an active tile was changed to 0, it must be removed.
+        // updateMapCulling will handle the rest.
+        if (tile === 0 && this.activeTileIndices.has(i)) {
+          this.removeTileAt(i);
+        }
       }
-      if (this.tileShadowEntities[i]) {
-        this.tileShadowEntities[i]?.destroy();
-        this.tileShadowEntities[i] = undefined;
+    }
+    
+    if (changed) {
+       // Force a culling update on next frame
+       this.lastFogCamX = NaN; 
+    }
+  }
+
+  private removeTileAt(i: number) {
+    const ent = this.tileEntities[i];
+    if (ent) {
+      ent.setVisible(false);
+      this.tilePool.push(ent);
+      this.tileEntities[i] = undefined as any;
+    }
+    this.activeTileIndices.delete(i);
+  }
+
+  updateMapCulling() {
+    const cam = this.cameras.main;
+    const wv = cam.worldView;
+    const state = this.room.state;
+    if (!state?.map || !this.mapCache.length) return;
+
+    const width = state.mapWidth;
+    const height = state.mapHeight;
+
+    // Redraw shadows using a single Graphics object for massive Batching performance gain
+    if (!this.tileShadowGraphics) {
+      this.tileShadowGraphics = this.add.graphics();
+      // Level the shadows below everything else
+      this.tileShadowGraphics.setDepth(this.getWorldDepth(0, WORLD_DEPTH_TILE_OFFSET - WORLD_DEPTH_SHADOW_GAP));
+      this.tileShadowGraphics.setBlendMode(Phaser.BlendModes.MULTIPLY);
+    }
+    const g = this.tileShadowGraphics;
+    g.clear();
+
+    const CULL_MARGIN = TILE_SIZE * 2;
+    const minGX = Math.max(0, Math.floor((wv.x - CULL_MARGIN) / TILE_SIZE));
+    const maxGX = Math.min(width - 1, Math.floor((wv.right + CULL_MARGIN) / TILE_SIZE));
+    const minGY = Math.max(0, Math.floor((wv.y - CULL_MARGIN) / TILE_SIZE));
+    const maxGY = Math.min(height - 1, Math.floor((wv.bottom + CULL_MARGIN) / TILE_SIZE));
+
+    const newVisible = new Set<number>();
+    
+    g.fillStyle(0x000000, RTS_TILE_SHADOW_ALPHA);
+
+    for (let gy = minGY; gy <= maxGY; gy++) {
+      for (let gx = minGX; gx <= maxGX; gx++) {
+        const i = gy * width + gx;
+        if (this.mapCache[i] !== 1) continue;
+
+        newVisible.add(i);
+
+        // Draw shadow to batch graphics
+        const shadow = this.getWallShadowSpec(gx, gy);
+        g.fillEllipse(shadow.x, shadow.y, shadow.width, shadow.height);
+
+        // Manage Sprite GameObject
+        if (!this.activeTileIndices.has(i)) {
+          let ent = this.tilePool.pop();
+          const tex = this.getInteriorWallTextureKey(gx, gy);
+          const worldX = gx * TILE_SIZE + TILE_SIZE / 2;
+          const worldY = gy * TILE_SIZE + TILE_SIZE / 2;
+          
+          if (!ent) {
+            ent = this.createWallTile(gx, gy, width, height);
+          } else {
+             // Reuse pooled object
+             if (ent instanceof Phaser.GameObjects.Image) {
+               ent.setTexture(tex);
+             }
+             ent.setPosition(worldX, worldY);
+             ent.setVisible(true);
+             this.applyWorldDepth(ent, worldY, WORLD_DEPTH_TILE_OFFSET);
+          }
+          this.tileEntities[i] = ent;
+          this.activeTileIndices.add(i);
+        }
       }
-      if (tile === 1) {
-        const x = i % width;
-        const y = Math.floor(i / width);
-        this.tileEntities[i] = this.createWallTile(x, y, width, state.mapHeight);
-        this.tileShadowEntities[i] = this.createWallTileShadow(x, y, width, state.mapHeight);
+    }
+
+    // Remove tiles that are no longer visible
+    for (const i of Array.from(this.activeTileIndices)) {
+      if (!newVisible.has(i)) {
+        this.removeTileAt(i);
       }
-      this.mapCache[i] = tile;
     }
   }
 

@@ -60,7 +60,11 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   coreTexts: { [id: string]: Phaser.GameObjects.Text } = {};
   tileEntities: (Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle)[] = [];
   tileShadowEntities: (Phaser.GameObjects.Ellipse | undefined)[] = [];
+  tileShadowGraphics: Phaser.GameObjects.Graphics | null = null;
+  activeTileIndices = new Set<number>();
+  tilePool: (Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle)[] = [];
   mapCache: number[] = [];
+
   mapSyncPending = false;
   uiText!: Phaser.GameObjects.Text;
   statusText!: Phaser.GameObjects.Text;
