@@ -624,16 +624,18 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
   isGridUnitOccupied(gx: number, gy: number, ignoreUnitId?: string) {
     if (!this.room?.state?.units?.forEach) return false;
-    let occupied = false;
-    this.room.state.units.forEach((u: any, id: string) => {
-      if (occupied) return;
-      if (id === ignoreUnitId) return;
-      if ((u.hp ?? 0) <= 0) return;
+    const worldX = gx * TILE_SIZE + TILE_SIZE / 2;
+    const worldY = gy * TILE_SIZE + TILE_SIZE / 2;
+    const neighbors = this.unitGrid.getNeighbors(worldX, worldY, TILE_SIZE * 0.6);
+    for (const id of neighbors) {
+      if (id === ignoreUnitId) continue;
+      const u = this.room.state.units.get ? this.room.state.units.get(id) : (this.room.state.units as any)?.[id];
+      if (!u || (u.hp ?? 0) <= 0) continue;
       const ux = Math.floor(Number(u.x) / TILE_SIZE);
       const uy = Math.floor(Number(u.y) / TILE_SIZE);
-      if (ux === gx && uy === gy) occupied = true;
-    });
-    return occupied;
+      if (ux === gx && uy === gy) return true;
+    }
+    return false;
   }
 
   isVisibleToTeamFast(worldX: number, worldY: number) {
@@ -749,17 +751,17 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     
     // Always update position to follow camera perfectly (prevent lag)
     this.worldFogOverlay.setPosition(cam.x, cam.y);
-    
+
     // Throttled internal draw to save performance, but keep position updates every frame.
-    // However, the user wants it to follow perfectly, so let's check if we should even throttle the draw.
-    // If zoom or camera changed significantly, redraw.
+    // Redraw the fog texture less often (e.g. every 100ms = 10 FPS) for performance,
+    // as requested by the user. Position follows camera at 60 FPS regardless.
     const zoomChanged = !Number.isFinite(this.lastFogZoom) || Math.abs(camZoom - this.lastFogZoom) > 0.001;
     const camMoved = !Number.isFinite(this.lastFogCamX)
-      || Math.abs(cam.x - this.lastFogCamX) >= 0.5 // More sensitive
+      || Math.abs(cam.x - this.lastFogCamX) >= 0.5
       || Math.abs(cam.y - this.lastFogCamY) >= 0.5;
     
-    // If not moved enough and not enough time passed, just stay at current position (already updated above)
-    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < 32) return; 
+    // Throttle redraw to 100ms (10 FPS)
+    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < 100) return; 
 
     this.lastWorldFogDrawAt = now;
     this.lastFogCamX = cam.x;
@@ -853,10 +855,15 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       const enemies = u.team === "A" ? teamB : teamA;
       if (enemies.length === 0) return;
 
-      // Find nearest enemy in range
+      // Find nearest enemy in range using the spatial grid (O(1) lookup)
       let nearestEnemy: { id: string; x: number; y: number } | null = null;
       let nearestDist = engageRange;
-      for (const e of enemies) {
+      
+      const potentialEnemyIds = this.unitGrid.getNeighbors(ux, uy, engageRange);
+      for (const eid of potentialEnemyIds) {
+        if (eid === id) continue;
+        const e = enemies.find(en => en.id === eid);
+        if (!e) continue;
         const d = Math.hypot(e.x - ux, e.y - uy);
         if (d < nearestDist) {
           nearestDist = d;
@@ -993,6 +1000,14 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const state = this.room.state;
     const players = state.players;
     const me = players?.get ? players.get(this.currentPlayerId) : players?.[this.currentPlayerId];
+
+    // Performance Optimization: Rebuild spatial grid for fast unit proximity lookups
+    this.unitGrid.clear();
+    state.units.forEach((u: any, id: string) => {
+      if ((u.hp ?? 0) <= 0) return;
+      const rs = this.localUnitRenderState.get(id);
+      this.unitGrid.add(id, Number(rs?.x ?? u.x), Number(rs?.y ?? u.y));
+    });
 
     if (state.players && !this.hasLoggedTeam) {
        const mTeam = me?.team;

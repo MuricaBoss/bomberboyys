@@ -789,11 +789,15 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       let pushX = 0;
       let pushY = 0;
       let yieldingPairs = 0;
-      this.room.state.units.forEach((ou: any, oid: string) => {
-        if (oid === id) return;
-        if ((ou.hp ?? 0) <= 0) return;
-        if (myTeam && ou.team !== myTeam) return;
-        if (u.type === "soldier" && ou.type === "soldier") return;
+      const searchRadius = TILE_SIZE * 2;
+      const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
+      for (const oid of potentialNeighbors) {
+        if (oid === id) continue;
+        const ou = this.room.state.units.get ? this.room.state.units.get(oid) : (this.room.state.units as any)?.[oid];
+        if (!ou || (ou.hp ?? 0) <= 0) continue;
+        if (myTeam && ou.team !== myTeam) continue;
+        if (u.type === "soldier" && ou.type === "soldier") continue;
+
         const ors = this.localUnitRenderState.get(oid);
         const ox = Number(ors?.x ?? ou.x);
         const oy = Number(ors?.y ?? ou.y);
@@ -803,8 +807,8 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         const dx = s.x - ox;
         const dy = s.y - oy;
         const dist = Math.hypot(dx, dy);
-        if (dist >= yieldDist || dist <= 0.01) return;
-        if (!this.shouldYieldInPair(uid, String(oid))) return;
+        if (dist >= yieldDist || dist <= 0.01) continue;
+        if (!this.shouldYieldInPair(uid, String(oid))) continue;
 
         const overlap = yieldDist - dist;
         const awayStrength = (dist < minDist ? 0.9 : 0.5) * overlap;
@@ -812,8 +816,6 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         let lPY = (dy / dist) * awayStrength;
 
         // --- Formation Fanning ---
-        // If a friendly unit is blocking our path directly ahead, add a lateral push
-        // to encourage fanning out into a row instead of staying in a single-file queue.
         if (moving && toTLen > 1) {
           const aheadX = toTX / toTLen;
           const aheadY = toTY / toTLen;
@@ -830,7 +832,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         pushX += lPX;
         pushY += lPY;
         yieldingPairs += 1;
-      });
+      }
       if (yieldingPairs > 0 && Math.hypot(pushX, pushY) > 0.01) {
         const pushMag = Math.hypot(pushX, pushY);
         const maxPush = TILE_SIZE * 0.18;

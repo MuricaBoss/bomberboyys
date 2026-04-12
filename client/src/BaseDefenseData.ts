@@ -24,6 +24,8 @@ import {
   PRODUCED_UNIT_EXIT_GRACE_MS, FOG_CELL_SIZE, FOG_UPDATE_MS, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM,
 } from "./constants";
 import { getGraphicsProfile, getGraphicsQuality, getTieredTextureKey } from "./graphicsQuality";
+import { UnitGrid } from "./UnitGrid";
+
 
 export class BaseDefenseScene_Data extends Phaser.Scene {
   phaserHudEnabled = false;
@@ -140,6 +142,8 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   localUnitMovePriority = new Map<string, number>();
   localUnitJamTicks = new Map<string, number>();
   localUnitGhostMode = new Set<string>();
+  unitGrid = new UnitGrid();
+
   formationPreviewGraphics: Phaser.GameObjects.Graphics | null = null;
   formationPreviewSlots: Array<{ x: number; y: number; r: number }> = [];
   formationPreviewAssignments = new Map<string, { x: number; y: number }>();
