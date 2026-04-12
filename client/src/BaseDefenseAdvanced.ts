@@ -598,6 +598,14 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     
     const worldW = state.mapWidth * TILE_SIZE;
     const worldH = state.mapHeight * TILE_SIZE;
+    this.cameras.main.setBounds(-500, -500, worldW + 1000, worldH + 1000);
+
+    // Build 215: Persistent World-Space Vision Texture (Downscaled for performance)
+    if (!this.visionTrailTexture) {
+        // 4x downscaling: a 2048x2048 texture covers 8192 world units.
+        this.visionTrailTexture = this.add.renderTexture(0, 0, Math.ceil(worldW / 4), Math.ceil(worldH / 4))
+            .setVisible(false);
+    }
     
     const me = state.players?.get ? state.players.get(this.currentPlayerId) : state.players?.[this.currentPlayerId];
     if (me && !this.hasHadInitialCameraSnap && Number(me.x) > 10 && Number(me.y) > 10) {
@@ -795,35 +803,13 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
     const brush = this.worldFogMaskGraphics;
 
-    // Build 214 Optimized: Single-pass batched trail rendering.
-    if (!this.sharedTrailGraphics) {
-        this.sharedTrailGraphics = this.add.graphics().setVisible(false);
+    // Build 215 Optimized: Use the persistent world-space vision texture.
+    const vtt = this.visionTrailTexture;
+    if (vtt) {
+        // Map the world-space texture onto the screen-space fog overlay.
+        // The texture is 1/4 size of world, so we scale it by 4 * camZoom.
+        overlay.draw(vtt, -camView.x * camZoom, -camView.y * camZoom, 1, 4 * camZoom);
     }
-    const stg = this.sharedTrailGraphics;
-    stg.clear();
-    stg.setScale(camZoom);
-    stg.setPosition(-camView.x * camZoom, -camView.y * camZoom);
-
-    // Grouping by radius could be faster but most units share the same radius anyway.
-    for (const trail of this.unitVisionTrails.values()) {
-        const pts = trail.path;
-        if (pts.length < 2) continue;
-        
-        stg.lineStyle(trail.radius * 2, 0xffffff, 1);
-        stg.beginPath();
-        stg.moveTo(pts[0], pts[1]);
-        for (let i = 2; i < pts.length; i += 2) {
-            stg.lineTo(pts[i], pts[i+1]);
-        }
-        stg.strokePath();
-        
-        // Draw circles at nodes for smooth joints
-        stg.fillStyle(0xffffff, 1);
-        for (let i = 0; i < pts.length; i += 2) {
-            stg.fillCircle(pts[i], pts[i+1], trail.radius);
-        }
-    }
-    overlay.erase(stg);
 
     for (const src of this.visionSources) {
       // Map world coords to the screen-resolution texture coordinates
@@ -1653,8 +1639,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       }
     }
 
-    // --- Build 214: Optimized Vision Trails Tracking ---
+    // --- Build 215: Incremental Vision Trails Tracking ---
     const mePlayer = state.players.get(this.currentPlayerId);
+    let needsRebuild = false;
+    const vtt = this.visionTrailTexture;
+
     state.units.forEach((u: any, id: string) => {
       const isDead = (u.hp ?? 0) <= 0;
       if (mePlayer && u.team === mePlayer.team && !isDead) {
@@ -1669,31 +1658,47 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             radius: radius
           };
           this.unitVisionTrails.set(id, trail);
+          // Initial point painting (Scale world to texture: / 4)
+          if (vtt) {
+              this.sharedTrailGraphics?.clear().fillStyle(0xffffff, 1).fillCircle(u.x / 4, u.y / 4, radius / 4);
+              vtt.draw(this.sharedTrailGraphics as any);
+          }
         } else {
           const dx = u.x - trail.lastX;
           const dy = u.y - trail.lastY;
-          // Threshold increased to 20 pixels for better performance
           if (dx * dx + dy * dy > 400) { 
             trail.path.push(u.x, u.y);
+            // Incremental paint of the NEW segment into the persistent texture
+            if (vtt && this.sharedTrailGraphics) {
+                const stg = this.sharedTrailGraphics;
+                stg.clear();
+                // Draw line and cap in texture space (/ 4)
+                stg.lineStyle((radius * 2) / 4, 0xffffff, 1);
+                stg.beginPath().moveTo(trail.lastX / 4, trail.lastY / 4).lineTo(u.x / 4, u.y / 4).strokePath();
+                stg.fillStyle(0xffffff, 1).fillCircle(u.x / 4, u.y / 4, radius / 4);
+                vtt.draw(stg);
+            }
             trail.lastX = u.x;
             trail.lastY = u.y;
-            // Cap path length to 800 segments (1600 numbers) to prevent infinite growth
-            if (trail.path.length > 1600) {
-                trail.path.splice(0, 2); 
-            }
+            if (trail.path.length > 2000) trail.path.splice(0, 2); 
           }
         }
       } else if (isDead && this.unitVisionTrails.has(id)) {
         this.unitVisionTrails.delete(id);
+        needsRebuild = true;
       }
     });
 
-    // Clean up trails for units that were removed from state
     const trailIds = Array.from(this.unitVisionTrails.keys());
     for (const tid of trailIds) {
       if (!state.units.has(tid)) {
         this.unitVisionTrails.delete(tid);
+        needsRebuild = true;
       }
+    }
+
+    if (needsRebuild) {
+        this.rebuildVisionTrailTexture();
     }
     // ----------------------------------------
 
@@ -2012,6 +2017,37 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       this.moveTarget = null;
       this.movePath = [];
     }
+  }
 
+  rebuildVisionTrailTexture() {
+    const vtt = this.visionTrailTexture;
+    if (!vtt) return;
+    vtt.clear();
+    
+    if (!this.sharedTrailGraphics) {
+        this.sharedTrailGraphics = this.add.graphics().setVisible(false);
+    }
+    const stg = this.sharedTrailGraphics;
+
+    for (const trail of this.unitVisionTrails.values()) {
+        const pts = trail.path;
+        if (pts.length < 2) continue;
+        
+        stg.clear();
+        stg.lineStyle((trail.radius * 2) / 4, 0xffffff, 1);
+        stg.beginPath();
+        stg.moveTo(pts[0] / 4, pts[1] / 4);
+        for (let i = 2; i < pts.length; i += 2) {
+            stg.lineTo(pts[i] / 4, pts[i+1] / 4);
+        }
+        stg.strokePath();
+        
+        // Circular joints for smoothness
+        stg.fillStyle(0xffffff, 1);
+        for (let i = 0; i < pts.length; i += 2) {
+            stg.fillCircle(pts[i] / 4, pts[i+1] / 4, trail.radius / 4);
+        }
+        vtt.draw(stg);
+    }
   }
 }
