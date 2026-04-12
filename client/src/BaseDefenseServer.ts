@@ -365,8 +365,9 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       if (!this.isClientAuthoritativeUnitType(String(u.type || ""))) return;
       const s = this.localUnitRenderState.get(id);
       if (!s) return;
-      const tx = Number(u.targetX ?? u.x);
-      const ty = Number(u.targetY ?? u.y);
+      const manualTarget = this.getLocalUnitManualTarget(id);
+      const tx = Number(manualTarget?.finalX ?? u.targetX ?? u.x);
+      const ty = Number(manualTarget?.finalY ?? u.targetY ?? u.y);
       const vx = Number(s.vx || 0);
       const vy = Number(s.vy || 0);
       const speedNow = Math.hypot(vx, vy);
@@ -668,11 +669,17 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
         this.localUnitMovePriority.set(memberId, prio);
       }
 
-      this.room.send("command_units", {
-        unitIds: subgroup.memberIds,
-        targetX: subgroup.leaderSlot.x,
-        targetY: subgroup.leaderSlot.y,
-      });
+      for (const memberId of subgroup.memberIds) {
+        const follow = subgroupFollowerState.get(memberId);
+        const target = follow
+          ? { x: follow.slotX, y: follow.slotY }
+          : subgroup.leaderSlot;
+        this.room.send("command_units", {
+          unitIds: [memberId],
+          targetX: target.x,
+          targetY: target.y,
+        });
+      }
       prio++;
     }
   }

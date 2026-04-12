@@ -1392,17 +1392,28 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             }
           }
 
-          // Build 228: Viewport Culling
-          // If a unit is far outside the camera and not selected, we skip expensive updates.
+          // Keep local movement simulation running even off-camera.
+          // Visual work can still be culled, but our own moving units must not freeze when zooming in.
+          const rsBeforeCull = this.localUnitRenderState.get(id);
           const isSelected = this.selectedUnitIds.has(id);
           const inCamera = isSelected || (
             ux >= camView.x - pad && ux <= camView.right + pad &&
             uy >= camView.y - pad && uy <= camView.bottom + pad
           );
+          const needsLocalSimulation = isLocalOwned && !isDead && (
+            this.hasLocalUnitManualCommand(id)
+            || this.autoEngagedUnitIds.has(id)
+            || String(u.aiState || "") === "walking"
+            || Math.hypot(Number(rsBeforeCull?.vx ?? 0), Number(rsBeforeCull?.vy ?? 0)) > 4
+            || Math.hypot(Number(u.targetX ?? ux) - ux, Number(u.targetY ?? uy) - uy) > TILE_SIZE * 0.2
+          );
 
           // 2. Visuals & Batching
-          if (inCamera) {
+          if (inCamera || needsLocalSimulation) {
             this.updateUnitRenderPos(id, e as any, u, delta, isLocalOwned, isTank);
+          }
+
+          if (inCamera) {
             dir = this.unitFacing.get(id) ?? (typeof u.dir === "number" ? u.dir : 1);
             const rs = this.localUnitRenderState.get(id);
             
