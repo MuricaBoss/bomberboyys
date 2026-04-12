@@ -1863,33 +1863,56 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         idleUnits.push(id);
     });
 
-    // Build 226: Stable Sorting by unit ID. This ensures that every unit
-    // maps to a consistent slot index, preventing "random shuffle" flickering.
-    idleUnits.sort();
+    // Build 227: Group idle units by their nearest defensive structure.
+    // This ensures units form clusters around the building they spawned from or are currently defending.
+    const groupings = new Map<number, string[]>();
+    for (const id of idleUnits) {
+        const u = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
+        const rs = this.localUnitRenderState.get(id);
+        const ux = Number(rs?.x ?? u.x);
+        const uy = Number(rs?.y ?? u.y);
 
-    if (idleUnits.length <= 0) return;
+        let bestDist = Infinity;
+        let bestStructIdx = -1;
+        for (let si = 0; si < defensiveStructures.length; si++) {
+            const s = defensiveStructures[si];
+            const d = Math.hypot(ux - s.x, uy - s.y);
+            if (d < bestDist) {
+                bestDist = d;
+                bestStructIdx = si;
+            }
+        }
+        if (bestStructIdx !== -1) {
+            if (!groupings.has(bestStructIdx)) groupings.set(bestStructIdx, []);
+            groupings.get(bestStructIdx)!.push(id);
+        }
+    }
 
-    // Distribute units among defensive structures
-    const unitsPerStructure = Math.ceil(idleUnits.length / defensiveStructures.length);
-    let unitIdx = 0;
-    for (const struct of defensiveStructures) {
-        const count = Math.min(unitsPerStructure, idleUnits.length - unitIdx);
-        // Start grid search from index 4 to stay away from the exact building center
+    // Process each building's group independently
+    for (let si = 0; si < defensiveStructures.length; si++) {
+        const struct = defensiveStructures[si];
+        const assignedUnits = groupings.get(si) || [];
+        if (assignedUnits.length <= 0) continue;
+
+        // Maintain stability within the building's cluster
+        assignedUnits.sort();
+
+        // Start grid search from index 4 to stay outside the building's footprint
         let gridIndex = 4;
         
-        for (let i = 0; i < count; i++) {
-            if (unitIdx >= idleUnits.length) break;
-            const id = idleUnits[unitIdx++];
+        for (const id of assignedUnits) {
             const u = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
             const spacing = u.type === "tank" ? TILE_SIZE * 1.8 : TILE_SIZE * 1.15;
             const unitRadius = this.localUnitBodyRadius(u);
 
             let slot: {x: number, y: number} | null = null;
-            while (gridIndex < 300) {
-              const base = this.localFormationSlot(struct.x, struct.y, gridIndex, count, spacing);
+            let searchAttempts = 0;
+            while (gridIndex < 500 && searchAttempts < 200) {
+              const base = this.localFormationSlot(struct.x, struct.y, gridIndex, assignedUnits.length, spacing);
               gridIndex++;
+              searchAttempts++;
 
-              // Build 225: Added robust obstacle and reservation checking for auto-slotting
+              // Robust obstacle and reservation checking
               if (this.canOccupy(base.x, base.y, unitRadius + TILE_SIZE * 0.4)) {
                 let blocked = false;
                 
@@ -1915,7 +1938,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
                     this.recentAssignedSlots.delete(rid);
                     continue;
                   }
-                  if (Math.hypot(base.x - rslot.x, base.y - rslot.y) < unitRadius + rslot.r + 2) {
+                  if (rid !== id && Math.hypot(base.x - rslot.x, base.y - rslot.y) < spacing * 0.8) {
                     blocked = true;
                     break;
                   }
@@ -1935,7 +1958,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
                   this.localUnitTargetOverride.set(id, { x: slot.x, y: slot.y, setAt: now });
                   // Record reservation for 15s
                   this.recentAssignedSlots.set(id, { x: slot.x, y: slot.y, r: unitRadius + 2, at: now });
-                  this.localUnitMovePriority.set(id, i % 10);
+                  this.localUnitMovePriority.set(id, 0.5);
               }
             }
         }
