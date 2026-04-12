@@ -406,12 +406,15 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       const wallRadius = unitRadius + TILE_SIZE * 0.45;
 
       let slot: {x: number, y: number} | null = null;
-      while (gridIndex < 200) {
+      while (gridIndex < 300) {
         const base = this.localFormationSlot(targetX, targetY, gridIndex, n, spacing);
         gridIndex++;
-        // "jos tile osuu seinään se poistetaan ja tehdään uuteen paikkaan"
+        
+        // Build 225: Added robust obstacle and reservation checking
         if (this.canOccupy(base.x, base.y, wallRadius)) {
-          let occupied = false;
+          let blocked = false;
+          
+          // 1. Check current units (excluding selected group)
           if (this.room?.state?.units) {
             for (const [otherId, otherU] of this.room.state.units.entries()) {
               if (selectedSet.has(otherId) || (otherU.hp ?? 0) <= 0) continue;
@@ -419,38 +422,40 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
               const ox = Number(otherS?.x ?? otherU.x);
               const oy = Number(otherS?.y ?? otherU.y);
               const oRad = this.localUnitBodyRadius(otherU);
-              // Avoid all existing units (we will let Ghost Mode handle collision ignoring if near)
               if (Math.hypot(base.x - ox, base.y - oy) < unitRadius + oRad + 2) {
-                occupied = true;
+                blocked = true;
                 break;
               }
             }
           }
-          if (!occupied) {
-            for (const prevSlot of slots) {
-              if (Math.hypot(base.x - prevSlot.x, base.y - prevSlot.y) < unitRadius + prevSlot.r) {
-                occupied = true;
-                break;
-              }
+          if (blocked) continue;
+
+          // 2. Check 15-second reservations
+          const now = Date.now();
+          for (const [rid, rslot] of this.recentAssignedSlots.entries()) {
+            if (now - rslot.at > 15000) {
+              this.recentAssignedSlots.delete(rid);
+              continue;
+            }
+            if (Math.hypot(base.x - rslot.x, base.y - rslot.y) < unitRadius + rslot.r + 2) {
+              blocked = true;
+              break;
             }
           }
-          if (!occupied) {
-            const now = Date.now();
-            for (const [rid, rslot] of this.recentAssignedSlots.entries()) {
-              if (now - rslot.at > 15000) {
-                this.recentAssignedSlots.delete(rid);
-                continue;
-              }
-              if (Math.hypot(base.x - rslot.x, base.y - rslot.y) < unitRadius + rslot.r + 2) {
-                occupied = true;
-                break;
-              }
+          if (blocked) continue;
+
+          // 3. Check slots being assigned in this current batch
+          for (const prevSlot of slots) {
+            if (Math.hypot(base.x - prevSlot.x, base.y - prevSlot.y) < unitRadius + prevSlot.r) {
+              blocked = true;
+              break;
             }
           }
-          if (!occupied) {
-            slot = base;
-            break;
-          }
+          if (blocked) continue;
+
+          // All checks passed
+          slot = base;
+          break;
         }
       }
       if (!slot) slot = { x: targetX, y: targetY };

@@ -1415,7 +1415,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               
               if (visible && this.unitShadowGraphics) {
                   this.unitShadowGraphics.fillStyle(0x000000, 0.45);
-                  this.unitShadowGraphics.fillEllipse(e.x, e.y + 3, 16, 8);
+                  // Build 225: Raised shadow slightly closer to feet
+                  this.unitShadowGraphics.fillEllipse(e.x, e.y + 1, 16, 8);
               }
               this.maybeFireUnitProjectile(id, u, e, isFriendly, visible, dir, false);
             }
@@ -1856,19 +1857,69 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     let unitIdx = 0;
     for (const struct of defensiveStructures) {
         const count = Math.min(unitsPerStructure, idleUnits.length - unitIdx);
+        // Start grid search from index 4 to stay away from the exact building center
+        let gridIndex = 4;
+        
         for (let i = 0; i < count; i++) {
+            if (unitIdx >= idleUnits.length) break;
             const id = idleUnits[unitIdx++];
             const u = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
             const spacing = u.type === "tank" ? TILE_SIZE * 1.8 : TILE_SIZE * 1.15;
-            const slot = this.localFormationSlot(struct.x, struct.y, i, count, spacing);
+            const unitRadius = this.localUnitBodyRadius(u);
+
+            let slot: {x: number, y: number} | null = null;
+            while (gridIndex < 300) {
+              const base = this.localFormationSlot(struct.x, struct.y, gridIndex, count, spacing);
+              gridIndex++;
+
+              // Build 225: Added robust obstacle and reservation checking for auto-slotting
+              if (this.canOccupy(base.x, base.y, unitRadius + TILE_SIZE * 0.4)) {
+                let blocked = false;
+                
+                // 1. Check current units
+                if (this.room.state.units) {
+                   for (const [otherId, otherU] of this.room.state.units.entries()) {
+                     if (otherId === id || (otherU.hp ?? 0) <= 0) continue;
+                     const otherS = this.localUnitRenderState.get(otherId);
+                     const ox = Number(otherS?.x ?? otherU.x);
+                     const oy = Number(otherS?.y ?? otherU.y);
+                     const oRad = this.localUnitBodyRadius(otherU);
+                     if (Math.hypot(base.x - ox, base.y - oy) < unitRadius + oRad + 2) {
+                       blocked = true;
+                       break;
+                     }
+                   }
+                }
+                if (blocked) continue;
+
+                // 2. Check 15-second reservations
+                for (const [rid, rslot] of this.recentAssignedSlots.entries()) {
+                  if (now - rslot.at > 15000) {
+                    this.recentAssignedSlots.delete(rid);
+                    continue;
+                  }
+                  if (Math.hypot(base.x - rslot.x, base.y - rslot.y) < unitRadius + rslot.r + 2) {
+                    blocked = true;
+                    break;
+                  }
+                }
+                if (blocked) continue;
+
+                slot = base;
+                break;
+              }
+            }
             
-            // Only assign if not already very close to the defensive slot
-            const rs = this.localUnitRenderState.get(id);
-            const ux = Number(rs?.x ?? u.x);
-            const uy = Number(rs?.y ?? u.y);
-            if (Math.hypot(slot.x - ux, slot.y - uy) > TILE_SIZE * 1.5) {
-                this.localUnitTargetOverride.set(id, { x: slot.x, y: slot.y, setAt: now });
-                this.localUnitMovePriority.set(id, i % 10);
+            if (slot) {
+              const rs = this.localUnitRenderState.get(id);
+              const ux = Number(rs?.x ?? u.x);
+              const uy = Number(rs?.y ?? u.y);
+              if (Math.hypot(slot.x - ux, slot.y - uy) > TILE_SIZE * 1.2) {
+                  this.localUnitTargetOverride.set(id, { x: slot.x, y: slot.y, setAt: now });
+                  // Record reservation for 15s
+                  this.recentAssignedSlots.set(id, { x: slot.x, y: slot.y, r: unitRadius + 2, at: now });
+                  this.localUnitMovePriority.set(id, i % 10);
+              }
             }
         }
     }

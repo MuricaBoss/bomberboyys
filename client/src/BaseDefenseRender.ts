@@ -884,7 +884,8 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
 
   drawFormationPreview(now: number) {
     if (!this.formationPreviewGraphics) {
-      this.formationPreviewGraphics = this.add.graphics().setDepth(19);
+      // Build 225: Elevated depth (300) to ensure visibility above Fog of War (240)
+      this.formationPreviewGraphics = this.add.graphics().setDepth(300);
     }
     const g = this.formationPreviewGraphics;
     g.clear();
@@ -896,7 +897,14 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       ? this.room.state.players.get(this.currentPlayerId)
       : this.room?.state?.players?.[this.currentPlayerId];
     const myTeam = me?.team;
+
+    // Build 225: If multiple units are selected, show one summary line instead of many individual paths
+    const isGroupSelected = this.selectedUnitIds.size > 1;
+
     if (this.localUnitTargetOverride.size > 0 && this.room?.state?.units?.forEach) {
+      let groupUX = 0, groupUY = 0, groupCount = 0;
+      let targetCenterSumX = 0, targetCenterSumY = 0;
+
       this.room.state.units.forEach((u: any, unitId: string) => {
         if ((u.hp ?? 0) <= 0) return;
         // Show for ALL units on my team (not just ownerId match - produced units have different ownerId)
@@ -910,14 +918,21 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
           sx = Number(u.targetX);
           sy = Number(u.targetY);
         } else {
-          // Neither an override nor a server-commanded walk is occurring
           return;
         }
 
         const rs = this.localUnitRenderState.get(unitId);
         const ux = Number(rs?.x ?? u.x);
         const uy = Number(rs?.y ?? u.y);
+
+        if (isGroupSelected && this.selectedUnitIds.has(unitId)) {
+           groupUX += ux; groupUY += uy; groupCount++;
+           targetCenterSumX += sx; targetCenterSumY += sy;
+           return; // Skip individual drawing for group members
+        }
+
         if (Math.hypot(sx - ux, sy - uy) < TILE_SIZE * 0.4) return; // Arrived — hide
+        
         // Target slot: orange ring + cross
         g.lineStyle(2, 0xff8800, 0.9);
         g.strokeCircle(sx, sy, TILE_SIZE * 0.28);
@@ -927,7 +942,8 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
         g.lineStyle(1.5, 0xff8800, 0.85);
         g.beginPath(); g.moveTo(sx - cs, sy); g.lineTo(sx + cs, sy); g.strokePath();
         g.beginPath(); g.moveTo(sx, sy - cs); g.lineTo(sx, sy + cs); g.strokePath();
-        // Path to slot
+        
+        // Path to slot (individual)
         const cache = this.unitClientPathCache.get(unitId);
         if (cache && cache.cells.length > 0) {
           g.lineStyle(1.2, 0xffaa33, 0.45);
@@ -944,6 +960,25 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
           g.beginPath(); g.moveTo(ux, uy); g.lineTo(sx, sy); g.strokePath();
         }
       });
+
+      // Build 225: Single summary line for selected group
+      if (isGroupSelected && groupCount > 0) {
+        const avgUX = groupUX / groupCount;
+        const avgUY = groupUY / groupCount;
+        const avgTX = targetCenterSumX / groupCount;
+        const avgTY = targetCenterSumY / groupCount;
+
+        if (Math.hypot(avgTX - avgUX, avgTY - avgUY) > TILE_SIZE * 0.5) {
+          g.lineStyle(2.5, 0xffcc33, 0.85); // Bright gold for group line
+          g.beginPath();
+          g.moveTo(avgUX, avgUY);
+          g.lineTo(avgTX, avgTY);
+          g.strokePath();
+          // Small glow circle at group center
+          g.lineStyle(1.5, 0xffcc33, 0.4);
+          g.strokeCircle(avgUX, avgUY, 12);
+        }
+      }
     }
     // --- End slot+path debug overlay ---
 
@@ -953,6 +988,8 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
     const fadeStart = this.formationPreviewUntil - 1500;
     const alpha = now > fadeStart ? Math.max(0, (this.formationPreviewUntil - now) / 1500) : 1;
 
+    // Build 225: Simplified group preview — only show center marker and destination dots
+    // (We skip individual assignment lines from group center to reduce clutter)
     if (this.formationPreviewCenter) {
       const cx = this.formationPreviewCenter.x;
       const cy = this.formationPreviewCenter.y;
@@ -960,14 +997,6 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Server {
       g.strokeCircle(cx, cy, 14);
       g.lineStyle(1.25, 0x7fffe4, 0.5 * alpha);
       g.strokeCircle(cx, cy, 22);
-      g.beginPath();
-      g.moveTo(cx - 7, cy);
-      g.lineTo(cx + 7, cy);
-      g.strokePath();
-      g.beginPath();
-      g.moveTo(cx, cy - 7);
-      g.lineTo(cx, cy + 7);
-      g.strokePath();
     }
 
     // Draw grid slot markers
