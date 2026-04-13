@@ -764,9 +764,24 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const screenW = cam.width;
     const screenH = cam.height;
     const renderScale = 0.25;
+    const bufferScale = 1.5;
     const invScale = 1 / renderScale;
-    const fogW = Math.ceil(screenW * renderScale);
-    const fogH = Math.ceil(screenH * renderScale);
+    
+    const fogW = Math.ceil(screenW * bufferScale * renderScale);
+    const fogH = Math.ceil(screenH * bufferScale * renderScale);
+
+    // Redraw Trigger: Time, Zoom, or Camera moved too close to buffer edge
+    const timeElapsed = now - this.lastWorldFogDrawAt;
+    const moveThreshold = (screenW * (bufferScale - 1.0)) * 0.4; // redraw when camera moves 40% into the buffer margin
+    const movedTooFar = !Number.isFinite(this.lastFogDrawX) 
+      || Math.abs(camView.centerX - this.lastFogDrawX) > moveThreshold
+      || Math.abs(camView.centerY - this.lastFogDrawY) > moveThreshold;
+
+    if (timeElapsed < FOG_UPDATE_MS && !zoomChanged && !movedTooFar) return;
+
+    this.lastWorldFogDrawAt = now;
+    this.lastFogDrawX = camView.centerX;
+    this.lastFogDrawY = camView.centerY;
 
     if (overlay && (overlay.width !== fogW || overlay.height !== fogH)) {
       overlay.destroy();
@@ -783,20 +798,18 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       overlay = this.worldFogOverlay;
     }
     
-    overlay.setPosition(camView.x, camView.y);
-    overlay.setDisplaySize(camView.width, camView.height);
+    const drawX = this.lastFogDrawX - (screenW * bufferScale) / 2;
+    const drawY = this.lastFogDrawY - (screenH * bufferScale) / 2;
+
+    overlay.setPosition(drawX, drawY);
+    overlay.setDisplaySize(screenW * bufferScale, screenH * bufferScale);
     overlay.clear();
     overlay.fill(0x000000, 0.88, 0, 0, fogW, fogH);
 
     const vts = this.visionTrailSprite;
     if (vts) {
-      // vts is at 1/4 world scale. overlay is at 1/4 screen scale.
-      // screen pixels = world pixels * camZoom.
-      // 1 vts pixel = 4 world pixels.
-      // 1 overlay pixel = 4 screen pixels = 4 * camZoom world pixels.
-      // So 1 overlay pixel = camZoom vts pixels.
       vts.setScale(camZoom);
-      vts.setPosition(-camView.x / 4 * camZoom, -camView.y / 4 * camZoom);
+      vts.setPosition(-drawX / 4 * camZoom, -drawY / 4 * camZoom);
       overlay.erase(vts);
     }
   }

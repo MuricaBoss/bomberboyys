@@ -243,6 +243,8 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   fogSeenAt: Float32Array | null = null;
   lastFogCamX = Number.NaN;
   lastFogCamY = Number.NaN;
+  lastFogDrawX = Number.NaN;
+  lastFogDrawY = Number.NaN;
   lastFogZoom = Number.NaN;
   fogClockSec = 0;
   lastFogTickAt = 0;
