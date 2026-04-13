@@ -2,7 +2,6 @@ import Phaser from "phaser";
 import { Room } from "colyseus.js";
 import { DISPLAY_BUILD_NUMBER } from "./build-meta";
 import { client, CLIENT_BUNDLE_VERSION, activeClientBuildId } from "./network";
-import { getGraphicsQuality, getGraphicsQualityLabel } from "./graphicsQuality";
 import {
   TILE_SIZE, RTS_GROUND_TILE_SCALE, RTS_BLOCK_TEXTURE_KEYS, RTS_INTERIOR_WALL_VISUAL_SCALE,
   RTS_BUILDING_TEXTURE_KEYS, RTS_UI_TEXTURE_KEYS, RTS_TANK_TEXTURE_KEYS, RTS_TANK_TEXTURE_BY_DIR,
@@ -325,7 +324,6 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       { id: "anchor", label: "ANCHOR" },
       { id: "build", label: "MAP" },
       { id: "fog", label: "FOG" },
-      { id: "gfx", label: "GFX" },
       { id: "dev", label: "DEV" },
       { id: "full", label: "FULL" },
       { id: "ore_refinery", label: "ORE" },
@@ -392,8 +390,6 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
           this.lastFogCamX = Number.NaN;
           this.lastFogCamY = Number.NaN;
           this.lastWorldFogDrawAt = 0;
-        } else if (def.id === "gfx") {
-          this.applyNextGraphicsQuality();
         } else if (def.id === "dev") {
           this.room.send("toggle_dev_mode");
         } else if (def.id === "full") {
@@ -470,7 +466,6 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
         || (id === "dev" && !!me?.devMode)
         || (id === "paths" && this.showDetailedPaths)
         || id === this.selectedBuild;
-      if (id === "gfx") btn.textContent = `GFX ${getGraphicsQualityLabel(getGraphicsQuality()).toUpperCase()}`;
       const disabledReason = this.getActionButtonBlockedReason(id, me);
       const enabled = !disabledReason;
       btn.style.background = selected && enabled ? "#2d7458" : "#223348";

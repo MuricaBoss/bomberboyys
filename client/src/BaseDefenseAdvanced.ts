@@ -24,17 +24,15 @@ import {
 } from "./constants";
 import { BaseDefenseScene_Hud } from "./BaseDefenseHud";
 import {
-  cycleGraphicsQuality,
   getAssetBasePath,
   getGraphicsQuality,
-  getGraphicsQualityLabel,
   getSoldierRunFrameSize,
   getSoldierShootFrameSize,
   getTieredTextureKey,
   shouldRoundPixels,
-  shouldAntialias,
-  getTargetFps,
 } from "./graphicsQuality";
+import { updateSoldierVisual } from "./BaseDefenseSoldierVisuals";
+import { updateTankVisual } from "./BaseDefenseTankVisuals";
 
 export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   public tankTrailState = new Map<string, any>();
@@ -94,18 +92,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   }
 
   applyNextGraphicsQuality() {
-    const next = cycleGraphicsQuality();
-    // Changing quality tier requires a full page reload because:
-    //   1. Different asset files must be loaded (different resolution tier)
-    //   2. Render settings (antialias, pixelArt, fps target) are set at
-    //      Phaser game creation in main.ts — cannot be changed at runtime.
-    // We save the new quality to localStorage first (done by cycleGraphicsQuality),
-    // then reload. On next load, main.ts reads the new quality and configures
-    // the game correctly, and preload() loads only the new tier's assets.
-    this.showNotice(`Graphics: ${getGraphicsQualityLabel(next)} — reloading...`, "#ffd27a");
-    this.time.delayedCall(600, () => {
-      window.location.reload();
-    });
+    this.showNotice("Graphics fixed to Ultra", "#ffd27a");
   }
 
   refreshGraphicsPresentation() {
@@ -580,21 +567,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const worldH = state.mapHeight * TILE_SIZE;
     this.cameras.main.setBounds(-500, -500, worldW + 1000, worldH + 1000);
 
-    // Build 215: Persistent World-Space Vision Texture (Downscaled for performance)
-    if (!this.visionTrailTexture) {
-        // 4x downscaling: a 2048x2048 texture covers 8192 world units.
-        this.visionTrailTexture = this.add.renderTexture(0, 0, Math.ceil(worldW / 4), Math.ceil(worldH / 4))
-            .setVisible(false);
-    }
-    if (!this.sharedTrailGraphics) {
-        this.sharedTrailGraphics = this.add.graphics().setVisible(false);
-    }
-    if (!this.visionTrailSprite && this.visionTrailTexture) {
-        this.visionTrailSprite = this.add.sprite(0, 0, this.visionTrailTexture.texture)
-            .setOrigin(0)
-            .setVisible(false);
-    }
-    
     const me = state.players?.get ? state.players.get(this.currentPlayerId) : state.players?.[this.currentPlayerId];
     if (me && !this.hasHadInitialCameraSnap && Number(me.x) > 10 && Number(me.y) > 10) {
       // Start camera at perfect world center first to establish stable bounds
@@ -735,6 +707,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
   updateWorldFog(now: number) {
     if (!this.worldFogOverlay || !this.worldFogMaskGraphics || !this.room?.state) return;
+    this.updateFogMemory(now);
+
     if (!this.fogEnabled) {
       this.worldFogOverlay.clear();
       this.worldFogOverlay.setVisible(false);
@@ -757,8 +731,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       || Math.abs(camView.x - this.lastFogCamX) >= 0.5
       || Math.abs(camView.y - this.lastFogCamY) >= 0.5;
     
-    // Throttle redraw to 100ms (10 FPS)
-    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < 100) return; 
+    // Throttle redraw to the shared fog cadence.
+    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < FOG_UPDATE_MS) return;
 
     this.lastWorldFogDrawAt = now;
     this.lastFogCamX = camView.x;
@@ -766,37 +740,56 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.lastFogZoom = camZoom;
 
     let overlay = this.worldFogOverlay;
-    const screenW = cam.width;
-    const screenH = cam.height;
+    // Build 261: Render fog at 50% resolution to save fill rate. Scale it up for display.
+    const fogResScale = 0.5;
+    const fogW = Math.ceil(cam.width * fogResScale);
+    const fogH = Math.ceil(cam.height * fogResScale);
 
-    // Build 210: DESTROY AND RE-CREATE on resolution change as requested by the user.
-    if (overlay && (overlay.width !== screenW || overlay.height !== screenH)) {
+    if (overlay && (overlay.width !== fogW || overlay.height !== fogH)) {
         overlay.destroy();
         this.worldFogOverlay = null as any;
         overlay = null as any;
     }
 
     if (!this.worldFogOverlay) {
-      this.worldFogOverlay = this.add.renderTexture(0, 0, screenW, screenH).setOrigin(0).setScrollFactor(1).setDepth(240);
+      this.worldFogOverlay = this.add.renderTexture(0, 0, fogW, fogH).setOrigin(0).setScrollFactor(1).setDepth(240);
       overlay = this.worldFogOverlay;
     }
     overlay.setPosition(camView.x, camView.y);
     overlay.setDisplaySize(camView.width, camView.height);
     overlay.clear();
-    overlay.fill(0x000000, 0.88, 0, 0, screenW, screenH);
+    const fogCellSize = this.getFogCellSize();
+    const seenAt = this.fogSeenAt;
+    if (!seenAt || this.fogCols <= 0 || this.fogRows <= 0) return;
 
-    // Build 245 Optimization: Use ONE single erase operation for ALL vision sources.
-    // Instead of looping over 200+ units and erasing circles (slow), we use the consolidated visionTrailSprite.
-    const vts = this.visionTrailSprite;
-    if (vts) {
-        // vts scale is 4x because the trail texture is 1/4 size
-        const totalScale = 4 * camZoom;
-        vts.setScale(totalScale);
-        vts.setPosition(-camView.x * camZoom, -camView.y * camZoom);
-        overlay.erase(vts);
+    const textureScale = camZoom * fogResScale;
+    const cellSizeScaled = Math.max(1, Math.ceil(fogCellSize * textureScale));
+    const drawStartCol = Math.max(0, Math.floor(camView.x / fogCellSize) - 1);
+    const drawEndCol = Math.min(this.fogCols - 1, Math.floor((camView.right - 1) / fogCellSize) + 1);
+    const drawStartRow = Math.max(0, Math.floor(camView.y / fogCellSize) - 1);
+    const drawEndRow = Math.min(this.fogRows - 1, Math.floor((camView.bottom - 1) / fogCellSize) + 1);
+
+    for (let row = drawStartRow; row <= drawEndRow; row++) {
+      const rowOffset = row * this.fogCols;
+      const rowUp = (row > 0 ? row - 1 : row) * this.fogCols;
+      const rowDown = (row < this.fogRows - 1 ? row + 1 : row) * this.fogCols;
+      const localY = Math.floor((row * fogCellSize - camView.y) * textureScale);
+      for (let col = drawStartCol; col <= drawEndCol; col++) {
+        const c0 = col > 0 ? col - 1 : col;
+        const c2 = col < this.fogCols - 1 ? col + 1 : col;
+        const center = this.fogAlphaFromSeenTime(seenAt[rowOffset + col]) * 0.52;
+        const neigh = (
+          this.fogAlphaFromSeenTime(seenAt[rowOffset + c0]) +
+          this.fogAlphaFromSeenTime(seenAt[rowOffset + c2]) +
+          this.fogAlphaFromSeenTime(seenAt[rowUp + col]) +
+          this.fogAlphaFromSeenTime(seenAt[rowDown + col])
+        ) * 0.12;
+        const alpha = Math.max(0, Math.min(0.9, center + neigh));
+        if (alpha <= 0.01) continue;
+        const localX = Math.floor((col * fogCellSize - camView.x) * textureScale);
+        overlay.fill(0x000000, alpha, localX, localY, cellSizeScaled + 1, cellSizeScaled + 1);
+      }
     }
-    // Loop over visionSources removed for massive performance gain. Vision footprints are now drawn 
-    // to the persistent trail texture incrementally during unit/structure sync.
   }
 
   autoEngageUnits(now: number) {
@@ -1231,9 +1224,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       this.sharedPathCache.clear();
       (this as any)._lastSharedPathClearAt = nowMs;
     }
-    const vtt = this.visionTrailTexture;
-    let needsRebuild = false;
-
     // Build 228: Unit counters
     let countSoldiers = 0;
     let countTanks = 0;
@@ -1268,39 +1258,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               : (isFriendly ? 0x6ec4ff : 0xff4f1a);
           const radius = isHarvester ? TILE_SIZE * 0.18 : isTank ? TILE_SIZE * 0.3 : TILE_SIZE * 0.22;
           let dir = this.unitFacing.get(id) ?? (typeof u.dir === "number" ? u.dir : 1);
-
-          // Build 217 Support: Vision trail tracking (Always track regardless of camera)
-          if (isFriendly && !isDead) {
-            let trail = this.unitVisionTrails.get(id);
-            const vRadius = Math.sqrt(u.visionRangeSq || 40000);
-            if (!trail) {
-              trail = { path: [ux, uy], lastX: ux, lastY: uy, radius: vRadius };
-              this.unitVisionTrails.set(id, trail);
-              if (vtt && this.sharedTrailGraphics) {
-                  this.sharedTrailGraphics.clear().fillStyle(0xffffff, 1).fillCircle(ux / 4, uy / 4, vRadius / 4);
-                  vtt.draw(this.sharedTrailGraphics as any);
-              }
-            } else {
-              const dx = ux - trail.lastX;
-              const dy = uy - trail.lastY;
-              if (dx * dx + dy * dy > 400) { 
-                trail.path.push(ux, uy);
-                if (vtt && this.sharedTrailGraphics) {
-                    const stg = this.sharedTrailGraphics;
-                    stg.clear().lineStyle((vRadius * 2) / 4, 0xffffff, 1);
-                    stg.beginPath().moveTo(trail.lastX / 4, trail.lastY / 4).lineTo(ux / 4, uy / 4).strokePath();
-                    stg.fillStyle(0xffffff, 1).fillCircle(ux / 4, uy / 4, vRadius / 4);
-                    vtt.draw(stg);
-                }
-                trail.lastX = ux;
-                trail.lastY = uy;
-                if (trail.path.length > 2000) trail.path.splice(0, 2); 
-              }
-            }
-          } else if (isDead && this.unitVisionTrails.has(id)) {
-            this.unitVisionTrails.delete(id);
-            needsRebuild = true;
-          }
 
           if (!e || (isTank && !(e instanceof Phaser.GameObjects.Image)) || (isSoldier && !(e instanceof Phaser.GameObjects.Sprite))) {
             if (e) e.destroy();
@@ -1359,8 +1316,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           const ry = Number(rs?.y ?? uy);
 
           const inCamera = isSelected || (
-            rx >= camView.x - pad && rx <= camView.right + pad &&
-            ry >= camView.y - pad && ry <= camView.bottom + pad
+            (rx >= camView.x - pad && rx <= camView.right + pad && ry >= camView.y - pad && ry <= camView.bottom + pad) ||
+            (ux >= camView.x - pad && ux <= camView.right + pad && uy >= camView.y - pad && uy <= camView.bottom + pad)
           );
           const needsLocalSimulation = this.shouldKeepLocalUnitSimulationActive(id, u, ux, uy);
 
@@ -1374,52 +1331,33 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             const rs = this.localUnitRenderState.get(id);
             
             if (isTank && e instanceof Phaser.GameObjects.Image) {
-              const tank = e;
-              tank.setTexture(this.getTankTextureKeyByDir(dir));
-              tank.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
-              if (isDead) tank.setTint(0x444444); else tank.clearTint();
-              
-              const shadowPos = this.getTankShadowPosition(tank, dir);
-              let ts = this.tankShadowEntities[id];
-              if (!ts && visible) {
-                ts = this.add.image(shadowPos.x, shadowPos.y, this.getTankShadowTextureKey(dir))
-                  .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
-                  .setAlpha(0.4)
-                  .setBlendMode(Phaser.BlendModes.MULTIPLY)
-                  .setTint(0x000000)
-                  .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
-                this.tankShadowEntities[id] = ts;
-              }
-              if (ts) {
-                  ts.setVisible(visible);
-                  if (visible) {
-                      ts.setPosition(shadowPos.x, shadowPos.y);
-                      ts.setTexture(this.getTankShadowTextureKey(dir));
-                      ts.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
-                      this.applyWorldDepth(ts, e.y, WORLD_DEPTH_UNIT_OFFSET - WORLD_DEPTH_SHADOW_GAP);
-                  }
-              }
-              this.maybeFireUnitProjectile(id, u, e, isFriendly, visible, dir, true);
+              updateTankVisual(this, {
+                camView,
+                dir,
+                entity: e,
+                id,
+                isDead,
+                isFriendly,
+                isSelected,
+                unit: u,
+                visible,
+              });
             } else if (isSoldier && e instanceof Phaser.GameObjects.Sprite) {
-              const soldier = e;
-              // Build 223: Use LOCAL simulation velocity (rs) for animation stopping to ensure we don't run in place in a slot.
-              const moving = (rs && Math.hypot(rs.vx, rs.vy) > 10) || (u.aiState === "walking" && !this.hasLocalUnitManualCommand(id));
-              if (moving) soldier.anims.play(this.getSoldierAnimKey("run", dir), true);
-              else {
-                  soldier.anims.stop();
-                  soldier.setTexture(this.getSoldierSheetTextureKey("run"), this.getSoldierIdleFrame(dir));
-              }
-              if (isDead) soldier.setTint(0x444444); else soldier.clearTint();
-              
-              if (visible && this.unitShadowGraphics) {
-                  this.unitShadowGraphics.fillStyle(0x000000, 0.45);
-                  // Build 225: Raised shadow slightly closer to feet
-                  this.unitShadowGraphics.fillEllipse(e.x, e.y + 1, 16, 8);
-              }
-              this.maybeFireUnitProjectile(id, u, e, isFriendly, visible, dir, false);
+              updateSoldierVisual(this, {
+                camView,
+                dir,
+                entity: e,
+                id,
+                isDead,
+                isFriendly,
+                isSelected,
+                renderState: rs,
+                unit: u,
+                visible,
+              });
             }
             
-            if (visible && this.unitUiGraphics) {
+            if (visible && this.unitUiGraphics && camView.contains(e.x, e.y)) {
               const uig = this.unitUiGraphics;
               const isSelected = this.selectedUnitIds.has(id);
               
@@ -1465,13 +1403,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     // Build 243: The 'Next segment trigger' logic has been removed. 
     // Movement is now direct and continuous to the final destination.
 
-    // Cleanup and Trails Rebuild
-    const trailIds = Array.from(this.unitVisionTrails.keys());
-    for (const tid of trailIds) {
-        if (!state.units.has(tid)) { this.unitVisionTrails.delete(tid); needsRebuild = true; }
-    }
-    if (needsRebuild) this.rebuildVisionTrailTexture();
-
     for (const id of Object.keys(this.unitEntities)) {
       if (!state.units.has(id)) {
         this.unitEntities[id].destroy();
@@ -1494,7 +1425,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       const frameCount = (this.game.loop.frame % 32);
       const isCriticalUpdate = (frameCount === 0);
       const isTextUpdate = (frameCount % 4 === 0);
-      
       if (state.structures?.forEach) {
         try {
           state.structures.forEach((s: any, id: string) => {
@@ -1611,19 +1541,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               enemyIcon.setVisible(false);
             }
 
-            // Build 245: Contribute structure vision to the persistent discovery trail (once per structure)
-            if (isFriendly && (s.hp ?? 0) > 0) {
-              if (!(this as any)._structureVisionRendered) (this as any)._structureVisionRendered = new Set<string>();
-              if (!(this as any)._structureVisionRendered.has(id)) {
-                  (this as any)._structureVisionRendered.add(id);
-                  const vtt = this.visionTrailTexture;
-                  if (vtt && this.sharedTrailGraphics) {
-                      const vRadius = s.type === "base" ? TILE_SIZE * 9.2 : s.type === "turret" ? TILE_SIZE * 7.4 : TILE_SIZE * 5.8;
-                      this.sharedTrailGraphics.clear().fillStyle(0xffffff, 1).fillCircle(s.x / 4, s.y / 4, vRadius / 4);
-                      vtt.draw(this.sharedTrailGraphics as any);
-                  }
-              }
-            }
           });
         } catch (err) {
           console.error("[BaseDefense] Error in structures loop:", err);
@@ -1807,39 +1724,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     }
   }
 
-  rebuildVisionTrailTexture() {
-    const vtt = this.visionTrailTexture;
-    if (!vtt) return;
-    // Build 245: Stop clearing! This makes the discovery persistent (Trails).
-    // vtt.clear();
-    
-    if (!this.sharedTrailGraphics) {
-        this.sharedTrailGraphics = this.add.graphics().setVisible(false);
-    }
-    const stg = this.sharedTrailGraphics;
-
-    for (const trail of this.unitVisionTrails.values()) {
-        const pts = trail.path;
-        if (pts.length < 2) continue;
-        
-        stg.clear();
-        stg.lineStyle((trail.radius * 2) / 4, 0xffffff, 1);
-        stg.beginPath();
-        stg.moveTo(pts[0] / 4, pts[1] / 4);
-        for (let i = 2; i < pts.length; i += 2) {
-            stg.lineTo(pts[i] / 4, pts[i+1] / 4);
-        }
-        stg.strokePath();
-        
-        // Circular joints for smoothness
-        stg.fillStyle(0xffffff, 1);
-        for (let i = 0; i < pts.length; i += 2) {
-            stg.fillCircle(pts[i] / 4, pts[i+1] / 4, trail.radius / 4);
-        }
-        vtt.draw(stg);
-    }
-  }
-
   reflowDefensiveAssignments(now: number) {
     if (now - this.lastDefensiveSlotRefreshAt < 4000) return;
     this.lastDefensiveSlotRefreshAt = now;
@@ -1991,7 +1875,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     
     try {
       // client and activeClientBuildId come from network.ts
-      const newRoom = await client.reconnect(this.room.roomId, this.room.sessionId);
+      // Build 258: Use reconnectionToken for Colyseus 0.16 compatibility
+      const newRoom = await client.reconnect((this.room as any).reconnectionToken);
       console.log("[BaseDefense] RECONNECTED successfully!");
       
       this.isReconnecting = false;

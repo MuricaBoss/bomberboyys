@@ -1,7 +1,6 @@
 import Phaser from "phaser";
 import { httpEndpoint } from "./network";
 import { TILE_SIZE } from "./constants";
-import { cycleGraphicsQuality, getGraphicsQuality, getGraphicsQualityLabel } from "./graphicsQuality";
 
 export class MenuScene extends Phaser.Scene {
   serverReady = false;
@@ -9,7 +8,6 @@ export class MenuScene extends Phaser.Scene {
   selectedMode: "bomber_room" | "base_defense_room" = "base_defense_room";
   statusText: Phaser.GameObjects.Text | null = null;
   modeText: Phaser.GameObjects.Text | null = null;
-  qualityText: Phaser.GameObjects.Text | null = null;
   probeTimer: Phaser.Time.TimerEvent | null = null;
 
   constructor() {
@@ -28,10 +26,6 @@ export class MenuScene extends Phaser.Scene {
     this.statusText = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 102, "Server: connecting...", { fontSize: '22px', color: '#ffcc66', fontFamily: 'Arial' }).setOrigin(0.5);
     const modeLabel = this.selectedMode === "base_defense_room" ? "Base Defense" : "Bomber";
     this.modeText = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 145, `Mode: Bomber (1) | Base Defense (2)  [selected: ${modeLabel}]`, { fontSize: "20px", color: "#9fe6ff", fontFamily: "Arial" }).setOrigin(0.5);
-    const qualityLabel = getGraphicsQualityLabel(getGraphicsQuality());
-    this.qualityText = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY + 178, `Graphics: ${qualityLabel} [G]`, { fontSize: "20px", color: "#ffd27a", fontFamily: "Arial" })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
     
     this.tweens.add({
       targets: instruction, alpha: 0.2, duration: 800, yoyo: true, repeat: -1
@@ -58,17 +52,6 @@ export class MenuScene extends Phaser.Scene {
       this.selectedMode = "base_defense_room";
       if (this.modeText) this.modeText.setText("Mode: Bomber (1) | Base Defense (2)  [selected: Base Defense]");
     });
-    const updateQualityText = () => {
-      if (!this.qualityText) return;
-      const label = getGraphicsQualityLabel(getGraphicsQuality());
-      this.qualityText.setText(`Graphics: ${label} [G]`);
-    };
-    const handleQualityToggle = () => {
-      cycleGraphicsQuality();
-      updateQualityText();
-    };
-    this.input.keyboard!.on("keydown-G", handleQualityToggle);
-    this.qualityText.on("pointerdown", handleQualityToggle);
 
     const startSelectedMode = () => {
       if (this.hasStarted) return;

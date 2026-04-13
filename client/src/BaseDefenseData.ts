@@ -36,10 +36,6 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   playerEntities: { [id: string]: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle | Phaser.GameObjects.Image } = {};
   playerLabels: { [id: string]: Phaser.GameObjects.Text } = {};
   unitEntities: { [id: string]: Phaser.GameObjects.Sprite | Phaser.GameObjects.Image | Phaser.GameObjects.Arc } = {};
-  unitVisionTrails = new Map<string, { path: number[], lastX: number, lastY: number, radius: number }>();
-  sharedTrailGraphics: Phaser.GameObjects.Graphics | null = null;
-  visionTrailTexture: Phaser.GameObjects.RenderTexture | null = null;
-  visionTrailSprite: Phaser.GameObjects.Sprite | null = null;
   unitFacing = new Map<string, number>();
   // Hysteresis: tracks (tentativeDir, frameCount) to prevent rapid texture flipping.
   // Tank texture only switches after the same new direction appears 5+ consecutive frames.
@@ -70,6 +66,8 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   activeTileIndices = new Set<number>();
   tilePool: (Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle)[] = [];
   mapCache: number[] = [];
+  tilemap: Phaser.Tilemaps.Tilemap | null = null;
+  tilemapLayer: Phaser.Tilemaps.TilemapLayer | null = null;
 
   mapSyncPending = false;
   uiText!: Phaser.GameObjects.Text;

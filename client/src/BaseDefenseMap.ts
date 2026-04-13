@@ -24,6 +24,7 @@ import {
   PRODUCED_UNIT_EXIT_GRACE_MS, FOG_CELL_SIZE, FOG_UPDATE_MS, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM,
 } from "./constants";
 import { BaseDefenseScene_Data } from "./BaseDefenseData";
+import { getGraphicsQuality, getTieredTextureKey } from "./graphicsQuality";
 
 export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
   isLocalSpawnPointFree(state: any, x: number, y: number, radius: number) {
@@ -276,14 +277,51 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     const height = state.mapHeight;
     const total = width * height;
 
-    // Use a fresh cache to detect changes
-    if (this.mapCache.length !== total) {
+    if (!this.tilemap || this.tilemap.width !== width || this.tilemap.height !== height) {
+      if (this.tilemap) this.tilemap.destroy();
+      
+      // Build 262: Create Tileset from individual images.
+      // We use the textured atlas method or just add multiple images.
+      // Actually, Phaser Tilemap can use multiple tileset images.
+      this.tilemap = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width, height });
+      
+      const tier = getGraphicsQuality();
+      const tilesetName = "rts_tileset";
+      
+      // Create a canvas to stitch the individual block textures into one Tileset
+      const canvasKey = "rts_tileset_canvas";
+      let canvas = this.textures.get(canvasKey) as Phaser.Textures.CanvasTexture;
+      if (!canvas || canvas.key !== canvasKey) {
+          canvas = this.textures.createCanvas(canvasKey, TILE_SIZE * 5, TILE_SIZE)!;
+      }
+      
+      if (canvas) {
+          const ctx = canvas.context;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          RTS_BLOCK_TEXTURE_KEYS.forEach((key, idx) => {
+              const texKey = getTieredTextureKey(key, tier);
+              const frame = this.textures.getFrame(texKey);
+              if (frame && frame.texture) {
+                  const source = frame.texture.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+                  if (source) {
+                    ctx.drawImage(source, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, (idx + 1) * TILE_SIZE, 0, TILE_SIZE, TILE_SIZE);
+                  }
+              }
+          });
+          canvas.refresh();
+      }
+
+      const tileset = this.tilemap.addTilesetImage(tilesetName, canvasKey, TILE_SIZE, TILE_SIZE);
+      // Build 263 Fix: Use createBlankLayer for dynamic maps instead of createLayer (which expects pre-defined JSON data)
+      this.tilemapLayer = this.tilemap.createBlankLayer("main_layer", tileset!, 0, 0);
+      this.tilemapLayer?.setDepth(this.getWorldDepth(0, WORLD_DEPTH_TILE_OFFSET));
+      
       this.mapCache = new Array(total).fill(-1);
-      // Clear all existing entities if map size changed
+      
+      // Clear legacy entities if any
       for (const ent of this.tileEntities) ent?.destroy();
       for (const ent of this.tileShadowEntities) ent?.destroy();
-      this.tileEntities = new Array(total);
-      this.tileShadowEntities = new Array(total);
+      this.tileEntities = [];
       this.activeTileIndices.clear();
     }
 
@@ -294,100 +332,56 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         this.mapCache[i] = tile;
         changed = true;
         
-        // If an active tile was changed to 0, it must be removed.
-        // updateMapCulling will handle the rest.
-        if (tile === 0 && this.activeTileIndices.has(i)) {
-          this.removeTileAt(i);
+        const gx = i % width;
+        const gy = Math.floor(i / width);
+        
+        if (tile === 0) {
+            this.tilemap?.putTileAt(-1, gx, gy);
+        } else {
+            // Map our hash-based variety to tileset indices
+            const hash = Math.abs((gx * 73856093) ^ (gy * 19349663));
+            const tileIdx = (hash % RTS_BLOCK_TEXTURE_KEYS.length) + 1; // 1 to 4
+            this.tilemap?.putTileAt(tileIdx, gx, gy);
         }
       }
     }
     
     if (changed) {
-       // Force a culling update on next frame
-       this.lastFogCamX = NaN; 
+        this.updateMapShadows();
     }
   }
 
-  private removeTileAt(i: number) {
-    const ent = this.tileEntities[i];
-    if (ent) {
-      ent.setVisible(false);
-      this.tilePool.push(ent);
-      this.tileEntities[i] = undefined as any;
-    }
-    this.activeTileIndices.delete(i);
-  }
-
-  updateMapCulling() {
-    const cam = this.cameras.main;
-    const wv = cam.worldView;
+  private updateMapShadows() {
     const state = this.room.state;
-    if (!state?.map || !this.mapCache.length) return;
-
+    if (!state?.map || !this.tilemap) return;
     const width = state.mapWidth;
     const height = state.mapHeight;
 
-    // Redraw shadows using a single Graphics object for massive Batching performance gain
     if (!this.tileShadowGraphics) {
       this.tileShadowGraphics = this.add.graphics();
-      // Level the shadows below everything else
       this.tileShadowGraphics.setDepth(this.getWorldDepth(0, WORLD_DEPTH_TILE_OFFSET - WORLD_DEPTH_SHADOW_GAP));
       this.tileShadowGraphics.setBlendMode(Phaser.BlendModes.MULTIPLY);
     }
     const g = this.tileShadowGraphics;
     g.clear();
-
-    const CULL_MARGIN = TILE_SIZE * 2;
-    const minGX = Math.max(0, Math.floor((wv.x - CULL_MARGIN) / TILE_SIZE));
-    const maxGX = Math.min(width - 1, Math.floor((wv.right + CULL_MARGIN) / TILE_SIZE));
-    const minGY = Math.max(0, Math.floor((wv.y - CULL_MARGIN) / TILE_SIZE));
-    const maxGY = Math.min(height - 1, Math.floor((wv.bottom + CULL_MARGIN) / TILE_SIZE));
-
-    const newVisible = new Set<number>();
-    
     g.fillStyle(0x000000, RTS_TILE_SHADOW_ALPHA);
 
-    for (let gy = minGY; gy <= maxGY; gy++) {
-      for (let gx = minGX; gx <= maxGX; gx++) {
-        const i = gy * width + gx;
+    for (let i = 0; i < this.mapCache.length; i++) {
         if (this.mapCache[i] !== 1) continue;
-
-        newVisible.add(i);
-
-        // Draw shadow to batch graphics
+        const gx = i % width;
+        const gy = Math.floor(i / width);
         const shadow = this.getWallShadowSpec(gx, gy);
         g.fillEllipse(shadow.x, shadow.y, shadow.width, shadow.height);
-
-        // Manage Sprite GameObject
-        if (!this.activeTileIndices.has(i)) {
-          let ent = this.tilePool.pop();
-          const tex = this.getInteriorWallTextureKey(gx, gy);
-          const worldX = gx * TILE_SIZE + TILE_SIZE / 2;
-          const worldY = gy * TILE_SIZE + TILE_SIZE / 2;
-          
-          if (!ent) {
-            ent = this.createWallTile(gx, gy, width, height);
-          } else {
-             // Reuse pooled object
-             if (ent instanceof Phaser.GameObjects.Image) {
-               ent.setTexture(tex);
-             }
-             ent.setPosition(worldX, worldY);
-             ent.setVisible(true);
-             this.applyWorldDepth(ent, worldY, WORLD_DEPTH_TILE_OFFSET);
-          }
-          this.tileEntities[i] = ent;
-          this.activeTileIndices.add(i);
-        }
-      }
     }
+  }
 
-    // Remove tiles that are no longer visible
-    for (const i of Array.from(this.activeTileIndices)) {
-      if (!newVisible.has(i)) {
-        this.removeTileAt(i);
-      }
-    }
+  private removeTileAt(i: number) {
+    // Deprecated for Build 262 Tilemap system
+  }
+
+  updateMapCulling() {
+    // Build 262: Individual sprite culling replaced by optimized TilemapLayer.
+    // Shadow updates are now handled in syncMap via updateMapShadows() on map change.
   }
 
   updateObstacleGrid() {
@@ -810,12 +804,58 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     return this.currentVisionGrid[gy * this.gridW + gx] === 1;
   }
 
-  fogAlphaAtWorld(worldX: number, worldY: number) {
-    if (!this.fogSeenAt || this.fogCols <= 0 || this.fogRows <= 0) return 0.9;
+  ensureFogMemoryGrid() {
+    const state = this.room?.state;
+    if (!state) return null;
     const fogCellSize = this.getFogCellSize();
-    const col = Math.max(0, Math.min(this.fogCols - 1, Math.floor(worldX / fogCellSize)));
-    const row = Math.max(0, Math.min(this.fogRows - 1, Math.floor(worldY / fogCellSize)));
-    const seenTime = this.fogSeenAt[row * this.fogCols + col];
+    const worldW = Math.max(1, Number(state.mapWidth || 1) * TILE_SIZE);
+    const worldH = Math.max(1, Number(state.mapHeight || 1) * TILE_SIZE);
+    const cols = Math.ceil(worldW / fogCellSize);
+    const rows = Math.ceil(worldH / fogCellSize);
+    const total = cols * rows;
+    if (!this.fogSeenAt || this.fogCols !== cols || this.fogRows !== rows || this.fogSeenAt.length !== total) {
+      this.fogCols = cols;
+      this.fogRows = rows;
+      this.fogSeenAt = new Float32Array(total);
+      this.fogSeenAt.fill(-9999);
+    }
+    return { fogCellSize, cols, rows, seenAt: this.fogSeenAt };
+  }
+
+  updateFogMemory(now: number) {
+    const fog = this.ensureFogMemoryGrid();
+    if (!fog) return;
+    if (!this.lastFogTickAt) this.lastFogTickAt = now;
+    const dtSec = Math.max(0, Math.min(0.2, (now - this.lastFogTickAt) / 1000));
+    this.lastFogTickAt = now;
+    this.fogClockSec += dtSec;
+
+    const vision = this.currentVisionGrid;
+    if (!vision) return;
+
+    const { fogCellSize, cols, rows, seenAt } = fog;
+    const stampTime = this.fogClockSec;
+    for (let gy = 0; gy < this.gridH; gy++) {
+      const visionRow = gy * this.gridW;
+      const worldTop = gy * TILE_SIZE;
+      const minRow = Math.max(0, Math.floor(worldTop / fogCellSize));
+      const maxRow = Math.min(rows - 1, Math.floor((worldTop + TILE_SIZE - 1) / fogCellSize));
+      for (let gx = 0; gx < this.gridW; gx++) {
+        if (vision[visionRow + gx] !== 1) continue;
+        const worldLeft = gx * TILE_SIZE;
+        const minCol = Math.max(0, Math.floor(worldLeft / fogCellSize));
+        const maxCol = Math.min(cols - 1, Math.floor((worldLeft + TILE_SIZE - 1) / fogCellSize));
+        for (let row = minRow; row <= maxRow; row++) {
+          const rowOffset = row * cols;
+          for (let col = minCol; col <= maxCol; col++) {
+            seenAt[rowOffset + col] = stampTime;
+          }
+        }
+      }
+    }
+  }
+
+  fogAlphaFromSeenTime(seenTime: number) {
     if (seenTime <= -1000) return 0.9;
     const visibleHoldSec = 0.35;
     const fadeToDarkSec = 16;
@@ -823,6 +863,15 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     if (ageSec <= visibleHoldSec) return 0;
     const t = Math.min(1, (ageSec - visibleHoldSec) / fadeToDarkSec);
     return 0.14 + t * 0.76;
+  }
+
+  fogAlphaAtWorld(worldX: number, worldY: number) {
+    if (!this.fogSeenAt || this.fogCols <= 0 || this.fogRows <= 0) return 0.9;
+    const fogCellSize = this.getFogCellSize();
+    const col = Math.max(0, Math.min(this.fogCols - 1, Math.floor(worldX / fogCellSize)));
+    const row = Math.max(0, Math.min(this.fogRows - 1, Math.floor(worldY / fogCellSize)));
+    const seenTime = this.fogSeenAt[row * this.fogCols + col];
+    return this.fogAlphaFromSeenTime(seenTime);
   }
 
   isVisibleToTeamWithFogMemory(worldX: number, worldY: number) {
