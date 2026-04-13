@@ -36,6 +36,7 @@ import { ensureTankEntity, syncTankRuntime } from "./BaseDefenseTankRuntime";
 
 export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   public tankTrailState = new Map<string, any>();
+  public unitHpGraphics!: Phaser.GameObjects.Graphics;
   protected unitAutoRallied?: Set<string>;
   protected lastDefensiveSlotRefreshAt = 0;
 
@@ -554,6 +555,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     }
     if (!this.unitUiGraphics) {
       this.unitUiGraphics = this.add.graphics().setDepth(WORLD_DEPTH_HP_OFFSET);
+    }
+    if (!this.unitHpGraphics) {
+      this.unitHpGraphics = this.add.graphics().setDepth(WORLD_DEPTH_HP_OFFSET + 0.1);
     }
     if (!this.unitShadowGraphics) {
       this.unitShadowGraphics = this.add.graphics()
@@ -1240,6 +1244,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     
     // Build 218: Prepare shared graphics for batching
     this.unitUiGraphics?.clear();
+    if (this.game.loop.frame % 3 === 0) {
+      this.unitHpGraphics?.clear();
+    }
     this.unitShadowGraphics?.clear();
     const camView = this.cameras.main.worldView;
     const pad = TILE_SIZE * 6; // Build 280: Standard optimized padding
@@ -1381,34 +1388,36 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               });
             }
             
-            if (visible && this.unitUiGraphics && camView.contains(e.x, e.y)) {
-              const uig = this.unitUiGraphics;
-              const isSelected = this.selectedUnitIds.has(id);
+            if (visible && camView.contains(e.x, e.y)) {
               const camZoom = this.cameras.main.zoom;
-              const hpRatio = Math.max(0, Math.min(1, (u.hp || 0) / (u.maxHp || 1)));
-
-              // Build 285: HP Bar LOD - Hide bars for healthy units unless selected or zoomed in close
-              const showHp = (isSelected || hpRatio < 1.0) && camZoom > 0.52;
+              const isSelected = this.selectedUnitIds.has(id);
               
-              if (isSelected) {
-                const ringSize = isTank ? this.getTankSelectionBoxSize(e as any) : TILE_SIZE * 0.7;
-                const ringY = isTank ? this.getTankSelectionY(e as any, dir) : e.y + 2;
-                uig.lineStyle(2, 0x00ffcc, 1);
-                uig.strokeRect(e.x - ringSize / 2, ringY - ringSize / 2, ringSize, ringSize);
+              // 1. Selection Rings & Enemy Markers (unitUiGraphics - every frame)
+              if (this.unitUiGraphics) {
+                const uig = this.unitUiGraphics;
+                if (isSelected) {
+                  const ringSize = isTank ? this.getTankSelectionBoxSize(e as any) : TILE_SIZE * 0.7;
+                  const ringY = isTank ? this.getTankSelectionY(e as any, dir) : e.y + 2;
+                  uig.lineStyle(2, 0x00ffcc, 1);
+                  uig.strokeRect(e.x - ringSize / 2, ringY - ringSize / 2, ringSize, ringSize);
+                }
+                if (!isFriendly && camZoom > 0.45) {
+                  const topY = this.getSpriteTopY(e as any);
+                  uig.fillStyle(0xff0000, 0.9).fillCircle(e.x, topY - 14, 5);
+                  uig.lineStyle(1.5, 0xffffff, 0.7).strokeCircle(e.x, topY - 14, 5);
+                }
               }
 
-              if (!isFriendly && camZoom > 0.45) {
-                const topY = this.getSpriteTopY(e as any);
-                uig.fillStyle(0xff0000, 0.9).fillCircle(e.x, topY - 14, 5);
-                uig.lineStyle(1.5, 0xffffff, 0.7).strokeCircle(e.x, topY - 14, 5);
-              }
-
-              if (showHp) {
+              // 2. Throttled HP Bars (unitHpGraphics - every 3rd frame, ONLY selected)
+              // Build 286: Only update HP bars for selected units every 3 frames as requested.
+              if (this.unitHpGraphics && isSelected && (this.game.loop.frame % 3 === 0)) {
+                const upg = this.unitHpGraphics;
+                const hpRatio = Math.max(0, Math.min(1, (u.hp || 0) / (u.maxHp || 1)));
                 const barW = isTank ? 40 : 20;
                 const barH = 4;
                 const barY = isTank ? this.getTankHpY(e as any) - barH : (e.y - TILE_SIZE * 0.95);
-                uig.fillStyle(0x000000, 0.6).fillRect(e.x - barW / 2, barY, barW, barH);
-                uig.fillStyle(hpRatio > 0.4 ? 0x00ff00 : 0xff0000, 0.9).fillRect(e.x - barW / 2, barY, barW * hpRatio, barH);
+                upg.fillStyle(0x000000, 0.6).fillRect(e.x - barW / 2, barY, barW, barH);
+                upg.fillStyle(hpRatio > 0.4 ? 0x00ff00 : 0xff0000, 0.9).fillRect(e.x - barW / 2, barY, barW * hpRatio, barH);
               }
             }
             
