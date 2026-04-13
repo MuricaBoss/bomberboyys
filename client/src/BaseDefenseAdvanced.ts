@@ -763,26 +763,40 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     let overlay = this.worldFogOverlay;
     const screenW = cam.width;
     const screenH = cam.height;
-    if (overlay && (overlay.width !== screenW || overlay.height !== screenH)) {
+    const renderScale = 0.25;
+    const invScale = 1 / renderScale;
+    const fogW = Math.ceil(screenW * renderScale);
+    const fogH = Math.ceil(screenH * renderScale);
+
+    if (overlay && (overlay.width !== fogW || overlay.height !== fogH)) {
       overlay.destroy();
       this.worldFogOverlay = null as any;
       overlay = null as any;
     }
 
     if (!this.worldFogOverlay) {
-      this.worldFogOverlay = this.add.renderTexture(0, 0, screenW, screenH).setOrigin(0).setScrollFactor(1).setDepth(240);
+      this.worldFogOverlay = this.add.renderTexture(0, 0, fogW, fogH)
+        .setOrigin(0)
+        .setScrollFactor(0)
+        .setDepth(240)
+        .setScale(invScale);
       overlay = this.worldFogOverlay;
     }
-    overlay.setPosition(camView.x, camView.y);
-    overlay.setDisplaySize(camView.width, camView.height);
+    
+    // Position at top-left of screen (scrollFactor 0)
+    overlay.setPosition(0, 0); 
     overlay.clear();
-    overlay.fill(0x000000, 0.88, 0, 0, screenW, screenH);
+    overlay.fill(0x000000, 0.88, 0, 0, fogW, fogH);
 
     const vts = this.visionTrailSprite;
     if (vts) {
-      const totalScale = 4 * camZoom;
-      vts.setScale(totalScale);
-      vts.setPosition(-camView.x * camZoom, -camView.y * camZoom);
+      // vts is at 1/4 world scale. overlay is at 1/4 screen scale.
+      // screen pixels = world pixels * camZoom.
+      // 1 vts pixel = 4 world pixels.
+      // 1 overlay pixel = 4 screen pixels = 4 * camZoom world pixels.
+      // So 1 overlay pixel = camZoom vts pixels.
+      vts.setScale(camZoom);
+      vts.setPosition(-camView.x / 4 * camZoom, -camView.y / 4 * camZoom);
       overlay.erase(vts);
     }
   }
