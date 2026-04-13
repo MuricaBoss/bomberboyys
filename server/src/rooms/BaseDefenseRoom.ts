@@ -25,6 +25,23 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
       this.logStateSummary("heartbeat");
     }, 5000);
 
+    // Build 282: Throttled Economy (1Hz) - Passive income from refineries
+    this.clock.setInterval(() => {
+        const now = Date.now();
+        this.state.players.forEach((player) => {
+            let refineryCount = 0;
+            this.state.structures.forEach(s => {
+                if (s.ownerId === player.id && s.type === "ore_refinery" && now >= s.buildCompleteAt) {
+                    refineryCount++;
+                }
+            });
+            if (refineryCount > 0) {
+                // deltaTime for 1 second is 1000ms
+                player.resources += (refineryCount * 2);
+            }
+        });
+    }, 1000);
+
     // Ghost Buster: Periodic Sanity Check (2Hz)
     this.clock.setInterval(() => {
       const now = Date.now();
@@ -421,20 +438,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
   update(deltaTime: number) {
     const now = Date.now();
 
-    // Economy & Build timers
-    this.state.players.forEach((player) => {
-        let refineryCount = 0;
-        this.state.structures.forEach(s => {
-            if (s.ownerId === player.id && s.type === "ore_refinery" && now >= s.buildCompleteAt) {
-                refineryCount++;
-            }
-        });
-        
-        // Passive income from refineries
-        if (refineryCount > 0) {
-            player.resources += (refineryCount * 2 * deltaTime) / 1000;
-        }
-    });
+    // Economy now handled by 1Hz throttled loop in onCreate
 
     // (Cleanup now handled by 2Hz Ghost Buster loop)
 

@@ -24,10 +24,13 @@ const config: Phaser.Types.Core.GameConfig = {
   backgroundColor: "#000000",
   autoRound: roundPixels,
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: 1920,
-    height: 1080,
+    // zoom = DPR makes the canvas buffer DPR× the CSS size.
+    // Phaser's Scale Manager handles the relationship internally:
+    // the game's logical coordinate space remains 1:1 with CSS pixels,
+    // so the existing camera zoom controls and UI positions are unaffected.
+    zoom: dpr,
   },
   parent: "game-container",
   fullscreenTarget: "game-container",
