@@ -543,14 +543,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.syncMap();
     this.mapCache = Array.from(state.map as number[]);
     this.mapSyncPending = false;
-    if (!this.worldFogOverlay) {
-      this.worldFogOverlay = this.add.renderTexture(0, 0, this.cameras.main.width, this.cameras.main.height)
-        .setOrigin(0)
-        .setScrollFactor(1)
-        .setDepth(240);
-    }
-    if (!this.worldFogMaskGraphics) {
-      this.worldFogMaskGraphics = this.add.graphics().setVisible(false);
+    if (!this.worldFogGraphics) {
+      this.worldFogGraphics = this.add.graphics().setDepth(240);
     }
     if (!this.unitUiGraphics) {
       this.unitUiGraphics = this.add.graphics().setDepth(WORLD_DEPTH_HP_OFFSET);
@@ -560,7 +554,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         .setDepth(WORLD_DEPTH_BASE + WORLD_DEPTH_SHADOW_GAP)
         .setAlpha(0.4);
     }
-    this.worldFogOverlay.setVisible(true);
+    this.worldFogGraphics.setVisible(true);
     this.cameras.main.removeBounds();
     
     const worldW = state.mapWidth * TILE_SIZE;
@@ -706,32 +700,25 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   }
 
   updateWorldFog(now: number) {
-    if (!this.worldFogOverlay || !this.worldFogMaskGraphics || !this.room?.state) return;
+    if (!this.worldFogGraphics || !this.room?.state) return;
     this.updateFogMemory(now);
 
     if (!this.fogEnabled) {
-      this.worldFogOverlay.clear();
-      this.worldFogOverlay.setVisible(false);
+      this.worldFogGraphics.clear();
+      this.worldFogGraphics.setVisible(false);
       return;
     }
-    this.worldFogOverlay.setVisible(true);
+    this.worldFogGraphics.setVisible(true);
 
     const cam = this.cameras.main;
     const camView = cam.worldView;
     const camZoom = cam.zoom;
-    
-    // Position exactly at camera's world position to follow it perfectly
-    this.worldFogOverlay.setPosition(camView.x, camView.y);
-
-    // Build 245: Redraw the fog texture much less often (every 100ms = 10 FPS) for performance.
-    // Redraw the fog texture less often (e.g. every 100ms = 10 FPS) for performance,
-    // as requested by the user. Position follows camera at 60 FPS regardless.
+    const fogCellSize = this.getFogCellSize();
     const zoomChanged = !Number.isFinite(this.lastFogZoom) || Math.abs(camZoom - this.lastFogZoom) > 0.001;
     const camMoved = !Number.isFinite(this.lastFogCamX)
-      || Math.abs(camView.x - this.lastFogCamX) >= 0.5
-      || Math.abs(camView.y - this.lastFogCamY) >= 0.5;
-    
-    // Throttle redraw to the shared fog cadence.
+      || Math.abs(camView.x - this.lastFogCamX) >= fogCellSize * 2
+      || Math.abs(camView.y - this.lastFogCamY) >= fogCellSize * 2;
+
     if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < FOG_UPDATE_MS) return;
 
     this.lastWorldFogDrawAt = now;
@@ -739,41 +726,21 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.lastFogCamY = camView.y;
     this.lastFogZoom = camZoom;
 
-    let overlay = this.worldFogOverlay;
-    // Build 261: Render fog at 50% resolution to save fill rate. Scale it up for display.
-    const fogResScale = 0.5;
-    const fogW = Math.ceil(cam.width * fogResScale);
-    const fogH = Math.ceil(cam.height * fogResScale);
-
-    if (overlay && (overlay.width !== fogW || overlay.height !== fogH)) {
-        overlay.destroy();
-        this.worldFogOverlay = null as any;
-        overlay = null as any;
-    }
-
-    if (!this.worldFogOverlay) {
-      this.worldFogOverlay = this.add.renderTexture(0, 0, fogW, fogH).setOrigin(0).setScrollFactor(1).setDepth(240);
-      overlay = this.worldFogOverlay;
-    }
-    overlay.setPosition(camView.x, camView.y);
-    overlay.setDisplaySize(camView.width, camView.height);
-    overlay.clear();
-    const fogCellSize = this.getFogCellSize();
     const seenAt = this.fogSeenAt;
     if (!seenAt || this.fogCols <= 0 || this.fogRows <= 0) return;
+    const g = this.worldFogGraphics;
+    g.clear();
 
-    const textureScale = camZoom * fogResScale;
-    const cellSizeScaled = Math.max(1, Math.ceil(fogCellSize * textureScale));
-    const drawStartCol = Math.max(0, Math.floor(camView.x / fogCellSize) - 1);
-    const drawEndCol = Math.min(this.fogCols - 1, Math.floor((camView.right - 1) / fogCellSize) + 1);
-    const drawStartRow = Math.max(0, Math.floor(camView.y / fogCellSize) - 1);
-    const drawEndRow = Math.min(this.fogRows - 1, Math.floor((camView.bottom - 1) / fogCellSize) + 1);
+    const drawMarginPx = Math.max(cam.width, cam.height) * 0.5;
+    const drawStartCol = Math.max(0, Math.floor((camView.x - drawMarginPx) / fogCellSize));
+    const drawEndCol = Math.min(this.fogCols - 1, Math.ceil((camView.right + drawMarginPx) / fogCellSize));
+    const drawStartRow = Math.max(0, Math.floor((camView.y - drawMarginPx) / fogCellSize));
+    const drawEndRow = Math.min(this.fogRows - 1, Math.ceil((camView.bottom + drawMarginPx) / fogCellSize));
 
     for (let row = drawStartRow; row <= drawEndRow; row++) {
       const rowOffset = row * this.fogCols;
       const rowUp = (row > 0 ? row - 1 : row) * this.fogCols;
       const rowDown = (row < this.fogRows - 1 ? row + 1 : row) * this.fogCols;
-      const localY = Math.floor((row * fogCellSize - camView.y) * textureScale);
       for (let col = drawStartCol; col <= drawEndCol; col++) {
         const c0 = col > 0 ? col - 1 : col;
         const c2 = col < this.fogCols - 1 ? col + 1 : col;
@@ -786,8 +753,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         ) * 0.12;
         const alpha = Math.max(0, Math.min(0.9, center + neigh));
         if (alpha <= 0.01) continue;
-        const localX = Math.floor((col * fogCellSize - camView.x) * textureScale);
-        overlay.fill(0x000000, alpha, localX, localY, cellSizeScaled + 1, cellSizeScaled + 1);
+        g.fillStyle(0x000000, alpha);
+        g.fillRect(col * fogCellSize, row * fogCellSize, fogCellSize, fogCellSize);
       }
     }
   }
