@@ -1147,10 +1147,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.autoEngageUnits(nowMs);
     this.perfEnd("autoEngage");
 
-    const camX = this.cameras.main.worldView.x;
-    const camY = this.cameras.main.worldView.y;
-    this.updateWorldBackground(camX, camY);
-    
     const myTeam = me?.team;
     if (this.fpsText) {
        this.fpsText.setText(`FPS: ${Math.round(this.game.loop.actualFps)}`);

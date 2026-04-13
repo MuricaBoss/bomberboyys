@@ -28,17 +28,12 @@ import { RTS_TANK_SPRITE_META } from "./tankSpriteMeta";
 import { getGraphicsQuality, getGraphicsProfile, getGroundTileScale } from "./graphicsQuality";
 
 export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
-  syncWorldBackground(_width: number, _height: number) {
-    const cam = this.cameras.main;
-    const pad = TILE_SIZE * 4;
-    // Build 279: Use viewport-sized background for culling
-    const bgWidth = Math.ceil(cam.width / cam.zoom) + pad * 2;
-    const bgHeight = Math.ceil(cam.height / cam.zoom) + pad * 2;
-
+  syncWorldBackground(width: number, height: number) {
+    const safeWidth = Math.max(TILE_SIZE, Math.round(width));
+    const safeHeight = Math.max(TILE_SIZE, Math.round(height));
     const needsRefresh = !this.groundTileSprite
-      || Math.abs(this.groundTileSprite.width - bgWidth) > TILE_SIZE
-      || Math.abs(this.groundTileSprite.height - bgHeight) > TILE_SIZE;
-
+      || this.groundTileSprite.width !== safeWidth
+      || this.groundTileSprite.height !== safeHeight;
     if (!needsRefresh) return;
 
     this.groundTileSprite?.destroy();
@@ -47,31 +42,13 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
     const tier = getGraphicsProfile(getGraphicsQuality()).worldTier;
     const tileScale = getGroundTileScale(tier);
 
-    this.groundTileSprite = this.add.tileSprite(0, 0, bgWidth, bgHeight, this.getGroundTextureKey())
+    this.groundTileSprite = this.add.tileSprite(0, 0, safeWidth, safeHeight, this.getGroundTextureKey())
       .setOrigin(0)
       .setDepth(-120)
       .setTileScale(tileScale)
       .setAlpha(0.98);
-    this.groundTintOverlay = this.add.rectangle(0, 0, bgWidth, bgHeight, 0xd8e7f5, 0.06)
-      .setOrigin(0)
+    this.groundTintOverlay = this.add.rectangle(safeWidth / 2, safeHeight / 2, safeWidth, safeHeight, 0xd8e7f5, 0.06)
       .setDepth(-110);
-  }
-
-  updateWorldBackground(camX: number, camY: number) {
-    if (!this.groundTileSprite || !this.groundTintOverlay) return;
-    const cam = this.cameras.main;
-    const pad = TILE_SIZE * 4;
-    
-    // Position the sprite to cover the viewport
-    const x = camX - pad;
-    const y = camY - pad;
-    
-    this.groundTileSprite.setPosition(x, y);
-    this.groundTintOverlay.setPosition(x, y);
-
-    // Sync tile offset with world position to keep the texture static relative to the world
-    const tileScale = this.groundTileSprite.tileScaleX;
-    this.groundTileSprite.setTilePosition(-x / tileScale, -y / tileScale);
   }
 
   getStructureTopY(entity: Phaser.GameObjects.Rectangle | Phaser.GameObjects.Image) {
