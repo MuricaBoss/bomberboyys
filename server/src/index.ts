@@ -19,6 +19,11 @@ app.get("/healthz", (_req, res) => {
   res.status(200).json({ ok: true });
 });
 
+app.post("/profile", (req, res) => {
+  console.log("[Telemetry] Received profile report:", JSON.stringify(req.body));
+  res.status(200).json({ ok: true });
+});
+
 const server = http.createServer(app);
 server.on("upgrade", (req) => {
   console.log(`[WS upgrade] ${req.url || ""}`);

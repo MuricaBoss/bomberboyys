@@ -965,6 +965,10 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   }
 
   update(_time: number, delta: number) {
+    if (this.profilingActive) {
+      this.fpsHistory.push(this.game.loop.actualFps);
+      if (this.fpsHistory.length > 5000) this.fpsHistory.shift(); // Keep buffer reasonable
+    }
     const nowUpdate = Date.now();
     if (nowUpdate - this.lastResizePollAt > 2000) {
       this.lastResizePollAt = nowUpdate;

@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { Room } from "colyseus.js";
 import { DISPLAY_BUILD_NUMBER } from "./build-meta";
-import { client, CLIENT_BUNDLE_VERSION, activeClientBuildId } from "./network";
+import { client, CLIENT_BUNDLE_VERSION, activeClientBuildId, httpEndpoint } from "./network";
 import {
   TILE_SIZE, RTS_GROUND_TILE_SCALE, RTS_BLOCK_TEXTURE_KEYS, RTS_INTERIOR_WALL_VISUAL_SCALE,
   RTS_BUILDING_TEXTURE_KEYS, RTS_UI_TEXTURE_KEYS, RTS_TANK_TEXTURE_KEYS, RTS_TANK_TEXTURE_BY_DIR,
@@ -288,8 +288,12 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   actionPanelRootEl: HTMLDivElement | null = null;
   actionPanelButtons = new Map<string, HTMLButtonElement>();
   actionPanelReasonLabels = new Map<string, HTMLDivElement>();
-  // Build 100: Removed all performance telemetry properties to maximize mobile CPU
   perfNotifyText: Phaser.GameObjects.Text | null = null;
+  profilingActive = false;
+  perfSessionStart = 0;
+  fpsHistory: number[] = [];
+  perfAccumulator: { [key: string]: number[] } = {};
+  perfTimings = new Map<string, number>();
   keyP: Phaser.Input.Keyboard.Key | null = null;
   lastResizePollAt = 0;
   lastKnownWindowWidth = 0;
@@ -299,12 +303,76 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   preResizeScrollX = 0;
   preResizeScrollY = 0;
 
-  // Build 100: Removed all performance telemetry methods to maximize mobile CPU
-  perfStart(_section: string) {}
-  perfEnd(_section: string) {}
-  reportClientPerformance() {}
+  perfStart(section: string) {
+    if (!this.profilingActive) return;
+    this.perfTimings.set(section, performance.now());
+  }
+  
+  perfEnd(section: string) {
+    if (!this.profilingActive) return;
+    const start = this.perfTimings.get(section);
+    if (start === undefined) return;
+    const duration = performance.now() - start;
+    if (!this.perfAccumulator[section]) this.perfAccumulator[section] = [];
+    this.perfAccumulator[section].push(duration);
+  }
 
-  toggleProfiling() { /* Build 100: Removed */ }
+  async reportClientPerformance() {
+    console.log("[Profiler] Preparing performance report...");
+    const durationSec = (Date.now() - this.perfSessionStart) / 1000;
+    const avgFps = this.fpsHistory.length > 0 ? this.fpsHistory.reduce((a, b) => a + b, 0) / this.fpsHistory.length : 0;
+    const minFps = this.fpsHistory.length > 0 ? Math.min(...this.fpsHistory) : 0;
+    const maxFps = this.fpsHistory.length > 0 ? Math.max(...this.fpsHistory) : 0;
+
+    const timings: { [key: string]: number } = {};
+    for (const [section, values] of Object.entries(this.perfAccumulator)) {
+      if (values.length > 0) {
+        timings[section] = values.reduce((a, b) => a + b, 0) / values.length;
+      }
+    }
+
+    const report = {
+      buildNumber: DISPLAY_BUILD_NUMBER,
+      buildId: activeClientBuildId || CLIENT_BUNDLE_VERSION,
+      sessionId: this.room?.sessionId || "offline",
+      durationSec,
+      avgFps,
+      minFps,
+      maxFps,
+      avgSectionTimingsMs: timings,
+      userAgent: navigator.userAgent,
+      timestamp: new Date().toISOString()
+    };
+
+    console.log("[Profiler] Sending report:", report);
+
+    try {
+      const res = await fetch(`${httpEndpoint}/profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(report)
+      });
+      console.log("[Profiler] Server response:", res.status);
+    } catch (e) {
+      console.error("[Profiler] Failed to send report:", e);
+    }
+  }
+
+  toggleProfiling() {
+    this.profilingActive = !this.profilingActive;
+    if (this.profilingActive) {
+      console.log("[Profiler] Profiling STARTED");
+      this.perfSessionStart = Date.now();
+      this.fpsHistory = [];
+      this.perfAccumulator = {};
+      this.perfTimings.clear();
+      this.showNotice("Profiling enabled (lightweight)", "#66ff66");
+    } else {
+      console.log("[Profiler] Profiling STOPPED");
+      this.showNotice("Profiling disabled - sending report...", "#ffff66");
+      void this.reportClientPerformance();
+    }
+  }
   domBuildDragPointerId: number | null = null;
   domBuildDragMoveHandler: ((event: PointerEvent) => void) | null = null;
   domBuildDragEndHandler: ((event: PointerEvent) => void) | null = null;

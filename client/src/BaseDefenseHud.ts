@@ -333,6 +333,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       { id: "soldier", label: "SOLD" },
       { id: "tank", label: "TANK" },
       { id: "paths", label: "PATHS" },
+      { id: "profile", label: "PROF" },
     ];
 
     for (const def of defs) {
@@ -402,6 +403,8 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
           this.actionMode = this.actionMode === "build" ? "move" : "build";
         } else if (def.id === "paths") {
           this.toggleDetailedPaths();
+        } else if (def.id === "profile") {
+          this.toggleProfiling();
         }
         this.updateActionPanelDom();
       });
@@ -465,6 +468,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
         || (id === "fog" && this.fogEnabled)
         || (id === "dev" && !!me?.devMode)
         || (id === "paths" && this.showDetailedPaths)
+        || (id === "profile" && this.profilingActive)
         || id === this.selectedBuild;
       const disabledReason = this.getActionButtonBlockedReason(id, me);
       const enabled = !disabledReason;
