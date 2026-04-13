@@ -1243,10 +1243,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     // Salt for Build 248 (5-Lane Rails): 1712924500
     
     // Build 218: Prepare shared graphics for batching
+    if (this.game.loop.frame % 3 === 0) {
+      this.unitShadowGraphics?.clear();
+    }
     if (this.game.loop.frame % 4 === 0) {
       this.unitUiGraphics?.clear();
       this.unitHpGraphics?.clear();
-      this.unitShadowGraphics?.clear();
     }
     const camView = this.cameras.main.worldView;
     const pad = TILE_SIZE * 6; // Build 280: Standard optimized padding

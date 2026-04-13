@@ -60,8 +60,8 @@ export function updateTankVisual(scene: any, args: TankVisualArgs) {
       sState.vis = shadowVisible;
     }
     if (shadowVisible) {
-      // Build 289: Throttle tank shadow position/depth updates to every 4th frame.
-      if (scene.game.loop.frame % 4 === 0) {
+      // Build 289: Throttle tank shadow position/depth updates to every 3rd frame.
+      if (scene.game.loop.frame % 3 === 0) {
         shadow.setPosition(shadowPos.x, shadowPos.y);
         if (shouldTick || sState.dir === undefined || sState.lod !== lod) {
           const shadowKey = scene.getTankShadowTextureKey(dir);

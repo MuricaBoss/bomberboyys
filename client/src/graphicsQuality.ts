@@ -48,7 +48,7 @@ export function shouldAntialias(_quality: GraphicsQuality) {
 }
 
 export function getTargetFps(_quality: GraphicsQuality): number {
-  return 75;
+  return 0; // Build 290: Uncapped/Unlimited
 }
 
 export function getBatchSize(_quality: GraphicsQuality): number {

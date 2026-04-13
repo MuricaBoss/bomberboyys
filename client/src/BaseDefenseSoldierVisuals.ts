@@ -70,8 +70,8 @@ export function updateSoldierVisual(scene: any, args: SoldierVisualArgs) {
   }
 
   if (visible && scene.unitShadowGraphics && camView.contains(soldier.x, soldier.y) && shouldRenderSoldierShadow(scene, soldier.x, soldier.y, isSelected)) {
-    // Build 289: Throttle soldier shadow drawing to every 4th frame.
-    if (scene.game.loop.frame % 4 === 0) {
+    // Build 289: Throttle soldier shadow drawing to every 3rd frame.
+    if (scene.game.loop.frame % 3 === 0) {
       const shadow = scene.getSoldierShadowSpec(soldier);
       scene.unitShadowGraphics.fillStyle(0x000000, 0.45);
       scene.unitShadowGraphics.fillEllipse(shadow.x, shadow.y, shadow.width, shadow.height);
