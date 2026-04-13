@@ -1384,6 +1384,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             if (visible && this.unitUiGraphics && camView.contains(e.x, e.y)) {
               const uig = this.unitUiGraphics;
               const isSelected = this.selectedUnitIds.has(id);
+              const camZoom = this.cameras.main.zoom;
+              const hpRatio = Math.max(0, Math.min(1, (u.hp || 0) / (u.maxHp || 1)));
+
+              // Build 285: HP Bar LOD - Hide bars for healthy units unless selected or zoomed in close
+              const showHp = (isSelected || hpRatio < 1.0) && camZoom > 0.52;
               
               if (isSelected) {
                 const ringSize = isTank ? this.getTankSelectionBoxSize(e as any) : TILE_SIZE * 0.7;
@@ -1392,18 +1397,19 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
                 uig.strokeRect(e.x - ringSize / 2, ringY - ringSize / 2, ringSize, ringSize);
               }
 
-              if (!isFriendly) {
+              if (!isFriendly && camZoom > 0.45) {
                 const topY = this.getSpriteTopY(e as any);
                 uig.fillStyle(0xff0000, 0.9).fillCircle(e.x, topY - 14, 5);
                 uig.lineStyle(1.5, 0xffffff, 0.7).strokeCircle(e.x, topY - 14, 5);
               }
 
-              const barW = isTank ? 40 : 20;
-              const barH = 4;
-              const barY = isTank ? this.getTankHpY(e as any) - barH : (e.y - TILE_SIZE * 0.95);
-              const hpRatio = Math.max(0, Math.min(1, (u.hp || 0) / (u.maxHp || 1)));
-              uig.fillStyle(0x000000, 0.6).fillRect(e.x - barW / 2, barY, barW, barH);
-              uig.fillStyle(hpRatio > 0.4 ? 0x00ff00 : 0xff0000, 0.9).fillRect(e.x - barW / 2, barY, barW * hpRatio, barH);
+              if (showHp) {
+                const barW = isTank ? 40 : 20;
+                const barH = 4;
+                const barY = isTank ? this.getTankHpY(e as any) - barH : (e.y - TILE_SIZE * 0.95);
+                uig.fillStyle(0x000000, 0.6).fillRect(e.x - barW / 2, barY, barW, barH);
+                uig.fillStyle(hpRatio > 0.4 ? 0x00ff00 : 0xff0000, 0.9).fillRect(e.x - barW / 2, barY, barW * hpRatio, barH);
+              }
             }
             
             e.setVisible(visible);

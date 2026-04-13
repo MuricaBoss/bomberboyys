@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { RTS_SOLDIER_IDLE_FRAME, RTS_SOLDIER_RUN_FRAME_COLS } from "./constants";
-import { getUnitAnimationLod, getUnitVisualFrameSlotNumber, shouldProcessUnitVisual } from "./BaseDefenseUnitVisualLod";
+import { getUnitAnimationLod, getUnitVisualFrameSlotNumber, shouldProcessUnitVisual, shouldRenderSoldierShadow } from "./BaseDefenseUnitVisualLod";
 
 type SoldierVisualArgs = {
   camView: Phaser.Geom.Rectangle;
@@ -69,7 +69,7 @@ export function updateSoldierVisual(scene: any, args: SoldierVisualArgs) {
     (soldier as any)._rState = sState;
   }
 
-  if (visible && scene.unitShadowGraphics && camView.contains(soldier.x, soldier.y) && lod !== "static") {
+  if (visible && scene.unitShadowGraphics && camView.contains(soldier.x, soldier.y) && shouldRenderSoldierShadow(scene, soldier.x, soldier.y, isSelected)) {
     const shadow = scene.getSoldierShadowSpec(soldier);
     scene.unitShadowGraphics.fillStyle(0x000000, 0.45);
     scene.unitShadowGraphics.fillEllipse(shadow.x, shadow.y, shadow.width, shadow.height);

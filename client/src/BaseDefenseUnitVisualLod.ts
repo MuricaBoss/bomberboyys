@@ -93,5 +93,13 @@ export function getUnitAnimationLod(scene: any, x: number, y: number, forceFullR
 }
 
 export function shouldRenderTankShadow(scene: any, x: number, y: number, forceFullRate = false) {
+  const cam = scene?.cameras?.main;
+  if (cam && cam.zoom < 0.35 && !forceFullRate) return false;
   return getUnitAnimationLod(scene, x, y, forceFullRate) !== "static";
+}
+
+export function shouldRenderSoldierShadow(scene: any, x: number, y: number, forceFullRate = false) {
+  const cam = scene?.cameras?.main;
+  if (cam && cam.zoom < 0.52 && !forceFullRate) return false;
+  return getUnitAnimationLod(scene, x, y, forceFullRate) === "full";
 }
