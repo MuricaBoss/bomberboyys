@@ -6,6 +6,8 @@ import { WebSocketTransport } from "@colyseus/ws-transport";
 import { Encoder } from "@colyseus/schema";
 import { BomberRoom } from "./rooms/BomberRoom";
 import { BaseDefenseRoom } from "./rooms/BaseDefenseRoom";
+import fs from "fs";
+import path from "path";
 
 const port = Number(process.env.PORT || 2567);
 const app = express();
@@ -20,7 +22,27 @@ app.get("/healthz", (_req, res) => {
 });
 
 app.post("/profile", (req, res) => {
-  console.log("[Telemetry] Received profile report:", JSON.stringify(req.body));
+  const report = req.body;
+  console.log("[Telemetry] Received profile report:", JSON.stringify(report));
+
+  try {
+    const profilesDir = path.join(__dirname, "../profiles");
+    if (!fs.existsSync(profilesDir)) {
+      fs.mkdirSync(profilesDir, { recursive: true });
+    }
+
+    const build = report.buildNumber || "unknown";
+    const session = report.sessionId || "unknown";
+    const timestamp = (report.timestamp || new Date().toISOString()).replace(/[:.]/g, "-");
+    const filename = `profile-build-${build}-${session}-${timestamp}.json`;
+    const filepath = path.join(profilesDir, filename);
+
+    fs.writeFileSync(filepath, JSON.stringify(report, null, 2));
+    console.log("[Telemetry] Saved report to:", filepath);
+  } catch (err) {
+    console.error("[Telemetry] Failed to save report:", err);
+  }
+
   res.status(200).json({ ok: true });
 });
 

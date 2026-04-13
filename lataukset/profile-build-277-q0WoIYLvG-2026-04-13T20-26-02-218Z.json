@@ -1,0 +1,22 @@
+{
+  "buildNumber": "277",
+  "buildId": "CMEduUks",
+  "sessionId": "q0WoIYLvG",
+  "durationSec": 2.603,
+  "avgFps": 29.068009271715855,
+  "minFps": 28.48434442172548,
+  "maxFps": 30.259186777423363,
+  "avgSectionTimingsMs": {
+    "hud": 0.026760563464231894,
+    "camera": 0.01408450746200454,
+    "autoEngage": 0.011347517476859668,
+    "syncPlayers": 0.11571428648063115,
+    "syncUnits": 1.828571428997176,
+    "syncResources": 0.025714288013322012,
+    "sendClientPoses": 0.19999999957425255,
+    "effectsAndFog": 0.047142856887408664,
+    "syncStructures": 0.09444444212648603
+  },
+  "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
+  "timestamp": "2026-04-13T20:26:02.218Z"
+}

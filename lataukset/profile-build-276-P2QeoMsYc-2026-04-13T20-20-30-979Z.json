@@ -1,0 +1,22 @@
+{
+  "buildNumber": "276",
+  "buildId": "BdYYCv-Z",
+  "sessionId": "P2QeoMsYc",
+  "durationSec": 12.007,
+  "avgFps": 40.95193020537938,
+  "minFps": 38.546590981765405,
+  "maxFps": 42.24570034076106,
+  "avgSectionTimingsMs": {
+    "hud": 0.026680672431693357,
+    "camera": 0.006302521133623203,
+    "autoEngage": 0.004100946315831566,
+    "syncPlayers": 0.10947368471246016,
+    "syncUnits": 0.08673684182919954,
+    "syncResources": 0.02736842061343946,
+    "sendClientPoses": 0.014105263446506701,
+    "effectsAndFog": 0.057894737218555654,
+    "syncStructures": 0.3299999992052714
+  },
+  "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
+  "timestamp": "2026-04-13T20:20:30.979Z"
+}

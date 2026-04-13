@@ -1,0 +1,22 @@
+{
+  "buildNumber": "274",
+  "buildId": "CB7E_Olw",
+  "sessionId": "PJns0EXEj",
+  "durationSec": 35.041,
+  "avgFps": 39.674719866472884,
+  "minFps": 31.192882327528594,
+  "maxFps": 47.48005890965272,
+  "avgSectionTimingsMs": {
+    "hud": 0.01957878307693648,
+    "camera": 0.008034321451893835,
+    "autoEngage": 0.004447912616372527,
+    "syncPlayers": 0.1056206090714576,
+    "syncUnits": 0.6443403593317594,
+    "syncResources": 0.02076502736428117,
+    "sendClientPoses": 0.10046838390278127,
+    "effectsAndFog": 0.056128024822282754,
+    "syncStructures": 0.21769230732550987
+  },
+  "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
+  "timestamp": "2026-04-13T20:11:03.527Z"
+}

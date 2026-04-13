@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     ports:
       - "2567:2567"
+    volumes:
+      - ./server/profiles:/app/profiles
 
   client:
     build: ./client

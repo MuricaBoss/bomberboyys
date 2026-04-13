@@ -1,0 +1,22 @@
+{
+  "buildNumber": "273",
+  "buildId": "BF-xNiwv",
+  "sessionId": "P_6xpY7hD",
+  "durationSec": 12.811,
+  "avgFps": 35.27343184688544,
+  "minFps": 32.298311318800174,
+  "maxFps": 40.321994488695054,
+  "avgSectionTimingsMs": {
+    "hud": 0.022090261310976078,
+    "camera": 0.008313539050820322,
+    "autoEngage": 0.004280618339883303,
+    "syncPlayers": 0.07000000036898113,
+    "syncUnits": 0.034285714299905866,
+    "syncResources": 0.02619047633239201,
+    "sendClientPoses": 0.003333333276567005,
+    "effectsAndFog": 9.723333333148842,
+    "syncStructures": 0.15913978443350843
+  },
+  "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
+  "timestamp": "2026-04-13T20:02:09.701Z"
+}
