@@ -29,11 +29,15 @@ import { getGraphicsQuality, getGraphicsProfile, getGroundTileScale } from "./gr
 
 export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
   syncWorldBackground(width: number, height: number) {
-    const safeWidth = Math.max(TILE_SIZE, Math.round(width));
-    const safeHeight = Math.max(TILE_SIZE, Math.round(height));
+    // Build 284: Windowed background optimization. Use a fixed 3000px buffer to save GPU fill rate on large maps.
+    const bufferSize = 3000;
+    const targetW = Math.min(width, bufferSize);
+    const targetH = Math.min(height, bufferSize);
+
     const needsRefresh = !this.groundTileSprite
-      || this.groundTileSprite.width !== safeWidth
-      || this.groundTileSprite.height !== safeHeight;
+      || this.groundTileSprite.width !== targetW
+      || this.groundTileSprite.height !== targetH;
+    
     if (!needsRefresh) return;
 
     this.groundTileSprite?.destroy();
@@ -42,13 +46,47 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
     const tier = getGraphicsProfile(getGraphicsQuality()).worldTier;
     const tileScale = getGroundTileScale(tier);
 
-    this.groundTileSprite = this.add.tileSprite(0, 0, safeWidth, safeHeight, this.getGroundTextureKey())
+    this.groundTileSprite = this.add.tileSprite(0, 0, targetW, targetH, this.getGroundTextureKey())
       .setOrigin(0)
       .setDepth(-120)
       .setTileScale(tileScale)
       .setAlpha(0.98);
-    this.groundTintOverlay = this.add.rectangle(safeWidth / 2, safeHeight / 2, safeWidth, safeHeight, 0xd8e7f5, 0.06)
+      
+    this.groundTintOverlay = this.add.rectangle(targetW / 2, targetH / 2, targetW, targetH, 0xd8e7f5, 0.06)
       .setDepth(-110);
+  }
+
+  updateWorldBackground(camX: number, camY: number) {
+    if (!this.groundTileSprite) return;
+    const state = this.room?.state;
+    if (!state) return;
+
+    const worldW = state.mapWidth * TILE_SIZE;
+    const worldH = state.mapHeight * TILE_SIZE;
+    
+    // Snap sprite to camera, allowing it to "window" the world
+    const tier = getGraphicsProfile(getGraphicsQuality()).worldTier;
+    const tileScale = getGroundTileScale(tier);
+    
+    // Position sprite to cover the camera area, but clamp to world bounds
+    const screenW = this.cameras.main.width;
+    const screenH = this.cameras.main.height;
+    
+    // Center the 3000px sprite on the camera
+    let posX = camX - (this.groundTileSprite.width - screenW) / 2;
+    let posY = camY - (this.groundTileSprite.height - screenH) / 2;
+    
+    // Ensure we don't bleed outside the world boundaries
+    posX = Phaser.Math.Clamp(posX, 0, Math.max(0, worldW - this.groundTileSprite.width));
+    posY = Phaser.Math.Clamp(posY, 0, Math.max(0, worldH - this.groundTileSprite.height));
+    
+    this.groundTileSprite.setPosition(posX, posY);
+    if (this.groundTintOverlay) this.groundTintOverlay.setPosition(posX + this.groundTileSprite.width/2, posY + this.groundTileSprite.height/2);
+
+    // KEY FIX: Offset the tile position by the sprite's world position 
+    // to keep the underlying repeating texture locked to world coordinate (0,0).
+    // This eliminates the "jitter" observed in previous windowed attempts.
+    this.groundTileSprite.setTilePosition(posX / tileScale, posY / tileScale);
   }
 
   getStructureTopY(entity: Phaser.GameObjects.Rectangle | Phaser.GameObjects.Image) {

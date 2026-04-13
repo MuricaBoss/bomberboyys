@@ -781,7 +781,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
           tile = 1;
         } else if (!keepOpen.has(`${x},${y}`)) {
         const symmetricBlock = ((x % 6 === 0) && (y % 4 === 0)) || ((x % 6 === 3) && (y % 5 === 2));
-        const centerCover = Math.abs(x - centerX) <= 3 && Math.abs(y - centerY) <= 3 && ((x + y) % 2 === 0);
+        const centerCover = Math.abs(x - centerX) <= 6 && Math.abs(y - centerY) <= 6 && ((x + y) % 4 === 0);
         if (symmetricBlock || centerCover) tile = 1;
       }
       this.state.map.push(tile);
@@ -793,14 +793,13 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     this.state.resources.clear();
     const width = this.state.mapWidth;
     const height = this.state.mapHeight;
-    // Build 283: Adjusted nodes for 35x35 map
     const nodes = [
-      { gx: Math.floor(width * 0.25), gy: Math.floor(height * 0.25) },
-      { gx: Math.floor(width * 0.25), gy: Math.floor(height * 0.75) },
-      { gx: Math.floor(width * 0.75), gy: Math.floor(height * 0.25) },
-      { gx: Math.floor(width * 0.75), gy: Math.floor(height * 0.75) },
-      { gx: Math.floor(width / 2), gy: 5 },
-      { gx: Math.floor(width / 2), gy: height - 6 },
+      { gx: 9, gy: 7 },
+      { gx: 9, gy: height - 8 },
+      { gx: width - 10, gy: 7 },
+      { gx: width - 10, gy: height - 8 },
+      { gx: Math.floor(width / 2), gy: 6 },
+      { gx: Math.floor(width / 2), gy: height - 7 },
     ];
     nodes.forEach((node, index) => {
       if (!this.isInsideMap(node.gx, node.gy) || this.tileAt(node.gx, node.gy) !== 0) return;

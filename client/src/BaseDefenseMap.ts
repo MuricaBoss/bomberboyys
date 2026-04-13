@@ -346,12 +346,11 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       }
     }
     
-    if (changed) {
-        this.updateMapShadows();
-    }
+    // Build 284: We don't call updateMapShadows() here anymore because 
+    // it's now handled by the frustum-culled loop in updateMapCulling() every frame.
   }
 
-  private updateMapShadows() {
+  updateMapShadows() {
     const state = this.room.state;
     if (!state?.map || !this.tilemap) return;
     const width = state.mapWidth;
@@ -362,16 +361,30 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       this.tileShadowGraphics.setDepth(this.getWorldDepth(0, WORLD_DEPTH_TILE_OFFSET - WORLD_DEPTH_SHADOW_GAP));
       this.tileShadowGraphics.setBlendMode(Phaser.BlendModes.MULTIPLY);
     }
+    
+    // Build 284: Frustum-culled shadow rendering.
+    // Redrawing only the shadows within the visible area is much faster 
+    // for large maps (140x140 = 19,600 tiles vs ~800 visible tiles)
     const g = this.tileShadowGraphics;
     g.clear();
     g.fillStyle(0x000000, RTS_TILE_SHADOW_ALPHA);
 
-    for (let i = 0; i < this.mapCache.length; i++) {
-        if (this.mapCache[i] !== 1) continue;
-        const gx = i % width;
-        const gy = Math.floor(i / width);
-        const shadow = this.getWallShadowSpec(gx, gy);
-        g.fillEllipse(shadow.x, shadow.y, shadow.width, shadow.height);
+    const cam = this.cameras.main;
+    const camView = cam.worldView;
+    const pad = 2; // Extra tiles for smooth scrolling
+    
+    const startGX = Math.max(0, Math.floor(camView.left / TILE_SIZE) - pad);
+    const endGX = Math.min(width - 1, Math.ceil(camView.right / TILE_SIZE) + pad);
+    const startGY = Math.max(0, Math.floor(camView.top / TILE_SIZE) - pad);
+    const endGY = Math.min(height - 1, Math.ceil(camView.bottom / TILE_SIZE) + pad);
+
+    for (let gy = startGY; gy <= endGY; gy++) {
+        for (let gx = startGX; gx <= endGX; gx++) {
+            const i = gy * width + gx;
+            if (this.mapCache[i] !== 1) continue;
+            const shadow = this.getWallShadowSpec(gx, gy);
+            g.fillEllipse(shadow.x, shadow.y, shadow.width, shadow.height);
+        }
     }
   }
 
@@ -380,8 +393,8 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
   }
 
   updateMapCulling() {
-    // Build 262: Individual sprite culling replaced by optimized TilemapLayer.
-    // Shadow updates are now handled in syncMap via updateMapShadows() on map change.
+    // Build 284: Redraw culled shadows whenever this is called (every frame)
+    this.updateMapShadows();
   }
 
   updateObstacleGrid() {

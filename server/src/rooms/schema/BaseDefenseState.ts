@@ -81,8 +81,8 @@ export class BaseUnit extends Schema {
 
 export class BaseDefenseState extends Schema {
   @type("string") mode: string = "base_defense";
-  @type("number") mapWidth: number = 35;
-  @type("number") mapHeight: number = 35;
+  @type("number") mapWidth: number = 140;
+  @type("number") mapHeight: number = 140;
   @type("string") phase: string = "build"; // build | battle
   @type("number") phaseEndsAt: number = 0;
   @type(["number"]) map = new ArraySchema<number>();

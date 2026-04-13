@@ -1068,6 +1068,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (!me) this.updateBuildPanel(null);
     this.perfStart("camera");
     this.updateRtsCamera(delta);
+    const cam = this.cameras.main;
+    this.updateWorldBackground(cam.scrollX, cam.scrollY);
     this.updateMapCulling();
     this.perfEnd("camera");
     let nowMs = Date.now();
