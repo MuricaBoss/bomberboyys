@@ -48,6 +48,8 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [MenuScene, GameScene, BaseDefenseScene, BaseDefenseScene_Advanced],
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+game.canvas.style.imageRendering = "pixelated";
+game.canvas.style.setProperty("image-rendering", "crisp-edges");
 
 startClientVersionPolling();

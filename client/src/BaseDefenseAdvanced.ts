@@ -543,8 +543,14 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.syncMap();
     this.mapCache = Array.from(state.map as number[]);
     this.mapSyncPending = false;
-    if (!this.worldFogGraphics) {
-      this.worldFogGraphics = this.add.graphics().setDepth(240);
+    if (!this.worldFogOverlay) {
+      this.worldFogOverlay = this.add.renderTexture(0, 0, this.cameras.main.width, this.cameras.main.height)
+        .setOrigin(0)
+        .setScrollFactor(1)
+        .setDepth(240);
+    }
+    if (!this.worldFogMaskGraphics) {
+      this.worldFogMaskGraphics = this.add.graphics().setVisible(false);
     }
     if (!this.unitUiGraphics) {
       this.unitUiGraphics = this.add.graphics().setDepth(WORLD_DEPTH_HP_OFFSET);
@@ -554,12 +560,25 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         .setDepth(WORLD_DEPTH_BASE + WORLD_DEPTH_SHADOW_GAP)
         .setAlpha(0.4);
     }
-    this.worldFogGraphics.setVisible(true);
+    this.worldFogOverlay.setVisible(true);
     this.cameras.main.removeBounds();
     
     const worldW = state.mapWidth * TILE_SIZE;
     const worldH = state.mapHeight * TILE_SIZE;
     this.cameras.main.setBounds(-500, -500, worldW + 1000, worldH + 1000);
+
+    if (!this.visionTrailTexture) {
+      this.visionTrailTexture = this.add.renderTexture(0, 0, Math.ceil(worldW / 4), Math.ceil(worldH / 4))
+        .setVisible(false);
+    }
+    if (!this.sharedTrailGraphics) {
+      this.sharedTrailGraphics = this.add.graphics().setVisible(false);
+    }
+    if (!this.visionTrailSprite && this.visionTrailTexture) {
+      this.visionTrailSprite = this.add.sprite(0, 0, this.visionTrailTexture.texture)
+        .setOrigin(0)
+        .setVisible(false);
+    }
 
     const me = state.players?.get ? state.players.get(this.currentPlayerId) : state.players?.[this.currentPlayerId];
     if (me && !this.hasHadInitialCameraSnap && Number(me.x) > 10 && Number(me.y) > 10) {
@@ -699,25 +718,39 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     */
   }
 
+  stampPersistentVisionTrail() {
+    const vtt = this.visionTrailTexture;
+    const stg = this.sharedTrailGraphics;
+    if (!vtt || !stg || this.visionSources.length === 0) return;
+    stg.clear();
+    stg.fillStyle(0xffffff, 1);
+    for (const src of this.visionSources) {
+      const radius = Math.sqrt(src.r2);
+      stg.fillCircle(src.x / 4, src.y / 4, radius / 4);
+    }
+    vtt.draw(stg as any);
+  }
+
   updateWorldFog(now: number) {
-    if (!this.worldFogGraphics || !this.room?.state) return;
+    if (!this.worldFogOverlay || !this.worldFogMaskGraphics || !this.room?.state) return;
     this.updateFogMemory(now);
 
     if (!this.fogEnabled) {
-      this.worldFogGraphics.clear();
-      this.worldFogGraphics.setVisible(false);
+      this.worldFogOverlay.clear();
+      this.worldFogOverlay.setVisible(false);
       return;
     }
-    this.worldFogGraphics.setVisible(true);
+    this.worldFogOverlay.setVisible(true);
 
     const cam = this.cameras.main;
     const camView = cam.worldView;
     const camZoom = cam.zoom;
-    const fogCellSize = this.getFogCellSize();
+    this.worldFogOverlay.setPosition(camView.x, camView.y);
+
     const zoomChanged = !Number.isFinite(this.lastFogZoom) || Math.abs(camZoom - this.lastFogZoom) > 0.001;
     const camMoved = !Number.isFinite(this.lastFogCamX)
-      || Math.abs(camView.x - this.lastFogCamX) >= fogCellSize * 2
-      || Math.abs(camView.y - this.lastFogCamY) >= fogCellSize * 2;
+      || Math.abs(camView.x - this.lastFogCamX) >= 0.5
+      || Math.abs(camView.y - this.lastFogCamY) >= 0.5;
 
     if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < FOG_UPDATE_MS) return;
 
@@ -725,37 +758,32 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.lastFogCamX = camView.x;
     this.lastFogCamY = camView.y;
     this.lastFogZoom = camZoom;
+    this.stampPersistentVisionTrail();
 
-    const seenAt = this.fogSeenAt;
-    if (!seenAt || this.fogCols <= 0 || this.fogRows <= 0) return;
-    const g = this.worldFogGraphics;
-    g.clear();
+    let overlay = this.worldFogOverlay;
+    const screenW = cam.width;
+    const screenH = cam.height;
+    if (overlay && (overlay.width !== screenW || overlay.height !== screenH)) {
+      overlay.destroy();
+      this.worldFogOverlay = null as any;
+      overlay = null as any;
+    }
 
-    const drawMarginPx = Math.max(cam.width, cam.height) * 0.5;
-    const drawStartCol = Math.max(0, Math.floor((camView.x - drawMarginPx) / fogCellSize));
-    const drawEndCol = Math.min(this.fogCols - 1, Math.ceil((camView.right + drawMarginPx) / fogCellSize));
-    const drawStartRow = Math.max(0, Math.floor((camView.y - drawMarginPx) / fogCellSize));
-    const drawEndRow = Math.min(this.fogRows - 1, Math.ceil((camView.bottom + drawMarginPx) / fogCellSize));
+    if (!this.worldFogOverlay) {
+      this.worldFogOverlay = this.add.renderTexture(0, 0, screenW, screenH).setOrigin(0).setScrollFactor(1).setDepth(240);
+      overlay = this.worldFogOverlay;
+    }
+    overlay.setPosition(camView.x, camView.y);
+    overlay.setDisplaySize(camView.width, camView.height);
+    overlay.clear();
+    overlay.fill(0x000000, 0.88, 0, 0, screenW, screenH);
 
-    for (let row = drawStartRow; row <= drawEndRow; row++) {
-      const rowOffset = row * this.fogCols;
-      const rowUp = (row > 0 ? row - 1 : row) * this.fogCols;
-      const rowDown = (row < this.fogRows - 1 ? row + 1 : row) * this.fogCols;
-      for (let col = drawStartCol; col <= drawEndCol; col++) {
-        const c0 = col > 0 ? col - 1 : col;
-        const c2 = col < this.fogCols - 1 ? col + 1 : col;
-        const center = this.fogAlphaFromSeenTime(seenAt[rowOffset + col]) * 0.52;
-        const neigh = (
-          this.fogAlphaFromSeenTime(seenAt[rowOffset + c0]) +
-          this.fogAlphaFromSeenTime(seenAt[rowOffset + c2]) +
-          this.fogAlphaFromSeenTime(seenAt[rowUp + col]) +
-          this.fogAlphaFromSeenTime(seenAt[rowDown + col])
-        ) * 0.12;
-        const alpha = Math.max(0, Math.min(0.9, center + neigh));
-        if (alpha <= 0.01) continue;
-        g.fillStyle(0x000000, alpha);
-        g.fillRect(col * fogCellSize, row * fogCellSize, fogCellSize, fogCellSize);
-      }
+    const vts = this.visionTrailSprite;
+    if (vts) {
+      const totalScale = 4 * camZoom;
+      vts.setScale(totalScale);
+      vts.setPosition(-camView.x * camZoom, -camView.y * camZoom);
+      overlay.erase(vts);
     }
   }
 

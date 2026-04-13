@@ -46,11 +46,11 @@ export function getTieredTextureKey(baseKey: string, tier: GraphicsAssetTier) {
 }
 
 export function shouldRoundPixels(_quality: GraphicsQuality) {
-  return false;
+  return true;
 }
 
 export function shouldAntialias(_quality: GraphicsQuality) {
-  return true;
+  return false;
 }
 
 export function getTargetFps(_quality: GraphicsQuality): number {

@@ -89,6 +89,6 @@ export const WORLD_DEPTH_LABEL_OFFSET = 0.35;
 export const WORLD_DEPTH_HP_OFFSET = 0.45;
 export const PRODUCED_UNIT_EXIT_GRACE_MS = 1500;
 export const FOG_CELL_SIZE = 6;
-export const FOG_UPDATE_MS = 110;
+export const FOG_UPDATE_MS = 33;
 export const MIN_CAMERA_ZOOM = 0.28;
 export const MAX_CAMERA_ZOOM = 2.2;
