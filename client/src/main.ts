@@ -43,7 +43,7 @@ const config: Phaser.Types.Core.GameConfig = {
   },
   fps: {
     target: targetFps,
-    forceSetTimeOut: false,
+    forceSetTimeOut: true,
   },
   scene: [MenuScene, GameScene, BaseDefenseScene, BaseDefenseScene_Advanced],
 };

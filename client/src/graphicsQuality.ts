@@ -48,7 +48,7 @@ export function shouldAntialias(_quality: GraphicsQuality) {
 }
 
 export function getTargetFps(_quality: GraphicsQuality): number {
-  return 0; // Build 290: Uncapped/Unlimited
+  return 144; // Build 291 Hotfix: Safe high-performance limit
 }
 
 export function getBatchSize(_quality: GraphicsQuality): number {
