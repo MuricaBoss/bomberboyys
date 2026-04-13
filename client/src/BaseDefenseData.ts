@@ -236,7 +236,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   worldFogGraphics: Phaser.GameObjects.Graphics | null = null;
   worldFogOverlay: Phaser.GameObjects.RenderTexture | null = null;
   worldFogMaskGraphics: Phaser.GameObjects.Graphics | null = null;
-  fogEnabled = true;
+  fogEnabled = false;
   lastWorldFogDrawAt = 0;
   fogCols = 0;
   fogRows = 0;
@@ -347,6 +347,24 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     };
 
     console.log("[Profiler] Sending report:", report);
+
+    // Auto-download to Downloads folder
+    try {
+      const dataStr = JSON.stringify(report, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const timestampStr = new Date().toISOString().replace(/[:.]/g, "-");
+      link.href = url;
+      link.download = `profile-build-${DISPLAY_BUILD_NUMBER}-${this.room?.sessionId || "offline"}-${timestampStr}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      console.log("[Profiler] Report download triggered");
+    } catch (err) {
+      console.error("[Profiler] Download failed:", err);
+    }
 
     try {
       const res = await fetch(`${httpEndpoint}/profile`, {
