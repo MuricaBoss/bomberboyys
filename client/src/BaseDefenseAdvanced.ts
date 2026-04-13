@@ -31,8 +31,8 @@ import {
   getTieredTextureKey,
   shouldRoundPixels,
 } from "./graphicsQuality";
-import { updateSoldierVisual } from "./BaseDefenseSoldierVisuals";
-import { updateTankVisual } from "./BaseDefenseTankVisuals";
+import { ensureSoldierEntity, syncSoldierRuntime } from "./BaseDefenseSoldierRuntime";
+import { ensureTankEntity, syncTankRuntime } from "./BaseDefenseTankRuntime";
 
 export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   public tankTrailState = new Map<string, any>();
@@ -1255,14 +1255,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           let dir = this.unitFacing.get(id) ?? (typeof u.dir === "number" ? u.dir : 1);
 
           if (!e || (isTank && !(e instanceof Phaser.GameObjects.Image)) || (isSoldier && !(e instanceof Phaser.GameObjects.Sprite))) {
-            if (e) e.destroy();
             if (isTank) {
-              e = this.add.image(ux, uy, this.getTankTextureKeyByDir(dir))
-                .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
-                .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
+              e = ensureTankEntity(this, e, ux, uy, dir);
             } else if (isSoldier) {
-              e = this.add.sprite(ux, uy, this.getSoldierSheetTextureKey("run"), 0).setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y).setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE);
+              e = ensureSoldierEntity(this, e, ux, uy);
             } else {
+              if (e) e.destroy();
               e = this.add.arc(ux, uy, radius, 0, 360, false, baseColor).setStrokeStyle(1.5, 0xffffff);
             }
             this.unitEntities[id] = e;
@@ -1326,7 +1324,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             const rs = this.localUnitRenderState.get(id);
             
             if (isTank && e instanceof Phaser.GameObjects.Image) {
-              updateTankVisual(this, {
+              syncTankRuntime(this, {
                 camView,
                 dir,
                 entity: e,
@@ -1338,7 +1336,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
                 visible,
               });
             } else if (isSoldier && e instanceof Phaser.GameObjects.Sprite) {
-              updateSoldierVisual(this, {
+              syncSoldierRuntime(this, {
                 camView,
                 dir,
                 entity: e,
