@@ -1243,10 +1243,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     // Salt for Build 248 (5-Lane Rails): 1712924500
     
     // Build 218: Prepare shared graphics for batching
-    if (this.game.loop.frame % 2 === 0) {
-      this.unitUiGraphics?.clear();
-    }
     if (this.game.loop.frame % 3 === 0) {
+      this.unitUiGraphics?.clear();
       this.unitHpGraphics?.clear();
     }
     this.unitShadowGraphics?.clear();
@@ -1394,9 +1392,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               const camZoom = this.cameras.main.zoom;
               const isSelected = this.selectedUnitIds.has(id);
               
-              // 1. Selection Rings & Enemy Markers (unitUiGraphics - every 2nd frame)
-              // Build 287: Throttle selection rings to every 2nd frame as requested.
-              if (this.unitUiGraphics && (this.game.loop.frame % 2 === 0)) {
+              // 1. Selection Rings & Enemy Markers (unitUiGraphics - every 3rd frame)
+              // Build 288: Throttle selection rings to every 3rd frame as requested.
+              if (this.unitUiGraphics && (this.game.loop.frame % 3 === 0)) {
                 const uig = this.unitUiGraphics;
                 if (isSelected) {
                   const ringSize = isTank ? this.getTankSelectionBoxSize(e as any) : TILE_SIZE * 0.7;

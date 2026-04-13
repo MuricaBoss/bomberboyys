@@ -46,8 +46,7 @@ export function updateTankVisual(scene: any, args: TankVisualArgs) {
     const shadowKey = scene.getTankShadowTextureKey(dir);
     shadow = scene.add.image(shadowPos.x, shadowPos.y, shadowKey)
       .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
-      .setAlpha(0.4)
-      .setBlendMode(Phaser.BlendModes.MULTIPLY)
+      .setAlpha(0.45)
       .setTint(0x000000)
       .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
     scene.tankShadowEntities[id] = shadow;
@@ -72,7 +71,11 @@ export function updateTankVisual(scene: any, args: TankVisualArgs) {
         sState.dir = dir;
       }
       sState.lod = lod;
-      scene.applyWorldDepth(shadow, tank.y, WORLD_DEPTH_UNIT_OFFSET - WORLD_DEPTH_SHADOW_GAP);
+      
+      // Build 288 Fix: Use a dedicated depth range for ALL shadows to ensure batching.
+      // Shadows are now separated from bodies in the Z-buffer, allowing 40 draw calls to merge into 2-16.
+      const shadowDepth = WORLD_DEPTH_UNIT_OFFSET - 2.0; // Force well below any possible body
+      scene.applyWorldDepth(shadow, tank.y, shadowDepth);
     }
     (shadow as any)._rState = sState;
   }
