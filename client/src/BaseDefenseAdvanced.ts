@@ -1243,11 +1243,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     // Salt for Build 248 (5-Lane Rails): 1712924500
     
     // Build 218: Prepare shared graphics for batching
-    if (this.game.loop.frame % 3 === 0) {
+    if (this.game.loop.frame % 4 === 0) {
       this.unitUiGraphics?.clear();
       this.unitHpGraphics?.clear();
+      this.unitShadowGraphics?.clear();
     }
-    this.unitShadowGraphics?.clear();
     const camView = this.cameras.main.worldView;
     const pad = TILE_SIZE * 6; // Build 280: Standard optimized padding
     nowMs = Date.now();
@@ -1392,9 +1392,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               const camZoom = this.cameras.main.zoom;
               const isSelected = this.selectedUnitIds.has(id);
               
-              // 1. Selection Rings & Enemy Markers (unitUiGraphics - every 3rd frame)
-              // Build 288: Throttle selection rings to every 3rd frame as requested.
-              if (this.unitUiGraphics && (this.game.loop.frame % 3 === 0)) {
+              // 1. Selection Rings & Enemy Markers (unitUiGraphics - every 4th frame)
+              // Build 288: Throttle selection rings to every 4th frame as requested.
+              if (this.unitUiGraphics && (this.game.loop.frame % 4 === 0)) {
                 const uig = this.unitUiGraphics;
                 if (isSelected) {
                   const ringSize = isTank ? this.getTankSelectionBoxSize(e as any) : TILE_SIZE * 0.7;
@@ -1409,9 +1409,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
                 }
               }
 
-              // 2. Throttled HP Bars (unitHpGraphics - every 3rd frame, ONLY selected)
-              // Build 286: Only update HP bars for selected units every 3 frames as requested.
-              if (this.unitHpGraphics && isSelected && (this.game.loop.frame % 3 === 0)) {
+              // 2. Throttled HP Bars (unitHpGraphics - every 4th frame, ONLY selected)
+              // Build 286: Only update HP bars for selected units every 4 frames as requested.
+              if (this.unitHpGraphics && isSelected && (this.game.loop.frame % 4 === 0)) {
                 const upg = this.unitHpGraphics;
                 const hpRatio = Math.max(0, Math.min(1, (u.hp || 0) / (u.maxHp || 1)));
                 const barW = isTank ? 40 : 20;

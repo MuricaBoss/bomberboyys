@@ -60,22 +60,25 @@ export function updateTankVisual(scene: any, args: TankVisualArgs) {
       sState.vis = shadowVisible;
     }
     if (shadowVisible) {
-      shadow.setPosition(shadowPos.x, shadowPos.y);
-      if (shouldTick || sState.dir === undefined || sState.lod !== lod) {
-        const shadowKey = scene.getTankShadowTextureKey(dir);
-        if (sState.key !== shadowKey) {
-          shadow.setTexture(shadowKey);
-          shadow.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
-          sState.key = shadowKey;
+      // Build 289: Throttle tank shadow position/depth updates to every 4th frame.
+      if (scene.game.loop.frame % 4 === 0) {
+        shadow.setPosition(shadowPos.x, shadowPos.y);
+        if (shouldTick || sState.dir === undefined || sState.lod !== lod) {
+          const shadowKey = scene.getTankShadowTextureKey(dir);
+          if (sState.key !== shadowKey) {
+            shadow.setTexture(shadowKey);
+            shadow.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
+            sState.key = shadowKey;
+          }
+          sState.dir = dir;
         }
-        sState.dir = dir;
+        sState.lod = lod;
+        
+        // Build 288 Fix: Use a dedicated depth range for ALL shadows to ensure batching.
+        // Shadows are now separated from bodies in the Z-buffer, allowing 40 draw calls to merge into 2-16.
+        const shadowDepth = WORLD_DEPTH_UNIT_OFFSET - 2.0; // Force well below any possible body
+        scene.applyWorldDepth(shadow, tank.y, shadowDepth);
       }
-      sState.lod = lod;
-      
-      // Build 288 Fix: Use a dedicated depth range for ALL shadows to ensure batching.
-      // Shadows are now separated from bodies in the Z-buffer, allowing 40 draw calls to merge into 2-16.
-      const shadowDepth = WORLD_DEPTH_UNIT_OFFSET - 2.0; // Force well below any possible body
-      scene.applyWorldDepth(shadow, tank.y, shadowDepth);
     }
     (shadow as any)._rState = sState;
   }

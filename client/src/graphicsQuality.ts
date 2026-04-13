@@ -48,7 +48,7 @@ export function shouldAntialias(_quality: GraphicsQuality) {
 }
 
 export function getTargetFps(_quality: GraphicsQuality): number {
-  return 70;
+  return 75;
 }
 
 export function getBatchSize(_quality: GraphicsQuality): number {
