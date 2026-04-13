@@ -9,15 +9,9 @@ export function getGraphicsQuality(): GraphicsQuality {
 }
 
 export function setGraphicsQuality(_value: GraphicsQuality) {
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Ignore storage failures and keep runtime behavior.
-  }
 }
 
 export function cycleGraphicsQuality(): GraphicsQuality {
-  setGraphicsQuality(FIXED_QUALITY);
   return FIXED_QUALITY;
 }
 

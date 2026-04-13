@@ -1146,9 +1146,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.perfStart("autoEngage");
     this.autoEngageUnits(nowMs);
     this.perfEnd("autoEngage");
-    
-    this.reportClientPerformance();
 
+    const camX = this.cameras.main.worldView.x;
+    const camY = this.cameras.main.worldView.y;
+    this.updateWorldBackground(camX, camY);
+    
     const myTeam = me?.team;
     if (this.fpsText) {
        this.fpsText.setText(`FPS: ${Math.round(this.game.loop.actualFps)}`);
@@ -1242,7 +1244,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.unitUiGraphics?.clear();
     this.unitShadowGraphics?.clear();
     const camView = this.cameras.main.worldView;
-    const pad = TILE_SIZE * 8; // Build 255: Increased padding for smoother transitions
+    const pad = TILE_SIZE * 6; // Build 280: Standard optimized padding
     nowMs = Date.now();
 
     // Build 238: Periodic shared path cache clearing (every 500ms) to ensure path results stay fresh
@@ -1456,9 +1458,20 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             let e: Phaser.GameObjects.Rectangle | Phaser.GameObjects.Image | undefined = this.structureEntities[id];
             let t = this.structureTexts[id];
             const artSpec = this.getStructureArtSpec(String(s.type || ""));
-            const inCamera = this.cameras.main.worldView.contains(s.x, s.y);
             const isFriendly = !!myTeam && s.team === myTeam;
-            const visible = (isFriendly || this.isVisibleToTeamWithFogMemory(Number(s.x), Number(s.y))) && inCamera;
+            const sx = Number(s.x);
+            const sy = Number(s.y);
+            const inCamera = (sx >= camView.x - pad && sx <= camView.right + pad && sy >= camView.y - pad && sy <= camView.bottom + pad);
+            const visible = (isFriendly || this.isVisibleToTeamWithFogMemory(sx, sy)) && inCamera;
+
+            if (!inCamera) {
+              e?.setVisible(false);
+              this.structureShadowEntities[id]?.setVisible(false);
+              this.structureTexts[id]?.setVisible(false);
+              this.structureHpTexts[id]?.setVisible(false);
+              this.structureEnemyIcons.get(id)?.setVisible(false);
+              return;
+            }
 
             if (!e) {
               if (artSpec) {
@@ -1596,19 +1609,27 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
     this.perfStart("syncResources");
     const seenResources = new Set<string>();
+    
     if (state.resources?.forEach) {
       state.resources.forEach((r: any, id: string) => {
         seenResources.add(id);
         let e = this.resourceEntities[id];
-        const inCamera = this.cameras.main.worldView.contains(r.x, r.y);
-        const visible = (this.isVisibleToTeamWithFogMemory(Number(r.x), Number(r.y))) && inCamera;
+        const rx = Number(r.x);
+        const ry = Number(r.y);
+        
+        const inCamera = (rx >= camView.x - pad && rx <= camView.right + pad && ry >= camView.y - pad && ry <= camView.bottom + pad);
+        const visible = (this.isVisibleToTeamWithFogMemory(rx, ry)) && inCamera;
+        
         if (!e) {
-          e = this.add.circle(r.x, r.y, TILE_SIZE * 0.26, 0x44ddaa).setStrokeStyle(2, 0xffffff).setDepth(11);
+          e = this.add.circle(rx, ry, TILE_SIZE * 0.26, 0x44ddaa).setStrokeStyle(2, 0xffffff).setDepth(11);
           this.resourceEntities[id] = e;
         }
-        e.x = r.x;
-        e.y = r.y;
-        this.applyWorldDepth(e, e.y, WORLD_DEPTH_RESOURCE_OFFSET);
+        
+        if (inCamera) {
+          e.x = rx;
+          e.y = ry;
+          this.applyWorldDepth(e, e.y, WORLD_DEPTH_RESOURCE_OFFSET);
+        }
         e.setVisible(visible);
       });
     }
