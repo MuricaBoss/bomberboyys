@@ -777,14 +777,14 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (!this.worldFogOverlay) {
       this.worldFogOverlay = this.add.renderTexture(0, 0, fogW, fogH)
         .setOrigin(0)
-        .setScrollFactor(0)
+        .setScrollFactor(1)
         .setDepth(240)
         .setScale(invScale);
       overlay = this.worldFogOverlay;
     }
     
-    // Position at top-left of screen (scrollFactor 0)
-    overlay.setPosition(0, 0); 
+    overlay.setPosition(camView.x, camView.y);
+    overlay.setDisplaySize(camView.width, camView.height);
     overlay.clear();
     overlay.fill(0x000000, 0.88, 0, 0, fogW, fogH);
 
