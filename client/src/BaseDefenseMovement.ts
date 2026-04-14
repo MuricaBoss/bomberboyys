@@ -102,7 +102,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
   }
 
   localFormationSpacingForIds(unitIds: string[]) {
-    if (!this.room?.state?.units) return TILE_SIZE * 2.0; // Build 361: Sync with Ultra Repulsion Range (2.0 tiles)
+    if (!this.room?.state?.units) return TILE_SIZE * 3.0; // Build 363: Extreme Spacing Sync (3.0 tiles)
     let maxRadius = TILE_SIZE * 0.42;
 
     for (const id of unitIds) {
@@ -772,11 +772,12 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const isJammedGhost = this.localUnitGhostMode?.has(uid) ?? false;
 
     // Build 353: Enable separation even during spawn (unless jammed), but respect factory ignore
-    if (!isJammedGhost && isLocalOwned && !inGracePeriod && this.room?.state?.units?.forEach) {
+    // Build 363: REMOVED isLocalOwned and !inGracePeriod to ensure ALL units repel each other globally.
+    if (!isJammedGhost && this.room?.state?.units?.forEach) {
       const me = this.room.state.players?.get ? this.room.state.players.get(this.currentPlayerId) : this.room.state.players?.[this.currentPlayerId];
       const myTeam = me?.team;
       const myRadius = this.localUnitBodyRadius(u);
-      const searchRadius = TILE_SIZE * 5.0; // Build 361: Ultra Search Range
+      const searchRadius = TILE_SIZE * 6.0; // Build 363: Extreme Search Range
       const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
       
       for (const oid of potentialNeighbors) {
@@ -793,8 +794,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         let dy = s.y - oy;
         let dist = Math.hypot(dx, dy);
         
-        // Build 361: Comfort zone is now 2.5 tiles wide
-        const minDist = myRadius + oRadius + TILE_SIZE * 2.5;
+        // Build 363: Comfort zone is now 3.5 tiles wide
+        const minDist = myRadius + oRadius + TILE_SIZE * 3.5;
         
         if (dist < minDist) {
           // Zero-Distance Fix: If perfectly overlapping, nudge randomly to begin repulsion
@@ -804,7 +805,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
             dy = Math.sin(ang) * 0.1;
             dist = 0.1;
           }
-          const pushStrength = (1.0 - dist / minDist) * 20000;
+          const pushStrength = (1.0 - dist / minDist) * 100000;
           steerForce.x += (dx / dist) * pushStrength;
           steerForce.y += (dy / dist) * pushStrength;
         }
