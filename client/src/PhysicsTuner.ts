@@ -14,6 +14,7 @@ export class PhysicsTuner {
   // Build 385: Separate Lane Management for Tanks vs Soldiers
   public soldierLaneCount = 3;
   public soldierLaneSpacing = 32;
+  public tankLaneCount = 2;
   public tankLaneSpacing = 64;
 
   private container: HTMLDivElement | null = null;
