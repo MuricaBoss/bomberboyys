@@ -160,6 +160,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     idx: number;
     updatedAt: number;
     sharedPathKey?: string;
+    laneOffset?: number;
   }>();
   localUnitRenderState = new Map<string, { x: number; y: number; vx: number; vy: number; lastAt: number; jamRefX?: number; jamRefY?: number }>();
   unitEnemyIcons = new Map<string, Phaser.GameObjects.Graphics>();
