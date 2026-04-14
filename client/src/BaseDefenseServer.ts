@@ -357,7 +357,20 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
     if (!this.room?.state?.units?.forEach) return;
     const minInterval = 50;
     if (now - this.lastUnitPoseSentAt < minInterval) return;
-    const poses: Array<{ unitId: string; x: number; y: number; dir: number; tx: number; ty: number }> = [];
+    const poses: Array<{
+      unitId: string;
+      x: number;
+      y: number;
+      dir: number;
+      tx: number;
+      ty: number;
+      sharedPathKey?: string;
+      sharedPathCenterX?: number;
+      sharedPathCenterY?: number;
+      finalX?: number;
+      finalY?: number;
+      pathRadius?: number;
+    }> = [];
     let hasMoving = false;
     this.room.state.units.forEach((u: any, id: string) => {
       if ((u.hp ?? 0) <= 0) return;
@@ -423,7 +436,16 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
         finalY: manualTarget?.finalY ?? ty,
         pathRadius: manualTarget?.pathRadius ?? 0,
       });
-      this.lastUnitPoseState.set(id, { x: s.x, y: s.y, dir, tx, ty });
+      this.lastUnitPoseState.set(id, {
+        x: s.x,
+        y: s.y,
+        dir,
+        tx,
+        ty,
+        sharedPathKey: manualTarget?.sharedPathKey ?? "",
+        finalX: manualTarget?.finalX ?? tx,
+        finalY: manualTarget?.finalY ?? ty,
+      });
     });
     if (poses.length > 0 || hasMoving) {
       if (poses.length === 0) return;

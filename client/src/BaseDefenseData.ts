@@ -167,7 +167,16 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   structureEnemyIcons = new Map<string, Phaser.GameObjects.Graphics>();
   hasLoggedTeam = false;
   lastUnitPoseSentAt = 0;
-  lastUnitPoseState = new Map<string, { x: number; y: number; dir: number; tx: number; ty: number }>();
+  lastUnitPoseState = new Map<string, {
+    x: number;
+    y: number;
+    dir: number;
+    tx: number;
+    ty: number;
+    sharedPathKey?: string;
+    finalX?: number;
+    finalY?: number;
+  }>();
   localUnitTargetOverride = new Map<string, {
     x: number;
     y: number;
