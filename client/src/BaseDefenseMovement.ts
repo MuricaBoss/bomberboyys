@@ -863,6 +863,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     if (isClientDriven) {
       if (!manualTarget && err > TILE_SIZE * 2.4) {
         // Snap if dangerously out of sync
+        const isGhost = isJammedGhost || producedExitGraceActive;
         if (isGhost || this.canOccupyLocalUnit(Number(u.x), Number(u.y), r, uid)) {
           s.x = Number(u.x);
           s.y = Number(u.y);
