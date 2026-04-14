@@ -2,8 +2,8 @@ import { TILE_SIZE } from "./constants";
 
 export class PhysicsTuner {
   // Build 364: Real-time adjustable parameters
-  public repulsionRangePadding = TILE_SIZE * 2.5; // Optimized for Build 369
-  public repulsionForce = 50000;
+  public repulsionRange = 48; // Build 376: Default Spacing (1.5 tiles)
+  public repulsionForce = 80000;
   public formationSpacing = TILE_SIZE * 3.0;
   public syncThreshold = TILE_SIZE * 2.5;
   public snapAmount = 0.10;
@@ -44,8 +44,8 @@ export class PhysicsTuner {
 
     this.container.innerHTML = `
       <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px;">PHYSICS TUNER</div>
-      ${this.createSliderHTML("Unit Repel Range", "repulsionRange", 10, 300, Math.round(this.repulsionRangePadding))}
-      ${this.createSliderHTML("Unit Repel Power", "repulsionForce", 100, 1000000, this.repulsionForce)}
+      ${this.createSliderHTML("Unit Spacing (px)", "repulsionRange", 10, 250, Math.round(this.repulsionRange))}
+      ${this.createSliderHTML("Repel Stiffness", "repulsionForce", 5000, 400000, this.repulsionForce)}
       ${this.createSliderHTML("Target Group Gap", "spacing", 10, 200, Math.round(this.formationSpacing))}
       ${this.createSliderHTML("Sync Drift Limit", "syncLimit", 10, 300, Math.round(this.syncThreshold))}
       ${this.createSliderHTML("Server Sync %", "snap", 1, 100, Math.round(this.snapAmount * 100))}

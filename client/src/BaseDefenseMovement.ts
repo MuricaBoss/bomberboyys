@@ -867,9 +867,13 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
             dist = 0.1;
           }
           const baseForce = p ? p.repulsionForce : 100000;
-          let pushStrength = (1.0 - dist / minDist) * baseForce;
-          // Build 374: Progressive repulsion. If super-close (<50%), kick back 4x harder.
-          if (dist < minDist * 0.5) pushStrength *= 4.0;
+          
+          // Build 376: Exponential Repulsion (Stiffer response when breaking social distance)
+          const ratio = 1.0 - dist / minDist;
+          let pushStrength = ratio * ratio * baseForce;
+          
+          // Progressive kick for extreme cases
+          if (ratio > 0.5) pushStrength *= 4.0;
 
           steerForce.x += (dx / dist) * pushStrength;
           steerForce.y += (dy / dist) * pushStrength;
