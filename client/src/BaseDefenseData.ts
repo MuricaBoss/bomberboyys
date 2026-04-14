@@ -692,6 +692,16 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
         labelY: TILE_SIZE * 0.44,
       };
     }
+    if (type === "vaina") {
+      return {
+        key: RTS_BUILDING_TEXTURE_KEYS.vaina,
+        textureKey: this.getBuildingTextureKey(RTS_BUILDING_TEXTURE_KEYS.vaina),
+        size: TILE_SIZE * 5.2, // Covers ~3x3 footprint visually
+        originY: 0.72,
+        pickRadius: TILE_SIZE * 2.1,
+        labelY: TILE_SIZE * 0.45,
+      };
+    }
     return null;
   }
 

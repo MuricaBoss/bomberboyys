@@ -138,7 +138,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
     });
   }
 
-  startDomBuildDrag(type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory", event: PointerEvent) {
+  startDomBuildDrag(type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | "vaina", event: PointerEvent) {
     this.clearCommandSelectionState();
     this.selectedBuild = type;
     const reason = this.getBuildBlockedReason(type);
@@ -184,6 +184,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       { type: "solar_panel", label: "Solar Panel", cost: 40, buildMs: 3500, x: 360 },
       { type: "barracks", label: "Barracks", cost: 80, buildMs: 6500, x: 550 },
       { type: "war_factory", label: "War Factory", cost: 130, buildMs: 7000, x: 740 },
+      { type: "vaina", label: "Vaina", cost: 20, buildMs: 4500, x: 930 },
     ];
 
     this.buildButtons = defs.map((d) => {
@@ -371,6 +372,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       { id: "solar_panel", label: "SOL" },
       { id: "barracks", label: "BAR" },
       { id: "war_factory", label: "WF" },
+      { id: "vaina", label: "VAN" },
       { id: "soldier", label: "SOLD" },
       { id: "tank", label: "TANK" },
       { id: "paths", label: "PATHS" },
@@ -410,12 +412,12 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       btn.style.webkitAppearance = "none";
       btn.style.appearance = "none";
       btn.style.touchAction = "manipulation";
-      if (def.id === "ore_refinery" || def.id === "solar_panel" || def.id === "barracks" || def.id === "war_factory") {
+      if (def.id === "ore_refinery" || def.id === "solar_panel" || def.id === "barracks" || def.id === "war_factory" || def.id === "vaina") {
         btn.style.touchAction = "none";
         btn.addEventListener("pointerdown", (event) => {
           event.preventDefault();
           event.stopPropagation();
-          this.startDomBuildDrag(def.id as "ore_refinery" | "solar_panel" | "barracks" | "war_factory", event);
+          this.startDomBuildDrag(def.id as any, event);
         });
         btn.addEventListener("click", (event) => {
           event.preventDefault();

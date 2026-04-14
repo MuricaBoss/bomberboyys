@@ -171,7 +171,7 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       const gridX = Number(data?.gridX);
       const gridY = Number(data?.gridY);
       if (!Number.isFinite(gridX) || !Number.isFinite(gridY)) return;
-      const validType = buildType === "ore_refinery" || buildType === "solar_panel" || buildType === "barracks" || buildType === "war_factory";
+      const validType = buildType === "ore_refinery" || buildType === "solar_panel" || buildType === "barracks" || buildType === "war_factory" || buildType === "vaina";
       if (!validType) return;
       if (!this.canPlaceBuildAt(buildType, gridX, gridY)) return;
       const costs: Record<string, number> = {
@@ -179,12 +179,14 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
         solar_panel: 40,
         barracks: 80,
         war_factory: 130,
+        vaina: 20,
       };
       const buildMs: Record<string, number> = {
         ore_refinery: 5000,
         solar_panel: 3500,
         barracks: 6500,
         war_factory: 7000,
+        vaina: 4500,
       };
       const cost = costs[buildType] ?? 0;
       if (!me.devMode) me.resources = Math.max(0, Number(me.resources || 0) - cost);

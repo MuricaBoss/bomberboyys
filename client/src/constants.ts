@@ -8,6 +8,7 @@ export const RTS_BUILDING_TEXTURE_KEYS = {
   solar_panel: "building_solar_panel",
   barracks: "building_barracks",
   war_factory: "building_war_factory",
+  vaina: "building_vaina",
 } as const;
 export const RTS_UI_TEXTURE_KEYS = {
   move_target_marker: "ui_move_target_marker",
