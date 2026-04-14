@@ -9,6 +9,7 @@ export class PhysicsTuner {
   public snapAmount = 0.02;
   public wallAvoidanceRange = TILE_SIZE * 1.5;
   public wallAvoidanceForce = 8000;
+  public pathSpread = 40; // Build 365: Width of lanes on shared paths
 
   private container: HTMLDivElement | null = null;
 
@@ -48,6 +49,7 @@ export class PhysicsTuner {
       ${this.createSliderHTML("Spacing", "spacing", 10, 200, Math.round(this.formationSpacing))}
       ${this.createSliderHTML("Sync Limit", "syncLimit", 10, 300, Math.round(this.syncThreshold))}
       ${this.createSliderHTML("Snap %", "snap", 1, 100, Math.round(this.snapAmount * 100))}
+      ${this.createSliderHTML("Path Spacing", "pathSpread", 0, 200, this.pathSpread)}
       ${this.createSliderHTML("Wall Range", "wallRange", 0, 200, Math.round(this.wallAvoidanceRange))}
       ${this.createSliderHTML("Wall Force", "wallForce", 100, 50000, this.wallAvoidanceForce)}
       <div style="font-size: 10px; opacity: 0.6; text-align: center; margin-top: 4px;">Adjust values to see real-time impact</div>
@@ -88,6 +90,7 @@ export class PhysicsTuner {
     listen("spacing", (v) => this.formationSpacing = v);
     listen("syncLimit", (v) => this.syncThreshold = v);
     listen("snap", (v) => this.snapAmount = v / 100);
+    listen("pathSpread", (v) => this.pathSpread = v);
     listen("wallRange", (v) => this.wallAvoidanceRange = v);
     listen("wallForce", (v) => this.wallAvoidanceForce = v);
   }

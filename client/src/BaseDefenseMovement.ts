@@ -429,6 +429,10 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         return null;
       }
 
+      const laneScalar = ((this.stringHash(unitId) % 100) / 100) * 2.0 - 1.0; // Build 365: Stable lane [-1, 1]
+      const pathSpread = this.physicsTuner?.pathSpread ?? 40;
+      const laneOffset = laneScalar * pathSpread;
+
       let bestIdx = Math.max(0, Math.min(cache?.idx ?? 0, cells.length - 1));
       let minD = Infinity;
       const railCenterX = hasSharedPath ? sharedPathCenterX : (goalGX * TILE_SIZE + TILE_SIZE / 2);
@@ -478,6 +482,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         idx: bestIdx,
         updatedAt: now,
         sharedPathKey: hasSharedPath ? sharedPathKey : undefined,
+        laneOffset, // Build 365: Store for waypoint loop
       };
       this.unitClientPathCache.set(unitId, cache);
     } else if (cache && cache.sharedPathKey && cache.cells.length > 0) {
@@ -493,8 +498,23 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
 
     while (cache.idx < cache.cells.length) {
       const c = cache.cells[cache.idx];
-      let wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
-      let wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
+      const nextC = cache.cells[cache.idx + 1] || c;
+      const prevC = cache.cells[cache.idx - 1] || c;
+
+      // Build 365: Calculate segment direction for perpendicular lane shift
+      let dx = nextC.x - c.x;
+      let dy = nextC.y - c.y;
+      if (dx === 0 && dy === 0) {
+        dx = c.x - prevC.x;
+        dy = c.y - prevC.y;
+      }
+      const len = Math.hypot(dx, dy);
+      const nx = len > 0.001 ? -dy / len : 0;
+      const ny = len > 0.001 ? dx / len : 0;
+      
+      const lo = (cache as any).laneOffset || 0;
+      let wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX + nx * lo;
+      let wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY + ny * lo;
 
       if (this.clearanceGrid && this.clearanceGrid.length > 0) {
         const gridIdx = c.y * this.gridW + c.x;
@@ -926,5 +946,14 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     s.lastAt = performance.now();
     e.x = s.x;
     e.y = s.y;
+  }
+
+  stringHash(s: string) {
+    let hash = 0;
+    for (let i = 0; i < s.length; i++) {
+        hash = ((hash << 5) - hash) + s.charCodeAt(i);
+        hash |= 0;
+    }
+    return Math.abs(hash);
   }
 }
