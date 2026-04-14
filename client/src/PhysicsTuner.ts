@@ -25,6 +25,7 @@ export class PhysicsTuner {
 
   constructor() {
     if (typeof document !== "undefined") {
+      this.createToggle();
       this.createUI();
     }
   }
@@ -47,7 +48,7 @@ export class PhysicsTuner {
       zIndex: "9999",
       pointerEvents: "auto",
       boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-      display: "flex",
+      display: "none", // Build 392: Hidden by default
       flexDirection: "column",
       gap: "12px"
     });
@@ -79,6 +80,51 @@ export class PhysicsTuner {
     document.body.appendChild(this.container);
 
     this.setupListeners();
+  }
+
+  private createToggle() {
+    const btn = document.createElement("div");
+    btn.id = "physics-tuner-toggle";
+    Object.assign(btn.style, {
+      position: "fixed",
+      top: "80px",
+      right: "20px",
+      padding: "8px 12px",
+      backgroundColor: "rgba(0, 0, 0, 0.6)",
+      backdropFilter: "blur(10px)",
+      color: "#4ade80",
+      fontFamily: "'Outfit', sans-serif, Arial",
+      fontSize: "11px",
+      fontWeight: "700",
+      letterSpacing: "1px",
+      borderRadius: "8px",
+      border: "1px solid rgba(74, 222, 128, 0.3)",
+      zIndex: "10000",
+      cursor: "pointer",
+      pointerEvents: "auto",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+      transition: "all 0.2s ease"
+    });
+    btn.innerText = "TUNER";
+
+    btn.onmouseover = () => {
+      btn.style.backgroundColor = "rgba(74, 222, 128, 0.2)";
+      btn.style.boxShadow = "0 4px 16px rgba(74, 222, 128, 0.4)";
+    };
+    btn.onmouseout = () => {
+      btn.style.backgroundColor = "rgba(0, 0, 0, 0.6)";
+      btn.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
+    };
+
+    btn.onclick = () => {
+      if (!this.container) return;
+      const isHidden = this.container.style.display === "none";
+      this.container.style.display = isHidden ? "flex" : "none";
+      btn.style.color = isHidden ? "#fff" : "#4ade80";
+      btn.style.borderColor = isHidden ? "rgba(255,255,255,0.5)" : "rgba(74, 222, 128, 0.3)";
+    };
+
+    document.body.appendChild(btn);
   }
 
   private createSliderHTML(label: string, id: string, min: number, max: number, value: number) {
