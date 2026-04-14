@@ -378,6 +378,9 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         sharedPathOffsetY: slot.y - sharedPathCenterY,
         pathRadius,
       });
+      // Build 391: Force-clear local path cache to prevent "ghost path" sticking
+      this.unitClientPathCache.delete(entry.id);
+      
       this.localUnitMovePriority.set(entry.id, priority);
       this.localUnitPathRadiusOverride.set(entry.id, pathRadius);
       this.room.send("command_units", {
@@ -416,9 +419,14 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const radiusBucket = Math.max(4, Math.round(useRadius / 4) * 4);
 
     let cache = this.unitClientPathCache.get(unitId);
+    
+    // Build 391: Force recalculation if the command's sharedKey changed (e.g. new move order)
+    const keyMismatch = hasSharedPath && cache?.sharedPathKey !== sharedPathKey;
+    
     const cacheExpired = hasSharedPath
-      ? false
+      ? keyMismatch
       : ((now - Number(cache?.updatedAt ?? 0)) > 520);
+
     const needRecalc = !cache
       || cache.goalGX !== goalGX
       || cache.goalGY !== goalGY
