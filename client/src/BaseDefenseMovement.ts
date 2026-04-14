@@ -429,24 +429,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         return null;
       }
 
-      // Build 385: Discrete Multi-Lane March (Separate for Tanks and Soldiers)
-      const p = this.physicsTuner;
-      const uType = String(unit.type || "");
-      let laneCount = 1;
-      let laneSpacing = 0;
-
-      if (uType === "tank") {
-        laneCount = p ? p.tankLaneCount : 2;
-        laneSpacing = p ? p.tankLaneSpacing : 64;
-      } else {
-        laneCount = p ? p.soldierLaneCount : 3;
-        laneSpacing = p ? p.soldierLaneSpacing : 32;
-      }
-
-      const hash = Math.abs(this.stringHash(unitId));
-      const laneIndex = hash % Math.max(1, laneCount);
-      const laneOffset = (laneIndex - (laneCount - 1) / 2) * laneSpacing;
-
       let bestIdx = Math.max(0, Math.min(cache?.idx ?? 0, cells.length - 1));
       let minD = Infinity;
       const railCenterX = hasSharedPath ? sharedPathCenterX : (goalGX * TILE_SIZE + TILE_SIZE / 2);
@@ -496,7 +478,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         idx: bestIdx,
         updatedAt: now,
         sharedPathKey: hasSharedPath ? sharedPathKey : undefined,
-        laneOffset, // Build 365: Store for waypoint loop
       };
       this.unitClientPathCache.set(unitId, cache);
     } else if (cache && cache.sharedPathKey && cache.cells.length > 0) {
@@ -510,10 +491,30 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const railOffsetX = finalX - railCenterX;
     const railOffsetY = finalY - railCenterY;
 
+    // Build 387: Frame-level Lane Offset (Live Response)
+    const p = this.physicsTuner;
+    const uType = String(unit.type || "");
+    let laneCount = 1;
+    let laneSpacing = 0;
+
+    if (uType === "tank") {
+      laneCount = p ? p.tankLaneCount : 2;
+      laneSpacing = p ? p.tankLaneSpacing : 64;
+    } else {
+      laneCount = p ? p.soldierLaneCount : 3;
+      laneSpacing = p ? p.soldierLaneSpacing : 32;
+    }
+
+    const hash = Math.abs(this.stringHash(unitId));
+    const lIdx = hash % Math.max(1, laneCount);
+    const lOffset = (lIdx - (laneCount - 1) / 2) * laneSpacing;
+
     while (cache.idx < cache.cells.length) {
       const c = cache.cells[cache.idx];
       const nextC = cache.cells[cache.idx + 1] || c;
       const prevC = cache.cells[cache.idx - 1] || c;
+      
+      let lo = lOffset;
 
       // Build 367: Smooth Lane Look-Ahead (Normal Smoothing)
       // Look ahead up to 4 cells to average the path direction, preventing 45-degree snaps.
@@ -540,7 +541,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const nx = len > 0.001 ? -avgDY / len : 0;
       const ny = len > 0.001 ? avgDX / len : 0;
       
-      let lo = (cache as any).laneOffset || 0;
       let wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX + nx * lo;
       let wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY + ny * lo;
 
@@ -806,6 +806,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       ? {
         x: s.x,
         y: s.y,
+        type: u.type, // Build 387: Pass type for lane tuning
         targetX: useFinalApproachPath
           ? manualTarget.finalX
           : (manualTarget.sharedPathKey ? manualTarget.sharedPathCenterX : tx),
@@ -819,7 +820,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         sharedPathCenterY: manualTarget.sharedPathCenterY,
         pathRadius: manualTarget.pathRadius,
       }
-      : { x: s.x, y: s.y, targetX: tx, targetY: ty };
+      : { x: s.x, y: s.y, targetX: tx, targetY: ty, type: u.type };
 
     const wp = manualTarget?.directSteer ? null : this.getClientUnitWaypoint(
       id,
@@ -899,8 +900,13 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           const ratio = 1.0 - dist / minDist;
           let pushStrength = ratio * ratio * baseForce;
           
-          // Progressive kick for extreme cases
-          if (ratio > 0.5) pushStrength *= 4.0;
+          // Build 387: Mandatory Overlap Kick
+          // If units are physically crossing (dist < radii), apply a massive force to resolve the jam.
+          if (dist < (myRadius + oRadius)) {
+              pushStrength *= 5.0; // Hard separation kick
+          } else if (ratio > 0.5) {
+              pushStrength *= 2.0;
+          }
 
           steerForce.x += (dx / dist) * pushStrength;
           steerForce.y += (dy / dist) * pushStrength;
