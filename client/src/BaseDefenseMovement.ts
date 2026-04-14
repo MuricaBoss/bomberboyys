@@ -102,7 +102,9 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
   }
 
   localFormationSpacingForIds(unitIds: string[]) {
-    if (!this.room?.state?.units) return TILE_SIZE * 3.0; // Build 363: Extreme Spacing Sync (3.0 tiles)
+    // Build 364: Use real-time tuner value
+    if (this.physicsTuner) return this.physicsTuner.formationSpacing;
+    if (!this.room?.state?.units) return TILE_SIZE * 3.0; 
     let maxRadius = TILE_SIZE * 0.42;
 
     for (const id of unitIds) {
@@ -773,11 +775,14 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
 
     // Build 353: Enable separation even during spawn (unless jammed), but respect factory ignore
     // Build 363: REMOVED isLocalOwned and !inGracePeriod to ensure ALL units repel each other globally.
+    // Build 364: Use PhysicsTuner values
     if (!isJammedGhost && this.room?.state?.units?.forEach) {
       const me = this.room.state.players?.get ? this.room.state.players.get(this.currentPlayerId) : this.room.state.players?.[this.currentPlayerId];
       const myTeam = me?.team;
       const myRadius = this.localUnitBodyRadius(u);
-      const searchRadius = TILE_SIZE * 6.0; // Build 363: Extreme Search Range
+      
+      const p = this.physicsTuner;
+      const searchRadius = p ? p.repulsionRangePadding * 1.8 : TILE_SIZE * 6.0; 
       const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
       
       for (const oid of potentialNeighbors) {
@@ -794,18 +799,18 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         let dy = s.y - oy;
         let dist = Math.hypot(dx, dy);
         
-        // Build 363: Comfort zone is now 3.5 tiles wide
-        const minDist = myRadius + oRadius + TILE_SIZE * 3.5;
+        const padding = p ? p.repulsionRangePadding : TILE_SIZE * 3.5;
+        const minDist = myRadius + oRadius + padding;
         
         if (dist < minDist) {
-          // Zero-Distance Fix: If perfectly overlapping, nudge randomly to begin repulsion
           if (dist < 0.1) {
             const ang = Math.random() * Math.PI * 2;
             dx = Math.cos(ang) * 0.1;
             dy = Math.sin(ang) * 0.1;
             dist = 0.1;
           }
-          const pushStrength = (1.0 - dist / minDist) * 100000;
+          const baseForce = p ? p.repulsionForce : 100000;
+          const pushStrength = (1.0 - dist / minDist) * baseForce;
           steerForce.x += (dx / dist) * pushStrength;
           steerForce.y += (dy / dist) * pushStrength;
         }
@@ -828,8 +833,13 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
             const wdx = s.x - tileCX;
             const wdy = s.y - tileCY;
             const wdist = Math.hypot(wdx, wdy);
+            
+            const p = this.physicsTuner;
+            const wallR = p ? p.wallAvoidanceRange : this.localUnitBodyRadius(u) + TILE_SIZE * 1.5;
+            
             if (wdist < wallR && wdist > 0.01) {
-              const pushStrength = (1.0 - wdist / wallR) * 8000;
+              const baseWForce = p ? p.wallAvoidanceForce : 8000;
+              const pushStrength = (1.0 - wdist / wallR) * baseWForce;
               steerForce.x += (wdx / wdist) * pushStrength;
               steerForce.y += (wdy / wdist) * pushStrength;
             }
@@ -865,27 +875,24 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       s.vy *= 0.8;
     }
     // Build 350: Sync with Server & Jam Detection
+    // Build 364: Soft Sync (Independent Simulation)
     const errX = Number(u.x) - s.x;
     const errY = Number(u.y) - s.y;
     const err = Math.hypot(errX, errY);
-    const unitType = String(u.type || "");
-    const isClientDriven = isLocalOwned && this.isClientAuthoritativeUnitType(unitType);
+    const p = this.physicsTuner;
 
-    if (isClientDriven) {
-      if (!manualTarget && err > TILE_SIZE * 2.4) {
-        // Snap if dangerously out of sync
-        const isGhost = isJammedGhost || producedExitGraceActive;
-        if (isGhost || this.canOccupyLocalUnit(Number(u.x), Number(u.y), r, uid)) {
-          s.x = Number(u.x);
-          s.y = Number(u.y);
-          s.vx = 0; s.vy = 0;
-        }
-      }
-    } else if (!manualTarget && err > TILE_SIZE * 1.15) {
-      // Remote unit sync
+    const threshold = p ? p.syncThreshold : TILE_SIZE * 2.5;
+    const snap = p ? p.snapAmount : 0.02;
+
+    if (err > threshold) {
+      // Hard snap only if way off
       s.x = Number(u.x);
       s.y = Number(u.y);
       s.vx = 0; s.vy = 0;
+    } else {
+      // Soft drift towards server
+      s.x += errX * snap;
+      s.y += errY * snap;
     }
 
     // Jam Detection for GhostMode

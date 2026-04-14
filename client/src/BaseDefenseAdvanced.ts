@@ -142,6 +142,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   }
 
   async create() {
+    this.physicsTuner = new PhysicsTuner();
     this.clientClockStartedAt = Date.now();
     this.ensureSoldierAnimations();
     this.cameras.main.setRoundPixels(shouldRoundPixels(getGraphicsQuality()));
