@@ -84,6 +84,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.solar_panel, tier), `${path}/buildings/solar_panel.png`);
     this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.barracks, tier), `${path}/buildings/barracks.png`);
     this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.war_factory, tier), `${path}/buildings/war_factory.png`);
+    this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.vaina, tier), `${path}/buildings/vaina.png`);
 
     this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.n, tier), `${path}/tanks/tank_ready_n.png`);
     this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.ne, tier), `${path}/tanks/tank_ready_ne.png`);
