@@ -484,7 +484,27 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     return true;
   }
 
-  canOccupyLocalUnit(x: number, y: number, radius: number, _ignoreUnitId?: string) {
+  getStructureIdAt(gx: number, gy: number): string | null {
+    if (!this.room?.state?.structures) return null;
+    let foundId: string | null = null;
+    this.room.state.structures.forEach((s: any, id: string) => {
+      if (foundId) return;
+      if ((s.hp ?? 0) <= 0) return;
+      const type = String(s.type || "");
+      const footprint = this.getStructureFootprint(type);
+      const centerGX = Math.floor(Number(s.x) / TILE_SIZE);
+      const centerGY = Math.floor(Number(s.y) / TILE_SIZE);
+      const halfW = Math.floor(footprint.width / 2);
+      const halfH = Math.floor(footprint.height / 2);
+      if (gx >= centerGX - halfW && gx <= centerGX + halfW &&
+          gy >= centerGY - halfH && gy <= centerGY + halfH) {
+        foundId = id;
+      }
+    });
+    return foundId;
+  }
+
+  canOccupyLocalUnit(x: number, y: number, radius: number, _ignoreUnitId?: string, _ignoreStructureId?: string) {
     // Check center + 8 perimeter points against tiles, structures, cores
     const samples = [
       { x, y },
@@ -501,7 +521,8 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       const gx = Math.floor(p.x / TILE_SIZE);
       const gy = Math.floor(p.y / TILE_SIZE);
       if (this.tileAt(gx, gy) !== 0) return false;
-      if (this.hasStructureAt(gx, gy)) return false;
+      const sid = this.getStructureIdAt(gx, gy);
+      if (sid && sid !== _ignoreStructureId) return false;
       if (this.hasCoreAt(gx, gy)) return false;
       if (this.hasResourceAt(gx, gy)) return false;
     }

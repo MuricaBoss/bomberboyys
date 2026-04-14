@@ -841,13 +841,17 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const ny = s.y + s.vy * dt;
     const r = this.localUnitBodyRadius(u);
 
-    if (isGhost || this.canOccupyLocalUnit(nx, ny, r, uid)) {
+    // Build 352: Selective Hard Collision (Add collisions back, except for spawning building)
+    const ignoreSid = producedExitGraceActive ? this.getStructureIdAt(Math.floor(s.x / TILE_SIZE), Math.floor(s.y / TILE_SIZE)) : undefined;
+    const isJammedGhost = this.localUnitGhostMode?.has(uid) ?? false;
+
+    if (isJammedGhost || this.canOccupyLocalUnit(nx, ny, r, uid, ignoreSid as any)) {
       s.x = nx;
       s.y = ny;
     } else {
       // Small slide fallback if still hitting something hard
-      if (isGhost || this.canOccupyLocalUnit(nx, s.y, r, uid)) s.x = nx;
-      else if (isGhost || this.canOccupyLocalUnit(s.x, ny, r, uid)) s.y = ny;
+      if (this.canOccupyLocalUnit(nx, s.y, r, uid, ignoreSid as any)) s.x = nx;
+      else if (this.canOccupyLocalUnit(s.x, ny, r, uid, ignoreSid as any)) s.y = ny;
       s.vx *= 0.8;
       s.vy *= 0.8;
     }
