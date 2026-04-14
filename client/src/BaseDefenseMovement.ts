@@ -839,7 +839,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
 
     // 2. SEPARATION FORCE (Continuous)
     const inGracePeriod = manualTarget && (Date.now() - manualTarget.setAt) < 800;
-    const producedExitGraceActive = Number(u.manualUntil || 0) > nowMs;
     const uid = String(id);
     const ignoreSid = producedExitGraceActive ? this.getStructureIdAt(Math.floor(s.x / TILE_SIZE), Math.floor(s.y / TILE_SIZE)) : undefined;
     const isJammedGhost = this.localUnitGhostMode?.has(uid) ?? false;
