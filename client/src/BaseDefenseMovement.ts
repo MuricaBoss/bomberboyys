@@ -843,7 +843,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
       
       for (const oid of potentialNeighbors) {
-        if (oid === id) continue;
+        if (oid === id || producedExitGraceActive) continue; // Build 380: Grace units don't repel
         const ou = this.room.state.units.get ? this.room.state.units.get(oid) : (this.room.state.units as any)?.[oid];
         if (!ou || (ou.hp ?? 0) <= 0) continue;
         if (myTeam && ou.team !== myTeam) continue;
@@ -946,6 +946,15 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const nx = s.x + s.vx * dt;
     const ny = s.y + s.vy * dt;
     const r = this.localUnitBodyRadius(u);
+
+    // Build 380: Skip repulsion and complex collision during the spawn grace period
+    // to allow units to move to their assigned grid slots orderly.
+    if (producedExitGraceActive) {
+      s.x = nx;
+      s.y = ny;
+      return;
+    }
+
     // Build 375: Phantom Rocks (Soft Collision)
     // Terrain (Tiles) no longer perform a hard-block on movement. This prevents permanent jams.
     // Steering forces still handle avoidance, and Pathfinding still routes around tiles.
