@@ -2,14 +2,14 @@ import { TILE_SIZE } from "./constants";
 
 export class PhysicsTuner {
   // Build 364: Real-time adjustable parameters
-  public repulsionRangePadding = TILE_SIZE * 3.5; // Default from Build 363
-  public repulsionForce = 100000;
+  public repulsionRangePadding = TILE_SIZE * 2.5; // Optimized for Build 369
+  public repulsionForce = 50000;
   public formationSpacing = TILE_SIZE * 3.0;
   public syncThreshold = TILE_SIZE * 2.5;
-  public snapAmount = 0.02;
+  public snapAmount = 0.05;
   public wallAvoidanceRange = TILE_SIZE * 1.5;
   public wallAvoidanceForce = 8000;
-  public pathSpread = 40; // Build 365: Width of lanes on shared paths
+  public pathSpread = 60; // Build 365: Width of lanes on shared paths
 
   private container: HTMLDivElement | null = null;
 

@@ -530,6 +530,13 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       let wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX + nx * lo;
       let wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY + ny * lo;
 
+      // Build 369: If this is the last cell of the path, prioritize the actual final destination
+      // to ensure formation retention and avoid 'converging' jitter at the goal.
+      if (cache.idx === cache.cells.length - 1) {
+          wx = finalX;
+          wy = finalY;
+      }
+
       if (this.clearanceGrid && this.clearanceGrid.length > 0) {
         const gridIdx = c.y * this.gridW + c.x;
         const clearanceTiles = this.clearanceGrid[gridIdx];
