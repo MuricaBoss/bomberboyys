@@ -1311,6 +1311,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
        else this.fpsText.setColor("#00ff00");
     }
     this.updateClientVersionDom(this.game.loop.actualFps);
+    
+    // Build 393: Periodic Pulse Sync (Anti-Rubberband)
+    this.sendClientUnitPoses(nowMs);
+    this.sendClientAvoidIntents(nowMs);
+
     this.perfStart("syncPlayers");
     const seenPlayers = new Set<string>();
     if (players?.forEach) {
