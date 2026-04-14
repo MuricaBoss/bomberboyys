@@ -102,7 +102,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
   }
 
   localFormationSpacingForIds(unitIds: string[]) {
-    if (!this.room?.state?.units) return TILE_SIZE * 0.8;
+    if (!this.room?.state?.units) return TILE_SIZE * 2.0; // Build 361: Sync with Ultra Repulsion Range (2.0 tiles)
     let maxRadius = TILE_SIZE * 0.42;
 
     for (const id of unitIds) {
@@ -776,7 +776,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const me = this.room.state.players?.get ? this.room.state.players.get(this.currentPlayerId) : this.room.state.players?.[this.currentPlayerId];
       const myTeam = me?.team;
       const myRadius = this.localUnitBodyRadius(u);
-      const searchRadius = TILE_SIZE * 3.0; // Build 360: Larger search for larger comfort zone
+      const searchRadius = TILE_SIZE * 5.0; // Build 361: Ultra Search Range
       const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
       
       for (const oid of potentialNeighbors) {
@@ -793,8 +793,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         let dy = s.y - oy;
         let dist = Math.hypot(dx, dy);
         
-        // Build 360: Comfort zone is now 1.5 tiles wide
-        const minDist = myRadius + oRadius + TILE_SIZE * 1.5;
+        // Build 361: Comfort zone is now 2.5 tiles wide
+        const minDist = myRadius + oRadius + TILE_SIZE * 2.5;
         
         if (dist < minDist) {
           // Zero-Distance Fix: If perfectly overlapping, nudge randomly to begin repulsion
@@ -804,7 +804,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
             dy = Math.sin(ang) * 0.1;
             dist = 0.1;
           }
-          const pushStrength = (1.0 - dist / minDist) * 5000;
+          const pushStrength = (1.0 - dist / minDist) * 20000;
           steerForce.x += (dx / dist) * pushStrength;
           steerForce.y += (dy / dist) * pushStrength;
         }
@@ -815,7 +815,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     if (!isJammedGhost) {
       const gx = Math.floor(s.x / TILE_SIZE);
       const gy = Math.floor(s.y / TILE_SIZE);
-      const wallR = this.localUnitBodyRadius(u) + TILE_SIZE * 0.8;
+      const wallR = this.localUnitBodyRadius(u) + TILE_SIZE * 1.5;
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
           if (dx === 0 && dy === 0) continue;
@@ -828,7 +828,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
             const wdy = s.y - tileCY;
             const wdist = Math.hypot(wdx, wdy);
             if (wdist < wallR && wdist > 0.01) {
-              const pushStrength = (1.0 - wdist / wallR) * 4000;
+              const pushStrength = (1.0 - wdist / wallR) * 8000;
               steerForce.x += (wdx / wdist) * pushStrength;
               steerForce.y += (wdy / wdist) * pushStrength;
             }
