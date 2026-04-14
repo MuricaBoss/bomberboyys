@@ -526,27 +526,43 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const nx = len > 0.001 ? -avgDY / len : 0;
       const ny = len > 0.001 ? avgDX / len : 0;
       
-      const lo = (cache as any).laneOffset || 0;
+      let lo = (cache as any).laneOffset || 0;
       let wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX + nx * lo;
       let wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY + ny * lo;
 
+      // Build 373: Smart Lane Compression
+      // Check if current lane position is blocked by terrain. If so, compress towards path center.
+      let safeWX = wx;
+      let safeWY = wy;
+      let loReduction = 0;
+      while (loReduction < 3 && !this.canOccupyTerrainOnly(safeWX, safeWY, unitRadius + 2)) {
+          lo *= 0.5;
+          safeWX = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX + nx * lo;
+          safeWY = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY + ny * lo;
+          loReduction++;
+      }
+      wx = safeWX;
+      wy = safeWY;
+
       // Build 369: If this is the last cell of the path, prioritize the actual final destination
-      // to ensure formation retention and avoid 'converging' jitter at the goal.
       if (cache.idx === cache.cells.length - 1) {
           wx = finalX;
           wy = finalY;
       }
 
+      // Secondary check against clearance grid for extra safety
       if (this.clearanceGrid && this.clearanceGrid.length > 0) {
         const gridIdx = c.y * this.gridW + c.x;
-        const clearanceTiles = this.clearanceGrid[gridIdx];
-        if (clearanceTiles !== undefined) {
-          const maxDistPx = Math.max(TILE_SIZE * 0.1, (clearanceTiles * TILE_SIZE) - unitRadius - 6);
-          const currentOffsetDist = Math.hypot(railOffsetX, railOffsetY);
-          if (currentOffsetDist > maxDistPx && currentOffsetDist > 0.001) {
-            const scale = maxDistPx / currentOffsetDist;
-            wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX * scale;
-            wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY * scale;
+        const cl = this.clearanceGrid[gridIdx];
+        if (cl !== undefined) {
+          const maxDistPx = Math.max(TILE_SIZE * 0.1, (cl * TILE_SIZE) - unitRadius - 4);
+          const currentOffX = wx - (c.x * TILE_SIZE + TILE_SIZE / 2);
+          const currentOffY = wy - (c.y * TILE_SIZE + TILE_SIZE / 2);
+          const currentDist = Math.hypot(currentOffX, currentOffY);
+          if (currentDist > maxDistPx && currentDist > 0.001) {
+            const scale = maxDistPx / currentDist;
+            wx = (c.x * TILE_SIZE + TILE_SIZE / 2) + currentOffX * scale;
+            wy = (c.y * TILE_SIZE + TILE_SIZE / 2) + currentOffY * scale;
           }
         }
       }

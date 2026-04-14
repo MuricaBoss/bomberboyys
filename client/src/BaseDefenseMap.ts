@@ -786,8 +786,9 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         const gridIdx = gy * this.gridW + gx;
         const clearanceTiles = this.clearanceGrid[gridIdx];
         if (clearanceTiles !== undefined) {
-            // (clearanceTiles + 0.45) to account for center-of-tile to nearest wall
-            return (clearanceTiles + 0.45) * TILE_SIZE >= radius;
+            // Build 373: Conservative padding (+0.25 offset + 4px buffer)
+            // This forces paths to stay at least half-tank-width away from obstacle edges.
+            return (clearanceTiles + 0.25) * TILE_SIZE >= (radius + 4);
         }
     }
 
@@ -1101,13 +1102,16 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     const useRadius = radiusOverride ?? unitRadius;
     const radiusBucket = Math.max(4, Math.round(useRadius / 4) * 4);
 
+    const isJammed = this.localUnitGhostMode?.has(unitId) ?? false;
+
     let cache = this.unitClientPathCache.get(unitId);
     const needRecalc = !cache
       || cache.goalGX !== goalGX
       || cache.goalGY !== goalGY
       || cache.radiusBucket !== radiusBucket
       || (now - cache.updatedAt) > 520
-      || cache.idx >= cache.cells.length;
+      || cache.idx >= cache.cells.length
+      || isJammed; // Build 373: Force unique path if jammed
 
     if (needRecalc) {
       const targetSectorGX = Math.floor(goalGX / 4);
@@ -1117,7 +1121,8 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       // Build 258: Fix severe cache miss by using precisely calculated shared path key instead of generic sector
       const pathCacheKey = unit.sharedPathKey || sectorKey;
 
-      let cells = this.sharedPathCache.get(pathCacheKey);
+      // Build 373: Stuck units bypass shared cache to find an individual detour
+      let cells = !isJammed ? this.sharedPathCache.get(pathCacheKey) : null;
       
       if (!cells) {
         cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
