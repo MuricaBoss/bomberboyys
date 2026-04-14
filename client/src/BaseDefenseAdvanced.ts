@@ -33,6 +33,7 @@ import {
 } from "./graphicsQuality";
 import { ensureSoldierEntity, syncSoldierRuntime } from "./BaseDefenseSoldierRuntime";
 import { ensureTankEntity, syncTankRuntime } from "./BaseDefenseTankRuntime";
+import { PhysicsTuner } from "./PhysicsTuner";
 
 export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   public tankTrailState = new Map<string, any>();

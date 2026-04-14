@@ -24,11 +24,13 @@ import {
   PRODUCED_UNIT_EXIT_GRACE_MS, FOG_CELL_SIZE, FOG_UPDATE_MS, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM,
 } from "./constants";
 import { getGraphicsProfile, getGraphicsQuality, getTieredTextureKey } from "./graphicsQuality";
+import { UnitGrid } from "./UnitGrid";
 import { PhysicsTuner } from "./PhysicsTuner";
 
 
 export class BaseDefenseScene_Data extends Phaser.Scene {
   physicsTuner!: PhysicsTuner;
+  unitGrid = new UnitGrid();
   phaserHudEnabled = false;
   localOnly = false;
   desktopMobileFallback = false;
