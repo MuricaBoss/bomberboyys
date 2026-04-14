@@ -852,6 +852,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
       || type === "barracks"
       || type === "war_factory"
       || type === "factory"
+      || type === "vaina"
     ) {
       return { width: 3, height: 3 };
     }
@@ -1004,7 +1005,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     if (type === "barracks" && (!hasOre || !hasSolar)) return "Need Ore + Solar first";
     if (type === "war_factory" && (!hasOre || !hasSolar || !hasBarracks)) return "Need Ore + Solar + Barracks";
 
-    const baseCost = type === "ore_refinery" ? 55 : type === "solar_panel" ? 40 : type === "barracks" ? 80 : 130;
+    const baseCost = type === "ore_refinery" ? 55 : type === "solar_panel" ? 40 : type === "barracks" ? 80 : type === "vaina" ? 20 : 130;
     const battleSurcharge = this.room.state.phase === "battle" ? 10 : 0;
     const totalCost = baseCost + battleSurcharge;
     const res = Number(me.resources || 0);
