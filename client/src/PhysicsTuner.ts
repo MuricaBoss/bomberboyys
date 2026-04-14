@@ -17,6 +17,10 @@ export class PhysicsTuner {
   public tankLaneCount = 2;
   public tankLaneSpacing = 64;
 
+  // Build 388: Separate Repulsion Spacing for Tanks vs Soldiers
+  public soldierRepulsionRange = 48;
+  public tankRepulsionRange = 120;
+
   private container: HTMLDivElement | null = null;
 
   constructor() {
@@ -60,12 +64,14 @@ export class PhysicsTuner {
       ${this.createSliderHTML("Obstacle Repel Power", "wallForce", 100, 50000, this.wallAvoidanceForce)}
       
       <div style="font-weight: 700; font-size: 11px; margin-top: 6px; border-bottom: 1px solid rgba(255,255,255,0.1); color: #4ade80;">SOLDIER FORMATION</div>
+      ${this.createSliderHTML("Soldier Spacing", "sSpace", 10, 200, this.soldierRepulsionRange)}
       ${this.createSliderHTML("Soldier Lanes", "sLanes", 1, 8, this.soldierLaneCount)}
-      ${this.createSliderHTML("Soldier Spacing", "sSpacing", 8, 128, this.soldierLaneSpacing)}
+      ${this.createSliderHTML("Soldier Lane Gap", "sGap", 8, 128, this.soldierLaneSpacing)}
 
       <div style="font-weight: 700; font-size: 11px; margin-top: 6px; border-bottom: 1px solid rgba(255,255,255,0.1); color: #60a5fa;">TANK FORMATION</div>
+      ${this.createSliderHTML("Tank Spacing", "tSpace", 10, 250, this.tankRepulsionRange)}
       ${this.createSliderHTML("Tank Lanes", "tLanes", 1, 5, this.tankLaneCount)}
-      ${this.createSliderHTML("Tank Spacing", "tSpacing", 16, 200, this.tankLaneSpacing)}
+      ${this.createSliderHTML("Tank Lane Gap", "tGap", 16, 200, this.tankLaneSpacing)}
 
       <div style="font-size: 10px; opacity: 0.6; text-align: center; margin-top: 4px;">Adjust values to see real-time impact</div>
     `;
@@ -110,14 +116,11 @@ export class PhysicsTuner {
     listen("wallForce", (v) => this.wallAvoidanceForce = v);
 
     listen("sLanes", (v) => this.soldierLaneCount = v);
-    listen("sSpacing", (v) => this.soldierLaneSpacing = v);
+    listen("sGap", (v) => this.soldierLaneSpacing = v);
+    listen("sSpace", (v) => this.soldierRepulsionRange = v);
     listen("tLanes", (v) => this.tankLaneCount = v);
-    listen("tSpacing", (v) => this.tankLaneSpacing = v);
-
-    listen("sLanes", (v) => this.soldierLaneCount = v);
-    listen("sSpacing", (v) => this.soldierLaneSpacing = v);
-    listen("tLanes", (v) => this.tankLaneCount = v);
-    listen("tSpacing", (v) => this.tankLaneSpacing = v);
+    listen("tGap", (v) => this.tankLaneSpacing = v);
+    listen("tSpace", (v) => this.tankRepulsionRange = v);
   }
 
   public destroy() {

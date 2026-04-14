@@ -544,19 +544,9 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       let wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX + nx * lo;
       let wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY + ny * lo;
 
-      // Build 373: Smart Lane Compression
-      // Check if current lane position is blocked by terrain. If so, compress towards path center.
-      let safeWX = wx;
-      let safeWY = wy;
-      let loReduction = 0;
-      while (loReduction < 3 && !this.canOccupyTerrainOnly(safeWX, safeWY, unitRadius + 2)) {
-          lo *= 0.5;
-          safeWX = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX + nx * lo;
-          safeWY = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY + ny * lo;
-          loReduction++;
-      }
-      wx = safeWX;
-      wy = safeWY;
+      // Build 388: Removed aggressive 'Smart Lane Compression' (Broad Formation Support)
+      // We no longer compress lanes when nearing obstacles; let local avoidance (Step 3) handle it.
+      // This ensures formations stay wide even in rocky terrain.
 
       // Build 369: If this is the last cell of the path, prioritize the actual final destination
       if (cache.idx === cache.cells.length - 1) {
@@ -884,7 +874,9 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         let dy = s.y - oy;
         let dist = Math.hypot(dx, dy);
         
-        const padding = p ? p.repulsionRange : TILE_SIZE * 3.5;
+        // Build 388: Type-specific repulsion range
+        const uType = String(u.type || "");
+        const padding = uType === "tank" ? (p?.tankRepulsionRange ?? 120) : (p?.soldierRepulsionRange ?? 48);
         const minDist = myRadius + oRadius + padding;
         
         if (dist < minDist) {
