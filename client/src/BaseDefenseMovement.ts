@@ -747,231 +747,63 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const toTLen = Math.hypot(toTX, toTY);
     const speed = Number(u.speed || 0);
     const moving = toTLen > TILE_SIZE * 0.16 && speed > 1 && !(isAutoEngaged && inFiringRange);
-    const desiredVX = moving ? (toTX / toTLen) * speed : 0;
-    const desiredVY = moving ? (toTY / toTLen) * speed : 0;
+    // Build 350: Professional Steering (HowToRTS Inspired)
+    const maxSpeed = speed;
+    const steerForce = { x: 0, y: 0 };
 
-    const accel = moving ? 16 : 10;
-    const blend = 1 - Math.exp(-accel * dt);
-    s.vx += (desiredVX - s.vx) * blend;
-    s.vy += (desiredVY - s.vy) * blend;
-    const r = this.localUnitBodyRadius(u);
-    const stepX = s.vx * dt;
-    const stepY = s.vy * dt;
-    const nx = s.x + stepX;
-    const ny = s.y + stepY;
-    const uid = String(id);
-    const producedExitGraceActive = Number(u.manualUntil || 0) > nowMs;
-    if (producedExitGraceActive && Math.hypot(tx - s.x, ty - s.y) <= TILE_SIZE * 0.65) {
-      u.manualUntil = 0;
-    }
-    const isGhost = (this.localUnitGhostMode?.has(uid) ?? false) || producedExitGraceActive;
-    if (isGhost || this.canOccupyLocalUnit(nx, ny, r, uid)) {
-      s.x = nx;
-      s.y = ny;
+    // 1. SEEK FORCE
+    if (moving) {
+      const desiredVX = (toTX / toTLen) * maxSpeed;
+      const desiredVY = (toTY / toTLen) * maxSpeed;
+      steerForce.x += (desiredVX - s.vx) * 12;
+      steerForce.y += (desiredVY - s.vy) * 12;
     } else {
-      let moved = false;
-      if (isGhost || this.canOccupyLocalUnit(nx, s.y, r, uid)) {
-        s.x = nx;
-        moved = true;
-      }
-      if (isGhost || this.canOccupyLocalUnit(s.x, ny, r, uid)) {
-        s.y = ny;
-        moved = true;
-      }
-      if (!moved && (Math.abs(stepX) > 0.001 || Math.abs(stepY) > 0.001)) {
-        const len = Math.hypot(stepX, stepY);
-        const dirX = stepX / Math.max(0.001, len);
-        const dirY = stepY / Math.max(0.001, len);
-        const side = Math.min(TILE_SIZE * 0.26, len * 1.15);
-        const lX = s.x - dirY * side;
-        const lY = s.y + dirX * side;
-        const rX = s.x + dirY * side;
-        const rY = s.y - dirX * side;
-        const canL = isGhost || this.canOccupyLocalUnit(lX, lY, r, uid);
-        const canR = isGhost || this.canOccupyLocalUnit(rX, rY, r, uid);
-        if (canL && canR) {
-          const dL = Math.hypot(lX - navX, lY - navY);
-          const dR = Math.hypot(rX - navX, rY - navY);
-          if (dL <= dR) {
-            s.x = lX;
-            s.y = lY;
-          } else {
-            s.x = rX;
-            s.y = rY;
-          }
-        } else if (canL) {
-          s.x = lX;
-          s.y = lY;
-        } else if (canR) {
-          s.x = rX;
-          s.y = rY;
-        } else {
-          s.vx *= 0.2;
-          s.vy *= 0.2;
-        }
-      } else if (!moved) {
-        s.vx *= 0.2;
-        s.vy *= 0.2;
-      }
-
-      if (s.jamRefX === undefined || !moving) {
-        s.jamRefX = s.x;
-        s.jamRefY = s.y;
-        this.localUnitJamTicks.set(uid, 0);
-      } else {
-        const distFromRef = Math.hypot(s.x - s.jamRefX!, s.y - s.jamRefY!);
-        if (distFromRef > TILE_SIZE * 0.85) {
-          s.jamRefX = s.x;
-          s.jamRefY = s.y;
-          this.localUnitJamTicks.set(uid, 0);
-        } else {
-          const ticks = (this.localUnitJamTicks.get(uid) ?? 0) + 1;
-          this.localUnitJamTicks.set(uid, ticks);
-          if (ticks > 20) {
-            if (!this.localUnitGhostMode) this.localUnitGhostMode = new Set<string>();
-            this.localUnitGhostMode.add(uid);
-          }
-        }
-      }
+      // Friction when stopping
+      steerForce.x -= s.vx * 8;
+      steerForce.y -= s.vy * 8;
     }
 
-    const hasOverride = this.hasLocalUnitManualCommand(id);
-    const errX = Number(u.x) - s.x;
-    const errY = Number(u.y) - s.y;
-    const err = Math.hypot(errX, errY);
-    const unitR = this.localUnitBodyRadius(u);
-    const unitType = String(u.type || "");
-    const isClientDriven = isLocalOwned && this.isClientAuthoritativeUnitType(unitType);
-    if (isClientDriven) {
-      const movingNow = Math.hypot(s.vx, s.vy) > 8 || moving;
-      if (!hasOverride && err > TILE_SIZE * 2.4) {
-        const snapX = Number(u.x);
-        const snapY = Number(u.y);
-        if (isGhost || this.canOccupyLocalUnit(snapX, snapY, unitR, id)) {
-          s.x = snapX;
-          s.y = snapY;
-          s.vx = 0;
-          s.vy = 0;
-        }
-      } else if (!movingNow && !hasOverride && err > 8) {
-        const corr = 1 - Math.exp(-delta * 0.0025);
-        const newCX = s.x + errX * corr;
-        const newCY = s.y + errY * corr;
-        if (isGhost || this.canOccupyLocalUnit(newCX, newCY, unitR, id)) {
-          s.x = newCX;
-          s.y = newCY;
-        }
-      }
-    } else if (!hasOverride && err > TILE_SIZE * 1.15) {
-      const snapX = Number(u.x);
-      const snapY = Number(u.y);
-      if (isGhost || this.canOccupyLocalUnit(snapX, snapY, unitR, id)) {
-        s.x = snapX;
-        s.y = snapY;
-        s.vx = 0;
-        s.vy = 0;
-      }
-    } else if (err > 0.5) {
-      const movingNow = Math.hypot(s.vx, s.vy) > 8;
-      const corr = hasOverride
-        ? (1 - Math.exp(-delta * 0.002))
-        : movingNow
-          ? (1 - Math.exp(-delta * 0.004))
-          : (1 - Math.exp(-delta * 0.012));
-      const newCX = s.x + errX * corr;
-      const newCY = s.y + errY * corr;
-      if (isGhost || this.canOccupyLocalUnit(newCX, newCY, unitR, id)) {
-        s.x = newCX;
-        s.y = newCY;
-      }
-    }
-
+    // 2. SEPARATION FORCE (Continuous)
     const inGracePeriod = manualTarget && (Date.now() - manualTarget.setAt) < 800;
+    const producedExitGraceActive = Number(u.manualUntil || 0) > nowMs;
+    const uid = String(id);
+    const isGhost = (this.localUnitGhostMode?.has(uid) ?? false) || producedExitGraceActive;
 
     if (!isGhost && isLocalOwned && !inGracePeriod && this.room?.state?.units?.forEach) {
-      const me = this.room.state.players?.get
-        ? this.room.state.players.get(this.currentPlayerId)
-        : this.room.state.players?.[this.currentPlayerId];
+      const me = this.room.state.players?.get ? this.room.state.players.get(this.currentPlayerId) : this.room.state.players?.[this.currentPlayerId];
       const myTeam = me?.team;
       const myRadius = this.localUnitBodyRadius(u);
-      let pushX = 0;
-      let pushY = 0;
-      let yieldingPairs = 0;
-      const searchRadius = TILE_SIZE * 2;
+      const searchRadius = TILE_SIZE * 1.5;
       const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
+      
       for (const oid of potentialNeighbors) {
         if (oid === id) continue;
         const ou = this.room.state.units.get ? this.room.state.units.get(oid) : (this.room.state.units as any)?.[oid];
         if (!ou || (ou.hp ?? 0) <= 0) continue;
         if (myTeam && ou.team !== myTeam) continue;
-        if (u.type === "soldier" && ou.type === "soldier") continue;
-
+        
         const ors = this.localUnitRenderState.get(oid);
         const ox = Number(ors?.x ?? ou.x);
         const oy = Number(ors?.y ?? ou.y);
         const oRadius = this.localUnitBodyRadius(ou);
-        const minDist = myRadius + oRadius;
-        const yieldDist = minDist + TILE_SIZE * 0.14;
         const dx = s.x - ox;
         const dy = s.y - oy;
         const dist = Math.hypot(dx, dy);
-        if (dist >= yieldDist || dist <= 0.01) continue;
-        if (!this.shouldYieldInPair(uid, String(oid))) continue;
-
-        const overlap = yieldDist - dist;
-        const awayStrength = (dist < minDist ? 0.9 : 0.5) * overlap;
-        let lPX = (dx / dist) * awayStrength;
-        let lPY = (dy / dist) * awayStrength;
-
-        if (moving && toTLen > 1) {
-          const aheadX = toTX / toTLen;
-          const aheadY = toTY / toTLen;
-          const dot = aheadX * (-dx / dist) + aheadY * (-dy / dist);
-          if (dot > 0.45) {
-            const latX = -aheadY;
-            const latY = aheadX;
-            const side = (id < oid) ? 1 : -1;
-            const fanForce = awayStrength * 1.25;
-            lPX += latX * side * fanForce;
-            lPY += latY * side * fanForce;
-          }
+        const minDist = myRadius + oRadius + 4;
+        
+        if (dist > 0 && dist < minDist) {
+          const pushStrength = (1.0 - dist / minDist) * 450;
+          steerForce.x += (dx / dist) * pushStrength;
+          steerForce.y += (dy / dist) * pushStrength;
         }
-        pushX += lPX;
-        pushY += lPY;
-        yieldingPairs += 1;
-      }
-      if (yieldingPairs > 0 && Math.hypot(pushX, pushY) > 0.01) {
-        const pushMag = Math.hypot(pushX, pushY);
-        const maxPush = TILE_SIZE * 0.18;
-        if (pushMag > maxPush) {
-          const scale = maxPush / pushMag;
-          pushX *= scale;
-          pushY *= scale;
-        }
-        const newX = s.x + pushX;
-        const newY = s.y + pushY;
-        // Build 349: Relaxed Resolve - If we are stuck in a yielding pair, allow moving to resolve the overlap
-        // even if the destination is technically blocked by another unit.
-        const canX = this.canOccupyLocalUnit(newX, newY, myRadius, id);
-        if (canX) {
-          s.x = newX;
-          s.y = newY;
-        } else {
-          // Soft resolve: allow moving if it reduces overlap or if it's a dynamic unit block
-          s.x = newX;
-          s.y = newY;
-        }
-        s.vx *= 0.7;
-        s.vy *= 0.7;
       }
     }
 
+    // 3. WALL AVOIDANCE FORCE
     if (!isGhost) {
-      const wallCheckR = Math.max(TILE_SIZE * 0.46, this.localUnitBodyRadius(u) + TILE_SIZE * 0.24);
       const gx = Math.floor(s.x / TILE_SIZE);
       const gy = Math.floor(s.y / TILE_SIZE);
-      let wallPX = 0;
-      let wallPY = 0;
+      const wallR = this.localUnitBodyRadius(u) + 6;
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
           if (dx === 0 && dy === 0) continue;
@@ -983,29 +815,94 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
             const wdx = s.x - tileCX;
             const wdy = s.y - tileCY;
             const wdist = Math.hypot(wdx, wdy);
-            if (wdist < wallCheckR && wdist > 0.01) {
-              const overlap = wallCheckR - wdist;
-              wallPX += (wdx / wdist) * overlap * 1.2;
-              wallPY += (wdy / wdist) * overlap * 1.2;
+            if (wdist < wallR && wdist > 0.01) {
+              const pushStrength = (1.0 - wdist / wallR) * 600;
+              steerForce.x += (wdx / wdist) * pushStrength;
+              steerForce.y += (wdy / wdist) * pushStrength;
             }
           }
         }
       }
-      if (Math.hypot(wallPX, wallPY) > 0.01) {
-        s.x += wallPX;
-        s.y += wallPY;
+    }
+
+    // 4. INTEGRATE & LIMIT
+    s.vx += steerForce.x * dt;
+    s.vy += steerForce.y * dt;
+
+    const currentSpeed = Math.hypot(s.vx, s.vy);
+    const limitSpeed = Math.max(maxSpeed, currentSpeed * 0.92); // Allow some burst from push
+    if (currentSpeed > limitSpeed && currentSpeed > 0.1) {
+      s.vx = (s.vx / currentSpeed) * limitSpeed;
+      s.vy = (s.vy / currentSpeed) * limitSpeed;
+    }
+
+    // Final Move
+    const nx = s.x + s.vx * dt;
+    const ny = s.y + s.vy * dt;
+    const r = this.localUnitBodyRadius(u);
+
+    if (isGhost || this.canOccupyLocalUnit(nx, ny, r, uid)) {
+      s.x = nx;
+      s.y = ny;
+    } else {
+      // Small slide fallback if still hitting something hard
+      if (isGhost || this.canOccupyLocalUnit(nx, s.y, r, uid)) s.x = nx;
+      else if (isGhost || this.canOccupyLocalUnit(s.x, ny, r, uid)) s.y = ny;
+      s.vx *= 0.8;
+      s.vy *= 0.8;
+    }
+    // Build 350: Sync with Server & Jam Detection
+    const errX = Number(u.x) - s.x;
+    const errY = Number(u.y) - s.y;
+    const err = Math.hypot(errX, errY);
+    const isClientDriven = isLocalOwned && this.isClientAuthoritativeUnitType(unitType);
+
+    if (isClientDriven) {
+      if (!manualTarget && err > TILE_SIZE * 2.4) {
+        // Snap if dangerously out of sync
+        if (isGhost || this.canOccupyLocalUnit(Number(u.x), Number(u.y), r, uid)) {
+          s.x = Number(u.x);
+          s.y = Number(u.y);
+          s.vx = 0; s.vy = 0;
+        }
+      }
+    } else if (!manualTarget && err > TILE_SIZE * 1.15) {
+      // Remote unit sync
+      s.x = Number(u.x);
+      s.y = Number(u.y);
+      s.vx = 0; s.vy = 0;
+    }
+
+    // Jam Detection for GhostMode
+    if (s.jamRefX === undefined || !moving) {
+      s.jamRefX = s.x;
+      s.jamRefY = s.y;
+      this.localUnitJamTicks.set(uid, 0);
+    } else {
+      const distFromRef = Math.hypot(s.x - s.jamRefX!, s.y - s.jamRefY!);
+      if (distFromRef > TILE_SIZE * 0.85) {
+        s.jamRefX = s.x;
+        s.jamRefY = s.y;
+        this.localUnitJamTicks.set(uid, 0);
+      } else {
+        const ticks = (this.localUnitJamTicks.get(uid) ?? 0) + 1;
+        this.localUnitJamTicks.set(uid, ticks);
+        if (ticks > 20) {
+          if (!this.localUnitGhostMode) this.localUnitGhostMode = new Set<string>();
+          this.localUnitGhostMode.add(uid);
+        }
       }
     }
 
-    e.x = s.x;
-    e.y = s.y;
-
+    // Facing Update
     const velSpeedSq = s.vx * s.vx + s.vy * s.vy;
-    if (velSpeedSq > 25) {
+    if (velSpeedSq > 64) {
       const moveDir = this.angleToDir8(Math.atan2(s.vy, s.vx));
       this.unitFacing.set(id, moveDir);
     }
 
     s.lastAt = performance.now();
+    e.x = s.x;
+    e.y = s.y;
   }
 }
