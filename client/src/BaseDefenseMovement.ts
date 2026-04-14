@@ -794,7 +794,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         const minDist = myRadius + oRadius + 12;
         
         if (dist > 0 && dist < minDist) {
-          const pushStrength = (1.0 - dist / minDist) * 900;
+          const pushStrength = (1.0 - dist / minDist) * 9000;
           steerForce.x += (dx / dist) * pushStrength;
           steerForce.y += (dy / dist) * pushStrength;
         }
@@ -818,7 +818,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
             const wdy = s.y - tileCY;
             const wdist = Math.hypot(wdx, wdy);
             if (wdist < wallR && wdist > 0.01) {
-              const pushStrength = (1.0 - wdist / wallR) * 850;
+              const pushStrength = (1.0 - wdist / wallR) * 8500;
               steerForce.x += (wdx / wdist) * pushStrength;
               steerForce.y += (wdy / wdist) * pushStrength;
             }
