@@ -20,6 +20,13 @@ export function ensureSoldierEntity(scene: any, current: unknown, x: number, y: 
   if (current && typeof (current as { destroy?: () => void }).destroy === "function") {
     (current as { destroy: () => void }).destroy();
   }
+  
+  // Build 292: Check pool first
+  const pooled = scene.soldierPool?.pop();
+  if (pooled) {
+    return pooled.setPosition(x, y).setVisible(true).setActive(true);
+  }
+
   return scene.add.sprite(x, y, scene.getSoldierSheetTextureKey("run"), 0)
     .setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y)
     .setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE);

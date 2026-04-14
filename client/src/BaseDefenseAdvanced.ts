@@ -40,6 +40,19 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   protected unitAutoRallied?: Set<string>;
   protected lastDefensiveSlotRefreshAt = 0;
 
+  // Build 306: Active vision for smooth, soft reveal
+  private activeVisionTexture!: Phaser.GameObjects.RenderTexture;
+  private _fowFrameIncr = 0;
+  private visionStampMap = new Map<string, {x: number, y: number}>();
+
+  // Build 303: Soft brush for vision
+  private visionBrushSprite!: Phaser.GameObjects.Sprite;
+  
+  // Build 292: Unit & Shadow Pools for stutter-free spawning
+  public soldierPool: Phaser.GameObjects.Sprite[] = [];
+  public tankPool: Phaser.GameObjects.Image[] = [];
+  public tankShadowPool: Phaser.GameObjects.Image[] = [];
+
   constructor() {
     super("BaseDefenseScene_Advanced");
   }
@@ -123,7 +136,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         entity.setTexture(this.getTankTextureKeyByDir(this.unitFacing.get(id) ?? Number(unit.dir || 0)));
       } else if (entity instanceof Phaser.GameObjects.Sprite && unit.type === "soldier") {
         const dir = this.unitFacing.get(id) ?? Number(unit.dir || 0);
-        entity.stop();
         entity.setTexture(this.getSoldierSheetTextureKey("run"), this.getSoldierIdleFrame(dir));
       }
     }
@@ -146,6 +158,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.cameras.main.setBackgroundColor(0x121212);
 
     this.syncWorldBackground(40 * TILE_SIZE, 40 * TILE_SIZE);
+    
+    // Build 292: Warm up unit pools to prevent first-click stutter
+    this.warmUpPools();
 
     const loading = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY, "Joining Base Defense...", {
       fontSize: "28px",
@@ -547,7 +562,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (!this.worldFogOverlay) {
       this.worldFogOverlay = this.add.renderTexture(0, 0, this.cameras.main.width, this.cameras.main.height)
         .setOrigin(0)
-        .setScrollFactor(1)
+        .setScrollFactor(1) // Build 310: Revert to world-space for robust alignment
         .setDepth(240);
     }
     if (!this.worldFogMaskGraphics) {
@@ -572,8 +587,42 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.cameras.main.setBounds(-500, -500, worldW + 1000, worldH + 1000);
 
     if (!this.visionTrailTexture) {
+      const worldW = state.mapWidth * TILE_SIZE;
+      const worldH = state.mapHeight * TILE_SIZE;
       this.visionTrailTexture = this.add.renderTexture(0, 0, Math.ceil(worldW / 4), Math.ceil(worldH / 4))
         .setVisible(false);
+      // Build 303: Linear filtering for smoother vision trail at 4x display scale
+      this.visionTrailTexture.saveTexture("visionTrailTexture");
+      const tex = this.textures.get("visionTrailTexture");
+      if (tex) tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    }
+
+    // Build 303: Soft brush for Fog of War reveal
+    if (!this.textures.exists("visionBrush")) {
+      const size = 64;
+      const hb = this.make.graphics({ x: 0, y: 0 });
+      hb.fillStyle(0xffffff, 1);
+      // Create a soft radial alpha gradient by drawing nested circles
+      for (let i = 0; i < size / 2; i++) {
+        const alpha = Math.pow(1 - (i / (size / 2)), 1.8);
+        hb.fillStyle(0xffffff, alpha);
+        hb.fillCircle(size / 2, size / 2, i + 1);
+      }
+      hb.generateTexture("visionBrush", size, size);
+      hb.destroy();
+    }
+    if (!this.visionBrushSprite) {
+      this.visionBrushSprite = this.make.sprite({ key: "visionBrush", add: false });
+    }
+    if (!this.activeVisionTexture) {
+      this.activeVisionTexture = this.add.renderTexture(0, 0, this.cameras.main.width, this.cameras.main.height)
+        .setOrigin(0)
+        .setScrollFactor(1) // Build 310: Revert to world-space
+        .setVisible(false);
+      // Build 306: Linear filtering for ultra-soft active bubbles
+      this.activeVisionTexture.saveTexture("activeVisionTexture");
+      const tex = this.textures.get("activeVisionTexture");
+      if (tex) tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
     }
     if (!this.sharedTrailGraphics) {
       this.sharedTrailGraphics = this.add.graphics().setVisible(false);
@@ -594,6 +643,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       this.centerCameraOnWorldPoint(Number(me.x), Number(me.y), true);
       this.hasHadInitialCameraSnap = true;
     }
+
+    // Build 334: Rollback logic - removed delayed High-Fidelity NavMesh bake.
+    // Core collision checks in BaseDefenseMap will suffice for v320 stability.
   }
 
   pairLockSideSign(aId: string, bId: string) {
@@ -605,22 +657,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       h = Math.imul(h, 16777619);
     }
     return (h & 1) === 0 ? 1 : -1;
-  }
-
-  isGridUnitOccupied(gx: number, gy: number, ignoreUnitId?: string) {
-    if (!this.room?.state?.units?.forEach) return false;
-    const worldX = gx * TILE_SIZE + TILE_SIZE / 2;
-    const worldY = gy * TILE_SIZE + TILE_SIZE / 2;
-    const neighbors = this.unitGrid.getNeighbors(worldX, worldY, TILE_SIZE * 0.6);
-    for (const id of neighbors) {
-      if (id === ignoreUnitId) continue;
-      const u = this.room.state.units.get ? this.room.state.units.get(id) : (this.room.state.units as any)?.[id];
-      if (!u || (u.hp ?? 0) <= 0) continue;
-      const ux = Math.floor(Number(u.x) / TILE_SIZE);
-      const uy = Math.floor(Number(u.y) / TILE_SIZE);
-      if (ux === gx && uy === gy) return true;
-    }
-    return false;
   }
 
   isVisibleToTeamFast(worldX: number, worldY: number) {
@@ -724,20 +760,93 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
   stampPersistentVisionTrail() {
     const vtt = this.visionTrailTexture;
-    const stg = this.sharedTrailGraphics;
-    if (!vtt || !stg || this.visionSources.length === 0) return;
-    stg.clear();
-    stg.fillStyle(0xffffff, 1);
-    for (const src of this.visionSources) {
-      const radius = Math.sqrt(src.r2);
-      stg.fillCircle(src.x / 4, src.y / 4, radius / 4);
-    }
-    vtt.draw(stg as any);
+    const brush = this.visionBrushSprite;
+    if (!vtt || !brush || !this.room?.state) return;
+
+    // Build 305: Only stamp units that have moved significantly to prevent "hard edges"
+    const myTeam = this.room.state.players?.get?.(this.currentPlayerId)?.team;
+    
+    // Check Units
+    this.room.state.units?.forEach((u: any, id: string) => {
+      if (u.team !== myTeam || (u.hp ?? 0) <= 0) return;
+      const ux = Number(u.x);
+      const uy = Number(u.y);
+      const last = this.visionStampMap.get(id);
+      
+      // Stamp if moved more than 8 pixels (Build 305 threshold)
+      const moved = !last || Math.abs(ux - last.x) > 8 || Math.abs(uy - last.y) > 8;
+      if (moved) {
+        // Build 307: Apply a 1.35x visual multiplier to vision radius for more breathing room
+        const radius = Math.sqrt(Number(u.visionRadiusSq || 40000)) * 1.35;
+        const targetRadius = radius / 4;
+        const scale = targetRadius / 32;
+        brush.setScale(scale);
+        brush.setPosition(ux / 4, uy / 4);
+        vtt.draw(brush);
+        this.visionStampMap.set(id, { x: ux, y: uy });
+      }
+    });
+
+    // Check Structures (Stamp once or on change)
+    this.room.state.structures?.forEach((s: any, id: string) => {
+      if (s.team !== myTeam || (s.hp ?? 0) <= 0) return;
+      if (!this.visionStampMap.has(id)) {
+        const sx = Number(s.x);
+        const sy = Number(s.y);
+        // Build 307: Increase structure vision multiplier to 1.35x
+        const radius = Math.sqrt(Number(s.visionRadiusSq || 57600)) * 1.35;
+        brush.setScale((radius / 4) / 32);
+        brush.setPosition(sx / 4, sy / 4);
+        vtt.draw(brush);
+        this.visionStampMap.set(id, { x: sx, y: sy });
+      }
+    });
+  }
+
+  updateActiveVisionGraphics() {
+    const vtt = this.activeVisionTexture;
+    const brush = this.visionBrushSprite;
+    if (!vtt || !brush || !this.room?.state) return;
+    vtt.clear();
+    
+    const cam = this.cameras.main;
+    const tl = cam.getWorldPoint(0, 0);
+    const br = cam.getWorldPoint(cam.width, cam.height);
+    const worldW = br.x - tl.x;
+    if (worldW <= 0) return;
+    
+    const screenW = cam.width;
+    const ratio = screenW / worldW;
+    const myTeam = this.room.state.players?.get?.(this.currentPlayerId)?.team;
+    
+    const drawSoftVision = (vx: number, vy: number, vrad: number) => {
+        if (vx + vrad < tl.x || vx - vrad > br.x || 
+            vy + vrad < tl.y || vy - vrad > br.y) return;
+
+        const posX = (vx - tl.x) * ratio;
+        const posY = (vy - tl.y) * ratio;
+        const radius = vrad * ratio;
+
+        const scale = radius / 32;
+        brush.setScale(scale);
+        brush.setPosition(posX, posY);
+        vtt.draw(brush);
+    };
+
+    this.room.state.units?.forEach((u: any) => {
+        if (u.team === myTeam && (u.hp ?? 0) > 0) {
+            drawSoftVision(Number(u.x), Number(u.y), Math.sqrt(Number(u.visionRadiusSq || 40000)) * 1.35);
+        }
+    });
+    this.room.state.structures?.forEach((s: any) => {
+        if (s.team === myTeam && (s.hp ?? 0) > 0) {
+            drawSoftVision(Number(s.x), Number(s.y), Math.sqrt(Number(s.visionRadiusSq || 57600)) * 1.35);
+        }
+    });
   }
 
   updateWorldFog(now: number) {
     if (!this.worldFogOverlay || !this.worldFogMaskGraphics || !this.room?.state) return;
-    this.updateFogMemory(now);
 
     if (!this.fogEnabled) {
       this.worldFogOverlay.clear();
@@ -749,72 +858,85 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const cam = this.cameras.main;
     const camView = cam.worldView;
     const camZoom = cam.zoom;
+    
+    // Build 316: Ensure safety borders stay locked to screen edges during zoom/pan
+    this.layoutSafetyBorders();
+
+    // Position exactly at camera's world position to follow it perfectly
     this.worldFogOverlay.setPosition(camView.x, camView.y);
 
     const zoomChanged = !Number.isFinite(this.lastFogZoom) || Math.abs(camZoom - this.lastFogZoom) > 0.001;
     const camMoved = !Number.isFinite(this.lastFogCamX)
       || Math.abs(camView.x - this.lastFogCamX) >= 0.5
       || Math.abs(camView.y - this.lastFogCamY) >= 0.5;
-
-    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < FOG_UPDATE_MS) return;
+    
+    // Build 315: Restore stable 500ms throttle for everything (Rollback to 311 logic)
+    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < FOG_UPDATE_MS) return; 
 
     this.lastWorldFogDrawAt = now;
     this.lastFogCamX = camView.x;
     this.lastFogCamY = camView.y;
     this.lastFogZoom = camZoom;
+    
+    this.updateFogMemory(now);
     this.stampPersistentVisionTrail();
 
     let overlay = this.worldFogOverlay;
     const screenW = cam.width;
     const screenH = cam.height;
-    const renderScale = 0.25;
-    const bufferScale = 1.5;
-    const invScale = 1 / renderScale;
-    
-    const fogW = Math.ceil(screenW * bufferScale * renderScale);
-    const fogH = Math.ceil(screenH * bufferScale * renderScale);
 
-    // Redraw Trigger: Time, Zoom, or Camera moved too close to buffer edge
-    const timeElapsed = now - this.lastWorldFogDrawAt;
-    const moveThreshold = (screenW * (bufferScale - 1.0)) * 0.4; // redraw when camera moves 40% into the buffer margin
-    const movedTooFar = !Number.isFinite(this.lastFogDrawX) 
-      || Math.abs(camView.centerX - this.lastFogDrawX) > moveThreshold
-      || Math.abs(camView.centerY - this.lastFogDrawY) > moveThreshold;
+    const tl = cam.getWorldPoint(0, 0);
+    const br = cam.getWorldPoint(screenW, screenH);
+    const worldW = br.x - tl.x;
+    const worldH = br.y - tl.y;
+    if (worldW <= 0) return;
+    const ratio = screenW / worldW;
 
-    if (timeElapsed < FOG_UPDATE_MS && !zoomChanged && !movedTooFar) return;
-
-    this.lastWorldFogDrawAt = now;
-    this.lastFogDrawX = camView.centerX;
-    this.lastFogDrawY = camView.centerY;
-
-    if (overlay && (overlay.width !== fogW || overlay.height !== fogH)) {
-      overlay.destroy();
-      this.worldFogOverlay = null as any;
-      overlay = null as any;
+    if (overlay && (overlay.width !== screenW || overlay.height !== screenH)) {
+        overlay.destroy();
+        this.worldFogOverlay = null as any;
+        overlay = null as any;
+        if (this.activeVisionTexture) {
+            this.activeVisionTexture.destroy();
+            this.activeVisionTexture = null as any;
+        }
     }
 
     if (!this.worldFogOverlay) {
-      this.worldFogOverlay = this.add.renderTexture(0, 0, fogW, fogH)
-        .setOrigin(0)
-        .setScrollFactor(1)
-        .setDepth(240)
-        .setScale(invScale);
+      this.worldFogOverlay = this.add.renderTexture(0, 0, screenW, screenH).setOrigin(0).setScrollFactor(1).setDepth(240);
       overlay = this.worldFogOverlay;
     }
-    
-    const drawX = this.lastFogDrawX - (screenW * bufferScale) / 2;
-    const drawY = this.lastFogDrawY - (screenH * bufferScale) / 2;
 
-    overlay.setPosition(drawX, drawY);
-    overlay.setDisplaySize(screenW * bufferScale, screenH * bufferScale);
+    if (!this.activeVisionTexture) {
+      this.activeVisionTexture = this.add.renderTexture(0, 0, screenW, screenH)
+        .setOrigin(0)
+        .setScrollFactor(1)
+        .setVisible(false);
+      this.activeVisionTexture.saveTexture("activeVisionTexture");
+    }
+
+    overlay.setPosition(tl.x, tl.y);
+    overlay.setDisplaySize(worldW, worldH);
+    
     overlay.clear();
-    overlay.fill(0x000000, 0.88, 0, 0, fogW, fogH);
+    overlay.fill(0x000000, 0.88, 0, 0, screenW, screenH);
 
     const vts = this.visionTrailSprite;
     if (vts) {
-      vts.setScale(camZoom);
-      vts.setPosition(-drawX / 4 * camZoom, -drawY / 4 * camZoom);
-      overlay.erase(vts);
+        vts.setScale(4 * ratio);
+        vts.setPosition(-tl.x * ratio, -tl.y * ratio);
+        overlay.erase(vts);
+    }
+
+    this._fowFrameIncr++;
+    
+    // Build 317: Force active vision update on redrawing frame to avoid 1-frame stale pop
+    this.updateActiveVisionGraphics();
+    
+    if (this.activeVisionTexture) {
+        this.activeVisionTexture.setPosition(tl.x, tl.y);
+        this.activeVisionTexture.setDisplaySize(worldW, worldH);
+        overlay.erase(this.activeVisionTexture);
     }
   }
 
@@ -993,6 +1115,32 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const msg = this.showDetailedPaths ? "Detailed paths enabled (Individual)" : "Simple paths enabled (Group line)";
     this.showNotice(msg, "#8fccff");
     this.updateActionPanelDom();
+  }
+
+  protected warmUpPools() {
+    // Build 292: Pre-allocate 50 soldiers, 50 tanks and 50 shadows as requested.
+    for (let i = 0; i < 50; i++) {
+        const s = this.add.sprite(0, 0, this.getSoldierSheetTextureKey("run"), 0)
+            .setOrigin(0.5, RTS_SOLDIER_ORIGIN_Y)
+            .setDisplaySize(RTS_SOLDIER_DISPLAY_SIZE, RTS_SOLDIER_DISPLAY_SIZE)
+            .setVisible(false).setActive(false);
+        this.soldierPool.push(s);
+    }
+    for (let i = 0; i < 50; i++) {
+        const t = this.add.image(0, 0, this.getTankTextureKeyByDir(2))
+            .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
+            .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE)
+            .setVisible(false).setActive(false);
+        this.tankPool.push(t);
+        
+        const sh = this.add.image(0, 0, this.getTankShadowTextureKey(2))
+            .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
+            .setAlpha(0.45)
+            .setTint(0x000000)
+            .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE)
+            .setVisible(false).setActive(false);
+        this.tankShadowPool.push(sh);
+    }
   }
 
   update(_time: number, delta: number) {
@@ -1303,44 +1451,39 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
               if (e) e.destroy();
               e = this.add.arc(ux, uy, radius, 0, 360, false, baseColor).setStrokeStyle(1.5, 0xffffff);
             }
-            this.unitEntities[id] = e;
-            this.applyWorldDepth(e, uy, WORLD_DEPTH_UNIT_OFFSET);
+            if (e) this.unitEntities[id] = e;
+            if (e) this.applyWorldDepth(e, uy, WORLD_DEPTH_UNIT_OFFSET);
+          }
+
+          // Build 321: Collision Recovery (Pop-out)
+          // If a locally owned unit is stuck inside an obstacle (e.g. pushed in by formation), 
+          // nudge it to the nearest free spot.
+          // Build 326: Skip pop-out while in spawn grace period to avoid fighting the exit path.
+          const spawnGraceActive = (u.manualUntil && (Number(u.manualUntil) > Date.now()));
+          if (isLocalOwned && !isDead && !spawnGraceActive && this.game.loop.frame % 30 === (parseInt(id.slice(-2), 16) % 30)) {
+            if (!this.canOccupyLocalUnit(ux, uy, radius * 0.8)) {
+               for (let d = 8; d <= 32; d += 8) {
+                 let found = false;
+                 for (let ang = 0; ang < Math.PI * 2; ang += Math.PI / 4) {
+                   const tx = ux + Math.cos(ang) * d;
+                   const ty = uy + Math.sin(ang) * d;
+                   if (this.canOccupyLocalUnit(tx, ty, radius)) {
+                     u.x = tx;
+                     u.y = ty;
+                     found = true;
+                     break;
+                   }
+                 }
+                 if (found) break;
+               }
+            }
           }
 
           // 1. Sync Position
           if (!this.localUnitRenderState.has(id)) {
-            const now = Date.now();
-            if (u.manualUntil && Number(u.manualUntil) > now) {
-              let spawnX = ux;
-              let spawnY = uy;
-              let bestDist = 96; // Build 223: Reduced search radius to prevent units flying from too far
-              const targetType = isTank ? "war_factory" : "barracks";
-              
-              if (state.structures?.forEach) {
-                state.structures.forEach((s: any) => {
-                  if (s.type === targetType && s.team === u.team) {
-                    const d = Math.hypot(s.x - ux, s.y - uy);
-                    if (d < bestDist) {
-                      bestDist = d;
-                      spawnX = s.x;
-                      spawnY = s.y;
-                    }
-                  }
-                });
-              }
-              // Only apply if we actually found a nearby building
-              if (bestDist < 96) {
-                this.localUnitRenderState.set(id, { x: spawnX, y: spawnY, vx: 0, vy: 0, lastAt: performance.now() });
-                if (e) { e.x = spawnX; e.y = spawnY; }
-                
-                // Build 226: Assign a defensive slot IMMEDIATELY on spawn
-                this.lastDefensiveSlotRefreshAt = 0; 
-              } else {
-                this.localUnitRenderState.set(id, { x: ux, y: uy, vx: 0, vy: 0, lastAt: performance.now() });
-              }
-            } else {
-              this.localUnitRenderState.set(id, { x: ux, y: uy, vx: 0, vy: 0, lastAt: performance.now() });
-            }
+            // Build 341: Initialize directly to server position. 
+            // Previous snapping to building center was causing units to pull back into the building.
+            this.localUnitRenderState.set(id, { x: ux, y: uy, vx: 0, vy: 0, lastAt: performance.now() });
           }
 
           const isSelected = this.selectedUnitIds.has(id);
@@ -1352,10 +1495,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
             (rx >= camView.x - pad && rx <= camView.right + pad && ry >= camView.y - pad && ry <= camView.bottom + pad) ||
             (ux >= camView.x - pad && ux <= camView.right + pad && uy >= camView.y - pad && uy <= camView.bottom + pad)
           );
-          const needsLocalSimulation = this.shouldKeepLocalUnitSimulationActive(id, u, ux, uy);
+          
+          // Build 341: Enable simulation for ALL active units to ensure smooth flow and separation globally.
+          const needsLocalSimulation = this.shouldKeepLocalUnitSimulationActive(id, u, ux, uy) || inCamera;
 
           // 2. Visuals & Batching
-          if (inCamera || needsLocalSimulation) {
+          if (needsLocalSimulation) {
             this.updateUnitRenderPos(id, e as any, u, delta, isLocalOwned, isTank);
           }
 
@@ -1439,18 +1584,31 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     // Build 230: Update consolidated HUD
     this.soldierCount = countSoldiers;
     this.tankCount = countTanks;
-    this.updateClientVersionDom(this.game.loop.actualFps);
+    this.updateClientVersionDom(this.game.loop.actualFps, this.cameras.main.zoom);
 
-    // Build 234: Next segment trigger for chained movement (Persistent - works even if unselected)
-    // Build 243: The 'Next segment trigger' logic has been removed. 
-    // Movement is now direct and continuous to the final destination.
-
+    // Build 292: Removal loop using pools
     for (const id of Object.keys(this.unitEntities)) {
       if (!state.units.has(id)) {
-        this.unitEntities[id].destroy();
+        const entity = this.unitEntities[id];
         delete this.unitEntities[id];
-        this.tankShadowEntities[id]?.destroy();
-        delete this.tankShadowEntities[id];
+        
+        if (entity instanceof Phaser.GameObjects.Sprite) {
+          entity.setVisible(false).setActive(false);
+          this.soldierPool.push(entity);
+        } else if (entity instanceof Phaser.GameObjects.Image) {
+          entity.setVisible(false).setActive(false);
+          this.tankPool.push(entity);
+        } else {
+          entity.destroy();
+        }
+
+        const shadow = this.tankShadowEntities[id];
+        if (shadow) {
+          delete this.tankShadowEntities[id];
+          shadow.setVisible(false).setActive(false);
+          this.tankShadowPool.push(shadow);
+        }
+        
         this.unitFacing.delete(id);
         this.selectedUnitIds.delete(id);
       }
@@ -1461,6 +1619,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (nowMs - (this.lastStructureSyncAt || 0) > 120) {
       this.lastStructureSyncAt = nowMs;
       this.updateObstacleGrid(); // Build 99: Update O(1) grid
+      this.bakeNavMesh(); // Build 323: Re-bake distance field whenever obstacles change
       this.perfStart("syncStructures");
       const seenStructures = new Set<string>();
       const seenStructureHp = new Set<string>();

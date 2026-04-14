@@ -827,7 +827,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         } else {
           const ticks = (this.localUnitJamTicks.get(uid) ?? 0) + 1;
           this.localUnitJamTicks.set(uid, ticks);
-          if (ticks > 40) {
+          if (ticks > 20) {
             if (!this.localUnitGhostMode) this.localUnitGhostMode = new Set<string>();
             this.localUnitGhostMode.add(uid);
           }
@@ -950,13 +950,16 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         }
         const newX = s.x + pushX;
         const newY = s.y + pushY;
-        if (this.canOccupyLocalUnit(newX, newY, myRadius, id)) {
+        // Build 349: Relaxed Resolve - If we are stuck in a yielding pair, allow moving to resolve the overlap
+        // even if the destination is technically blocked by another unit.
+        const canX = this.canOccupyLocalUnit(newX, newY, myRadius, id);
+        if (canX) {
           s.x = newX;
           s.y = newY;
-        } else if (this.canOccupyLocalUnit(s.x + pushX, s.y, myRadius, id)) {
-          s.x += pushX;
-        } else if (this.canOccupyLocalUnit(s.x, s.y + pushY, myRadius, id)) {
-          s.y += pushY;
+        } else {
+          // Soft resolve: allow moving if it reduces overlap or if it's a dynamic unit block
+          s.x = newX;
+          s.y = newY;
         }
         s.vx *= 0.7;
         s.vy *= 0.7;

@@ -19,6 +19,13 @@ export function ensureTankEntity(scene: any, current: unknown, x: number, y: num
   if (current && typeof (current as { destroy?: () => void }).destroy === "function") {
     (current as { destroy: () => void }).destroy();
   }
+  
+  // Build 292: Check pool first
+  const pooled = scene.tankPool?.pop();
+  if (pooled) {
+    return pooled.setPosition(x, y).setVisible(true).setActive(true);
+  }
+
   return scene.add.image(x, y, scene.getTankTextureKeyByDir(dir))
     .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
     .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);

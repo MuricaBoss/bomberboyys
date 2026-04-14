@@ -194,6 +194,22 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   localUnitGhostMode = new Set<string>();
   unitGrid = new UnitGrid();
 
+  isGridUnitOccupied(gx: number, gy: number, ignoreUnitId?: string) {
+    const rx = gx * TILE_SIZE + TILE_SIZE / 2;
+    const ry = gy * TILE_SIZE + TILE_SIZE / 2;
+    const radius = TILE_SIZE * 0.45;
+    const neighbors = this.unitGrid.getNeighbors(rx, ry, radius + TILE_SIZE * 0.2);
+    for (const id of neighbors) {
+      if (id === ignoreUnitId) continue;
+      const u = this.room?.state?.units?.[id] || (this.room?.state?.units as any)?.get?.(id);
+      if (!u || (u.hp ?? 0) <= 0) continue;
+      const ux = Number(u.x);
+      const uy = Number(u.y);
+      if (Math.hypot(ux - rx, uy - ry) < radius + TILE_SIZE * 0.15) return true;
+    }
+    return false;
+  }
+
   formationPreviewGraphics: Phaser.GameObjects.Graphics | null = null;
   formationPreviewSlots: Array<{ x: number; y: number; r: number }> = [];
   formationPreviewAssignments = new Map<string, { x: number; y: number }>();
@@ -236,7 +252,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   worldFogGraphics: Phaser.GameObjects.Graphics | null = null;
   worldFogOverlay: Phaser.GameObjects.RenderTexture | null = null;
   worldFogMaskGraphics: Phaser.GameObjects.Graphics | null = null;
-  fogEnabled = false;
+  fogEnabled = true;
   lastWorldFogDrawAt = 0;
   fogCols = 0;
   fogRows = 0;
@@ -247,6 +263,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   lastFogDrawY = Number.NaN;
   lastFogZoom = Number.NaN;
   fogClockSec = 0;
+  safetyBorders: Phaser.GameObjects.Rectangle[] = [];
   lastFogTickAt = 0;
   camVelX = 0;
   camVelY = 0;

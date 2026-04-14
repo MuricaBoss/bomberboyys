@@ -27,6 +27,44 @@ import { BaseDefenseScene_Input } from "./BaseDefenseInput";
 
 export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
   toggleDetailedPaths() {}
+
+  createSafetyBorders() {
+    for (const b of this.safetyBorders) b.destroy();
+    this.safetyBorders = [];
+    // Build 315: Create 4 black rectangles for the safety frame (5px)
+    // Depth 20002 keeps them above fog and most UI, but below highest HUD texts if needed.
+    const colors = 0x000000;
+    const depth = 20002;
+    this.safetyBorders = [
+        this.add.rectangle(0, 0, 100, 5, colors).setOrigin(0).setScrollFactor(1).setDepth(depth), // Top
+        this.add.rectangle(0, 0, 100, 5, colors).setOrigin(0).setScrollFactor(1).setDepth(depth), // Bottom
+        this.add.rectangle(0, 0, 5, 100, colors).setOrigin(0).setScrollFactor(1).setDepth(depth), // Left
+        this.add.rectangle(0, 0, 5, 100, colors).setOrigin(0).setScrollFactor(1).setDepth(depth), // Right
+    ];
+    this.layoutSafetyBorders();
+  }
+
+  layoutSafetyBorders() {
+    const cam = this.cameras.main;
+    if (this.safetyBorders.length < 4) return;
+
+    // Build 316: Position exactly at world corners and use inverse-zoom thickness
+    const tl = cam.getWorldPoint(0, 0);
+    const br = cam.getWorldPoint(cam.width, cam.height);
+    const worldW = br.x - tl.x;
+    const worldH = br.y - tl.y;
+    const worldThick = 5 / cam.zoom;
+    
+    // Top
+    this.safetyBorders[0].setPosition(tl.x, tl.y).setSize(worldW, worldThick);
+    // Bottom
+    this.safetyBorders[1].setPosition(tl.x, br.y - worldThick).setSize(worldW, worldThick);
+    // Left
+    this.safetyBorders[2].setPosition(tl.x, tl.y).setSize(worldThick, worldH);
+    // Right
+    this.safetyBorders[3].setPosition(br.x - worldThick, tl.y).setSize(worldThick, worldH);
+  }
+
   setupBaseDefenseRuntimeUi() {
     this.fpsText = this.add.text(10, 5, "FPS: --", {
       fontSize: "12px",
@@ -59,6 +97,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       fontFamily: "Arial",
       backgroundColor: "#00000088",
     }).setPadding(8).setScrollFactor(0).setDepth(100);
+    this.createSafetyBorders();
     this.createBuildPanel();
     this.createMobileHud();
     this.keyP = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.P) || null;
@@ -66,6 +105,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
     this.createActionPanelDom();
     this.updateActionPanelDom();
     this.layoutBaseDefenseHud();
+    this.layoutSafetyBorders();
     this.handleViewportResize(this.scale.gameSize); // Build 111: No force snap
 
     this.scale.on("resize", this.handleViewportResize, this);
@@ -287,12 +327,13 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
     this.clientVersionRootEl = root;
   }
 
-  updateClientVersionDom(fps?: number) {
+  updateClientVersionDom(fps?: number, zoom?: number) {
     if (!this.clientVersionRootEl) return;
     const fpsLabel = Number.isFinite(fps) ? Math.round(Number(fps)) : "--";
+    const zoomLabel = Number.isFinite(zoom) ? `${zoom!.toFixed(2)}x` : "--";
     const unitStats = `[SOTILAAT: ${this.soldierCount} | TANKIT: ${this.tankCount}]`;
     const groupStats = `[POLUT: ${this.lastMoveLeaderCount} | YKS: ${this.lastMoveFollowerCount} | KOKO: ${this.lastMoveSubgroupSize}]`;
-    this.clientVersionRootEl.textContent = `BUILD ${DISPLAY_BUILD_NUMBER} · ${unitStats} · ${groupStats} · ${activeClientBuildId || CLIENT_BUNDLE_VERSION} · FPS ${fpsLabel}`;
+    this.clientVersionRootEl.textContent = `BUILD ${DISPLAY_BUILD_NUMBER} · ${unitStats} · ${groupStats} · ${activeClientBuildId || CLIENT_BUNDLE_VERSION} · ZOOM ${zoomLabel} · FPS ${fpsLabel}`;
   }
 
   destroyClientVersionDom() {

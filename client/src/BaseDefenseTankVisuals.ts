@@ -44,11 +44,18 @@ export function updateTankVisual(scene: any, args: TankVisualArgs) {
   let shadow = scene.tankShadowEntities[id];
   if (!shadow && shadowVisible) {
     const shadowKey = scene.getTankShadowTextureKey(dir);
-    shadow = scene.add.image(shadowPos.x, shadowPos.y, shadowKey)
-      .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
-      .setAlpha(0.45)
-      .setTint(0x000000)
-      .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
+    
+    // Build 292: Check pool first
+    const pooled = scene.tankShadowPool?.pop();
+    if (pooled) {
+      shadow = pooled.setPosition(shadowPos.x, shadowPos.y).setTexture(shadowKey).setVisible(true).setActive(true);
+    } else {
+      shadow = scene.add.image(shadowPos.x, shadowPos.y, shadowKey)
+        .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
+        .setAlpha(0.45)
+        .setTint(0x000000)
+        .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
+    }
     scene.tankShadowEntities[id] = shadow;
     (shadow as any)._rState = { key: shadowKey };
   }

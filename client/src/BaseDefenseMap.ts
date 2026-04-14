@@ -400,6 +400,17 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
   updateObstacleGrid() {
     if (!this.obstacleGrid || !this.room?.state) return;
     this.obstacleGrid.fill(0);
+
+    // 1. Mark world tiles (walls/interior blocks)
+    for (let gy = 0; gy < this.gridH; gy++) {
+      for (let gx = 0; gx < this.gridW; gx++) {
+        if (this.tileAt(gx, gy) !== 0) {
+          this.obstacleGrid[gy * this.gridW + gx] = 1;
+        }
+      }
+    }
+
+    // 2. Mark structures
     const structures = this.room.state.structures;
     if (structures?.forEach) {
       structures.forEach((s: any) => {
@@ -410,6 +421,18 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
             this.obstacleGrid![cy * this.gridW + cx] = 1;
           }
         });
+      });
+    }
+
+    // 3. Mark resources (stones/ore)
+    const resources = this.room.state.resources;
+    if (resources?.forEach) {
+      resources.forEach((r: any) => {
+        const rgx = Math.floor(Number(r.x) / TILE_SIZE);
+        const rgy = Math.floor(Number(r.y) / TILE_SIZE);
+        if (rgx >= 0 && rgx < this.gridW && rgy >= 0 && rgy < this.gridH) {
+          this.obstacleGrid![rgy * this.gridW + rgx] = 1;
+        }
       });
     }
   }
@@ -456,6 +479,7 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       if (this.tileAt(gx, gy) !== 0) return false;
       if (this.hasStructureAt(gx, gy)) return false;
       if (this.hasCoreAt(gx, gy)) return false;
+      if (this.hasResourceAt(gx, gy)) return false;
     }
     return true;
   }
@@ -479,6 +503,7 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       if (this.tileAt(gx, gy) !== 0) return false;
       if (this.hasStructureAt(gx, gy)) return false;
       if (this.hasCoreAt(gx, gy)) return false;
+      if (this.hasResourceAt(gx, gy)) return false;
     }
     return true;
   }
@@ -549,8 +574,7 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       const chosen = best as any;
       return { x: Number(chosen.x), y: Number(chosen.y) };
     }
-    if (canReach) return null;
-    return { x: baseX, y: baseY };
+    return null;
   }
 
   tryRelocateLocalBlocker(
@@ -870,12 +894,9 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
 
   fogAlphaFromSeenTime(seenTime: number) {
     if (seenTime <= -1000) return 0.9;
-    const visibleHoldSec = 0.35;
-    const fadeToDarkSec = 16;
-    const ageSec = Math.max(0, this.fogClockSec - seenTime);
-    if (ageSec <= visibleHoldSec) return 0;
-    const t = Math.min(1, (ageSec - visibleHoldSec) / fadeToDarkSec);
-    return 0.14 + t * 0.76;
+    // Build 302: "mikä nähdään niin jää näkyväksi".
+    // Once a cell is seen, it stays perfectly clear (0 alpha) forever.
+    return 0;
   }
 
   fogAlphaAtWorld(worldX: number, worldY: number) {
@@ -939,6 +960,9 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       { dx: -1, dy: -1, c: 1.4142 },
     ];
 
+    // Build 342: Dynamic Unit Occupancy Set removed in surgical revert
+    const occupiedCells = new Set<string>();
+
     // Build 258: Chunking by capturing the node closest to the goal
     let iters = 0;
     let closestNode = { x: startGX, y: startGY };
@@ -990,7 +1014,7 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         const nKey = key(nx, ny);
         if (closed.has(nKey)) continue;
 
-        const tentative = currentG + d.c;
+        const tentative = currentG + d.c + (occupiedCells.has(`${nx},${ny}`) ? 15 : 0);
         const known = gScore.get(nKey) ?? Number.POSITIVE_INFINITY;
         if (tentative < known) {
           came.set(nKey, cKey);
@@ -1022,8 +1046,8 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     const uy = Number(unit?.y ?? 0);
     const tx = Number(unit?.targetX ?? ux);
     const ty = Number(unit?.targetY ?? uy);
-    const startGX = Math.floor(ux / TILE_SIZE);
-    const startGY = Math.floor(uy / TILE_SIZE);
+    const startGX = Math.floor(Number(unit?.x ?? 0) / TILE_SIZE);
+    const startGY = Math.floor(Number(unit?.y ?? 0) / TILE_SIZE);
     
     // Build 242: Remove the 220px intermediate segmenting. Path straight to the goal.
     let effectiveTX = tx;
@@ -1094,18 +1118,19 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       let wy = c.y * TILE_SIZE + TILE_SIZE / 2;
 
       // Build 241: "Imaginary Rails" — Units follow the shared path but maintain their personal slot offset.
+
+      // Build 241: "Imaginary Rails"
       // Offset = difference between the unit's personal target and the center of the sector target.
       const centerX = goalGX * TILE_SIZE + TILE_SIZE / 2;
       const centerY = goalGY * TILE_SIZE + TILE_SIZE / 2;
       const railOffsetX = (unit.targetX ?? tx) - centerX;
       const railOffsetY = (unit.targetY ?? ty) - centerY;
-
       wx += railOffsetX;
       wy += railOffsetY;
 
       // Build 247: Smart Funneling — Use the NavMesh clearance grid to squeeze the formation through gaps.
       if (this.clearanceGrid && this.clearanceGrid.length > 0) {
-        const gridIdx = c.y * this.gridW + c.x;
+        const gridIdx = Math.floor(wy / TILE_SIZE) * this.gridW + Math.floor(wx / TILE_SIZE);
         const clearanceTiles = this.clearanceGrid[gridIdx];
         if (clearanceTiles !== undefined) {
           // Calculate max allowed distance from center of path (clearance - unitRadius - small margin)
