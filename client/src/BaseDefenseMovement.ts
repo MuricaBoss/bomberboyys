@@ -949,9 +949,12 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
 
     // Build 380: Skip repulsion and complex collision during the spawn grace period
     // to allow units to move to their assigned grid slots orderly.
+    // Build 381: True On-Rails Move. Lock 1:1 to server position during grace to kill all 'explosions'.
     if (producedExitGraceActive) {
-      s.x = nx;
-      s.y = ny;
+      s.x = Number(u.x);
+      s.y = Number(u.y);
+      s.vx = 0;
+      s.vy = 0;
       return;
     }
 
