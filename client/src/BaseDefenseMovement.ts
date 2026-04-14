@@ -839,7 +839,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const myRadius = this.localUnitBodyRadius(u);
       
       const p = this.physicsTuner;
-      const searchRadius = p ? p.repulsionRangePadding * 1.8 : TILE_SIZE * 6.0; 
+      const searchRadius = p ? p.repulsionRange * 1.8 : TILE_SIZE * 6.0; 
       const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
       
       for (const oid of potentialNeighbors) {
@@ -856,7 +856,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         let dy = s.y - oy;
         let dist = Math.hypot(dx, dy);
         
-        const padding = p ? p.repulsionRangePadding : TILE_SIZE * 3.5;
+        const padding = p ? p.repulsionRange : TILE_SIZE * 3.5;
         const minDist = myRadius + oRadius + padding;
         
         if (dist < minDist) {

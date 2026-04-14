@@ -85,7 +85,7 @@ export class PhysicsTuner {
       }
     };
 
-    listen("repulsionRange", (v) => this.repulsionRangePadding = v);
+    listen("repulsionRange", (v) => this.repulsionRange = v);
     listen("repulsionForce", (v) => this.repulsionForce = v);
     listen("spacing", (v) => this.formationSpacing = v);
     listen("syncLimit", (v) => this.syncThreshold = v);
