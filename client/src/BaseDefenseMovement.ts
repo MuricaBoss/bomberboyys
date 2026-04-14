@@ -867,7 +867,10 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
             dist = 0.1;
           }
           const baseForce = p ? p.repulsionForce : 100000;
-          const pushStrength = (1.0 - dist / minDist) * baseForce;
+          let pushStrength = (1.0 - dist / minDist) * baseForce;
+          // Build 374: Progressive repulsion. If super-close (<50%), kick back 4x harder.
+          if (dist < minDist * 0.5) pushStrength *= 4.0;
+
           steerForce.x += (dx / dist) * pushStrength;
           steerForce.y += (dy / dist) * pushStrength;
         }
@@ -992,7 +995,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       } else {
         const ticks = (this.localUnitJamTicks.get(uid) ?? 0) + 1;
         this.localUnitJamTicks.set(uid, ticks);
-        if (ticks > 60) { // Build 371: Increased threshold to 1 second
+        if (ticks > 30) { // Build 374: Reduced threshold to 0.5 seconds for faster detours
           if (!this.localUnitGhostMode) this.localUnitGhostMode = new Set<string>();
           this.localUnitGhostMode.add(uid);
         }
