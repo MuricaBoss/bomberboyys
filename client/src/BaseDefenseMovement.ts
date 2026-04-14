@@ -791,10 +791,10 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         const dx = s.x - ox;
         const dy = s.y - oy;
         const dist = Math.hypot(dx, dy);
-        const minDist = myRadius + oRadius + 4;
+        const minDist = myRadius + oRadius + 12;
         
         if (dist > 0 && dist < minDist) {
-          const pushStrength = (1.0 - dist / minDist) * 450;
+          const pushStrength = (1.0 - dist / minDist) * 900;
           steerForce.x += (dx / dist) * pushStrength;
           steerForce.y += (dy / dist) * pushStrength;
         }
@@ -805,7 +805,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     if (!isJammedGhost) {
       const gx = Math.floor(s.x / TILE_SIZE);
       const gy = Math.floor(s.y / TILE_SIZE);
-      const wallR = this.localUnitBodyRadius(u) + 6;
+      const wallR = this.localUnitBodyRadius(u) + 12;
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
           if (dx === 0 && dy === 0) continue;
@@ -818,7 +818,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
             const wdy = s.y - tileCY;
             const wdist = Math.hypot(wdx, wdy);
             if (wdist < wallR && wdist > 0.01) {
-              const pushStrength = (1.0 - wdist / wallR) * 600;
+              const pushStrength = (1.0 - wdist / wallR) * 850;
               steerForce.x += (wdx / wdist) * pushStrength;
               steerForce.y += (wdy / wdist) * pushStrength;
             }
