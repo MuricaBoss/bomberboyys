@@ -429,9 +429,23 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         return null;
       }
 
-      const laneScalar = ((this.stringHash(unitId) % 100) / 100) * 2.0 - 1.0; // Build 365: Stable lane [-1, 1]
-      const pathSpread = this.physicsTuner?.pathSpread ?? 40;
-      const laneOffset = laneScalar * pathSpread;
+      // Build 385: Discrete Multi-Lane March (Separate for Tanks and Soldiers)
+      const p = this.physicsTuner;
+      const uType = String(unit.type || "");
+      let laneCount = 1;
+      let laneSpacing = 0;
+
+      if (uType === "tank") {
+        laneCount = p ? p.tankLaneCount : 2;
+        laneSpacing = p ? p.tankLaneSpacing : 64;
+      } else {
+        laneCount = p ? p.soldierLaneCount : 3;
+        laneSpacing = p ? p.soldierLaneSpacing : 32;
+      }
+
+      const hash = Math.abs(this.stringHash(unitId));
+      const laneIndex = hash % Math.max(1, laneCount);
+      const laneOffset = (laneIndex - (laneCount - 1) / 2) * laneSpacing;
 
       let bestIdx = Math.max(0, Math.min(cache?.idx ?? 0, cells.length - 1));
       let minD = Infinity;
