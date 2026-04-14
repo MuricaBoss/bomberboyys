@@ -913,14 +913,21 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const nx = s.x + s.vx * dt;
     const ny = s.y + s.vy * dt;
     const r = this.localUnitBodyRadius(u);
-    // Build 353: Use selective constraint
-    if (isJammedGhost || this.canOccupyLocalUnit(nx, ny, r, uid, ignoreSid as any)) {
+    // Build 371: Solid World & Home-Ghosting
+    // Tiered check: Terrain (Tiles) are ALWAYS solid. Jammed-Ghost only allows bypassing Units/Structures.
+    const isTerrainFree = this.canOccupyTerrainOnly(nx, ny, r);
+    const isFullFree = this.canOccupyLocalUnit(nx, ny, r, uid, ignoreSid as any);
+
+    if (isTerrainFree && (isJammedGhost || isFullFree)) {
       s.x = nx;
       s.y = ny;
     } else {
-      // Small slide fallback if still hitting something hard
-      if (this.canOccupyLocalUnit(nx, s.y, r, uid, ignoreSid as any)) s.x = nx;
-      else if (this.canOccupyLocalUnit(s.x, ny, r, uid, ignoreSid as any)) s.y = ny;
+      // Sloped slide fallback (Still checks terrain first)
+      if (this.canOccupyTerrainOnly(nx, s.y, r) && (isJammedGhost || this.canOccupyLocalUnit(nx, s.y, r, uid, ignoreSid as any))) {
+        s.x = nx;
+      } else if (this.canOccupyTerrainOnly(s.x, ny, r) && (isJammedGhost || this.canOccupyLocalUnit(s.x, ny, r, uid, ignoreSid as any))) {
+        s.y = ny;
+      }
       s.vx *= 0.8;
       s.vy *= 0.8;
     }
@@ -959,7 +966,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       } else {
         const ticks = (this.localUnitJamTicks.get(uid) ?? 0) + 1;
         this.localUnitJamTicks.set(uid, ticks);
-        if (ticks > 20) {
+        if (ticks > 60) { // Build 371: Increased threshold to 1 second
           if (!this.localUnitGhostMode) this.localUnitGhostMode = new Set<string>();
           this.localUnitGhostMode.add(uid);
         }

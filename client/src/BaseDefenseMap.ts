@@ -529,6 +529,26 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     return true;
   }
 
+  canOccupyTerrainOnly(x: number, y: number, radius: number) {
+    const samples = [
+      { x, y },
+      { x: x - radius, y },
+      { x: x + radius, y },
+      { x, y: y - radius },
+      { x, y: y + radius },
+      { x: x - radius, y: y - radius },
+      { x: x + radius, y: y - radius },
+      { x: x - radius, y: y + radius },
+      { x: x + radius, y: y + radius },
+    ];
+    for (const p of samples) {
+      const gx = Math.floor(p.x / TILE_SIZE);
+      const gy = Math.floor(p.y / TILE_SIZE);
+      if (this.tileAt(gx, gy) !== 0) return false;
+    }
+    return true;
+  }
+
   localUnitBodyRadius(unit: any) {
     const t = String(unit?.type || "");
     if (t === "tank") return TILE_SIZE * 0.31;
