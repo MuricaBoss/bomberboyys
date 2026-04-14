@@ -2,14 +2,14 @@ import { TILE_SIZE } from "./constants";
 
 export class PhysicsTuner {
   // Build 364: Real-time adjustable parameters
-  public repulsionRange = 69; // Build 378: User preferred spacing
+  public repulsionRange = 96; // Build 382: New user preferred spacing
   public repulsionForce = 80000;
-  public formationSpacing = 70;
-  public syncThreshold = 296;
-  public snapAmount = 0.01;
-  public wallAvoidanceRange = 34; // Build 378: Reduced for closer path following
-  public wallAvoidanceForce = 14469;
-  public pathSpread = 0; // Build 378: Snake formation (all on center line)
+  public formationSpacing = 65;
+  public syncThreshold = 79;
+  public snapAmount = 0.05;
+  public wallAvoidanceRange = 27; // Build 382: New user preferred obstacle distance
+  public wallAvoidanceForce = 5918;
+  public pathSpread = 87; // Build 382: New user preferred lane width
 
   private container: HTMLDivElement | null = null;
 

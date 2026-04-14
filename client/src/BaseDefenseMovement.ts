@@ -773,6 +773,20 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     } else {
       this.unitSlotLocked.delete(String(id));
     }
+    const producedExitGraceActive = Number(u.manualUntil || 0) > nowMs;
+
+    // Build 382: True Legacy/Absolute Lock. If spawning, bypass EVERYTHING.
+    // This allows the server to guide the unit to its slot 'on-rails' without any physics interference.
+    if (producedExitGraceActive) {
+      s.x = Number(u.x);
+      s.y = Number(u.y);
+      s.vx = 0;
+      s.vy = 0;
+      e.x = s.x;
+      e.y = s.y;
+      s.lastAt = performance.now();
+      return;
+    }
 
     const waypointInput = manualTarget
       ? {
