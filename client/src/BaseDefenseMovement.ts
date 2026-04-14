@@ -942,19 +942,19 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const nx = s.x + s.vx * dt;
     const ny = s.y + s.vy * dt;
     const r = this.localUnitBodyRadius(u);
-    // Build 371: Solid World & Home-Ghosting
-    // Tiered check: Terrain (Tiles) are ALWAYS solid. Jammed-Ghost only allows bypassing Units/Structures.
-    const isTerrainFree = this.canOccupyTerrainOnly(nx, ny, r);
+    // Build 375: Phantom Rocks (Soft Collision)
+    // Terrain (Tiles) no longer perform a hard-block on movement. This prevents permanent jams.
+    // Steering forces still handle avoidance, and Pathfinding still routes around tiles.
     const isFullFree = this.canOccupyLocalUnit(nx, ny, r, uid, ignoreSid as any);
 
-    if (isTerrainFree && (isJammedGhost || isFullFree)) {
+    if (isJammedGhost || isFullFree) {
       s.x = nx;
       s.y = ny;
     } else {
-      // Sloped slide fallback (Still checks terrain first)
-      if (this.canOccupyTerrainOnly(nx, s.y, r) && (isJammedGhost || this.canOccupyLocalUnit(nx, s.y, r, uid, ignoreSid as any))) {
+      // Sloped slide fallback (Mainly for Structures/Buildings now)
+      if (isJammedGhost || this.canOccupyLocalUnit(nx, s.y, r, uid, ignoreSid as any)) {
         s.x = nx;
-      } else if (this.canOccupyTerrainOnly(s.x, ny, r) && (isJammedGhost || this.canOccupyLocalUnit(s.x, ny, r, uid, ignoreSid as any))) {
+      } else if (isJammedGhost || this.canOccupyLocalUnit(s.x, ny, r, uid, ignoreSid as any)) {
         s.y = ny;
       }
       s.vx *= 0.8;
