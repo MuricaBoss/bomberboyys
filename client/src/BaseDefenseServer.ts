@@ -409,7 +409,20 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
         || prev.dir !== dir
         || Math.hypot(prev.tx - tx, prev.ty - ty) > 1.35;
       if (!movingNow && !changed) return;
-      poses.push({ unitId: id, x: s.x, y: s.y, dir, tx, ty });
+      poses.push({
+        unitId: id,
+        x: s.x,
+        y: s.y,
+        dir,
+        tx,
+        ty,
+        sharedPathKey: manualTarget?.sharedPathKey ?? "",
+        sharedPathCenterX: manualTarget?.sharedPathCenterX ?? tx,
+        sharedPathCenterY: manualTarget?.sharedPathCenterY ?? ty,
+        finalX: manualTarget?.finalX ?? tx,
+        finalY: manualTarget?.finalY ?? ty,
+        pathRadius: manualTarget?.pathRadius ?? 0,
+      });
       this.lastUnitPoseState.set(id, { x: s.x, y: s.y, dir, tx, ty });
     });
     if (poses.length > 0 || hasMoving) {

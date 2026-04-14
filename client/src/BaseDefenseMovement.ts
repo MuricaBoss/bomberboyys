@@ -598,8 +598,9 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         rs.vx = 0;
         rs.vy = 0;
       } else {
-        const tx = Number(u.targetX ?? u.x);
-        const ty = Number(u.targetY ?? u.y);
+        const wp = this.getClientUnitWaypoint(id, u, Date.now());
+        const tx = Number(wp?.x ?? u.targetX ?? u.x);
+        const ty = Number(wp?.y ?? u.targetY ?? u.y);
         const toTX = tx - rs.x;
         const toTY = ty - rs.y;
         const toTLen = Math.hypot(toTX, toTY);
@@ -626,7 +627,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         rs.y += rs.vy * dt;
 
         if (distToServer > 0.1) {
-          const corrPower = isWalking ? 0.006 : 0.016;
+          const corrPower = isWalking ? 0.012 : 0.024; // Build 394: Increased responsiveness
           const corr = 1 - Math.exp(-delta * corrPower);
           rs.x += (serverX - rs.x) * corr;
           rs.y += (serverY - rs.y) * corr;
