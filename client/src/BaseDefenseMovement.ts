@@ -799,8 +799,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     if (moving) {
       const desiredVX = (toTX / toTLen) * maxSpeed;
       const desiredVY = (toTY / toTLen) * maxSpeed;
-      steerForce.x += (desiredVX - s.vx) * 12;
-      steerForce.y += (desiredVY - s.vy) * 12;
+      steerForce.x += (desiredVX - s.vx) * 20;
+      steerForce.y += (desiredVY - s.vy) * 20;
     } else {
       // Friction when stopping
       steerForce.x -= s.vx * 8;
@@ -883,11 +883,21 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
             const closestX = Math.max(tileMinX, Math.min(s.x, tileMaxX));
             const closestY = Math.max(tileMinY, Math.min(s.y, tileMaxY));
 
-            const wdx = s.x - closestX;
-            const wdy = s.y - closestY;
-            const wdist = Math.hypot(wdx, wdy);
+            let wdx = s.x - closestX;
+            let wdy = s.y - closestY;
+            let wdist = Math.hypot(wdx, wdy);
             
-            if (wdist < wallR && wdist > 0.01) {
+            // Build 372: Anti-Stuck Un-Sticker
+            // If we are deep inside or on the exact edge, push from the tile center
+            if (wdist < 1.0) {
+                const tileCX = (cx + 0.5) * TILE_SIZE;
+                const tileCY = (cy + 0.5) * TILE_SIZE;
+                wdx = s.x - tileCX;
+                wdy = s.y - tileCY;
+                wdist = Math.hypot(wdx, wdy) || 0.1;
+            }
+
+            if (wdist < wallR) {
               const pushStrength = (1.0 - wdist / wallR) * baseWForce;
               // Smooth normalized push direction
               steerForce.x += (wdx / wdist) * pushStrength;

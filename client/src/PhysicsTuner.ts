@@ -6,10 +6,10 @@ export class PhysicsTuner {
   public repulsionForce = 50000;
   public formationSpacing = TILE_SIZE * 3.0;
   public syncThreshold = TILE_SIZE * 2.5;
-  public snapAmount = 0.05;
-  public wallAvoidanceRange = TILE_SIZE * 2.2; // Build 370: Increased for anticipatory steering
-  public wallAvoidanceForce = 35000;
-  public pathSpread = 60; // Build 365: Width of lanes on shared paths
+  public snapAmount = 0.10;
+  public wallAvoidanceRange = TILE_SIZE * 1.8; // Build 372: Reduced for snappier response
+  public wallAvoidanceForce = 50000;
+  public pathSpread = 40; // Build 365: Width of lanes on shared paths
 
   private container: HTMLDivElement | null = null;
 
