@@ -90,7 +90,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   buildPanelStatsText!: Phaser.GameObjects.Text;
   buildPanelBg!: Phaser.GameObjects.Rectangle;
   buildButtons: Array<{
-    type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory";
+    type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | "vaina";
     cost: number;
     buildMs: number;
     rect: Phaser.GameObjects.Rectangle;
