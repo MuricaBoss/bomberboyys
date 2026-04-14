@@ -315,18 +315,32 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const startGrid = this.worldToGrid(groupCX, groupCY);
     const goalGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
     const now = Date.now();
-    const sharedPathKey = this.getSharedMovePathKey(now, sharedPathCenterX, sharedPathCenterY, ids.length);
-    const sharedPath = this.findPath(
-      startGrid.gx,
-      startGrid.gy,
-      goalGrid.gx,
-      goalGrid.gy,
-      false,
-      undefined,
-      pathRadius,
-    );
-    if (sharedPath && sharedPath.length > 0) {
-      this.sharedPathCache.set(sharedPathKey, sharedPath);
+    
+    // Build 390: Multi-Path Generation (L0 to L(laneCount-1))
+    const pTuner = this.physicsTuner;
+    // Determine lane count from the FIRST unit type in the group (usually same type move)
+    const firstU = this.room.state.units.get(ids[0]);
+    const groupLCount = firstU?.type === "tank" ? (pTuner?.tankLaneCount ?? 3) : (pTuner?.soldierLaneCount ?? 3);
+    const groupLGap = firstU?.type === "tank" ? (pTuner?.tankLaneSpacing ?? 100) : (pTuner?.soldierLaneSpacing ?? 48);
+    const sharedPathBaseKey = this.getSharedMovePathKey(now, sharedPathCenterX, sharedPathCenterY, ids.length);
+    
+    const wayDirX = sharedPathCenterX - groupCX;
+    const wayDirY = sharedPathCenterY - groupCY;
+    const wayLen = Math.hypot(wayDirX, wayDirY);
+    const pnx = wayLen > 1 ? -wayDirY / wayLen : 0;
+    const pny = wayLen > 1 ? wayDirX / wayLen : 0;
+
+    for (let l = 0; l < groupLCount; l++) {
+      const lOffset = (l - (groupLCount - 1) / 2) * groupLGap;
+      const lStartGX = Math.floor((groupCX + pnx * lOffset) / TILE_SIZE);
+      const lStartGY = Math.floor((groupCY + pny * lOffset) / TILE_SIZE);
+      const lEndGX = Math.floor((sharedPathCenterX + pnx * lOffset) / TILE_SIZE);
+      const lEndGY = Math.floor((sharedPathCenterY + pny * lOffset) / TILE_SIZE);
+      
+      const lPath = this.findPath(lStartGX, lStartGY, lEndGX, lEndGY, false, undefined, pathRadius);
+      if (lPath && lPath.length > 0) {
+        this.sharedPathCache.set(`${sharedPathBaseKey}_L${l}`, lPath);
+      }
     }
 
     priorityOrder.sort((a, b) => {
@@ -337,7 +351,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       return bDist - aDist;
     });
 
-    this.lastMoveLeaderCount = sharedPath && sharedPath.length > 0 ? 1 : 0;
+    this.lastMoveLeaderCount = groupLCount;
     this.lastMoveFollowerCount = ids.length;
     this.lastMoveSubgroupSize = ids.length;
 
@@ -345,12 +359,19 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     for (const entry of priorityOrder) {
       const slot = assignments.get(entry.id);
       if (!slot) continue;
+
+      // Assign unit to a persistent lane index based on its hash
+      const hash = Math.abs(this.stringHash(entry.id));
+      const myLaneIdx = hash % Math.max(1, groupLCount);
+      const myLanePathKey = `${sharedPathBaseKey}_L${myLaneIdx}`;
+      const hasLanePath = this.sharedPathCache.has(myLanePathKey);
+
       this.localUnitTargetOverride.set(entry.id, {
         x: slot.x,
         y: slot.y,
         setAt: now,
         isAuto: isAutoSegment,
-        sharedPathKey: sharedPath && sharedPath.length > 0 ? sharedPathKey : undefined,
+        sharedPathKey: hasLanePath ? myLanePathKey : undefined,
         sharedPathCenterX,
         sharedPathCenterY,
         sharedPathOffsetX: slot.x - sharedPathCenterX,
@@ -491,86 +512,17 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const railOffsetX = finalX - railCenterX;
     const railOffsetY = finalY - railCenterY;
 
-    // Build 387: Frame-level Lane Offset (Live Response)
-    const p = this.physicsTuner;
-    const uType = String(unit.type || "");
-    let laneCount = 1;
-    let laneSpacing = 0;
-
-    if (uType === "tank") {
-      laneCount = p ? p.tankLaneCount : 2;
-      laneSpacing = p ? p.tankLaneSpacing : 64;
-    } else {
-      laneCount = p ? p.soldierLaneCount : 3;
-      laneSpacing = p ? p.soldierLaneSpacing : 32;
-    }
-
-    const hash = Math.abs(this.stringHash(unitId));
-    const lIdx = hash % Math.max(1, laneCount);
-    const lOffset = (lIdx - (laneCount - 1) / 2) * laneSpacing;
-
+    // Build 390: Multi-Path. Each path (L0, L1, etc) is already offset and obstacle-aware.
     while (cache.idx < cache.cells.length) {
       const c = cache.cells[cache.idx];
-      const nextC = cache.cells[cache.idx + 1] || c;
-      const prevC = cache.cells[cache.idx - 1] || c;
       
-      let lo = lOffset;
+      // Target the cell center directly. Rail offset is preserved for finalizing the approach.
+      let wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
+      let wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
 
-      // Build 367: Smooth Lane Look-Ahead (Normal Smoothing)
-      // Look ahead up to 4 cells to average the path direction, preventing 45-degree snaps.
-      let avgDX = 0;
-      let avgDY = 0;
-      const lookCount = 4;
-      for (let j = 0; j < lookCount; j++) {
-          const curr = cache.cells[cache.idx + j] || cache.cells[cache.cells.length - 1];
-          const next = cache.cells[cache.idx + j + 1] || curr;
-          const segDX = next.x - curr.x;
-          const segDY = next.y - curr.y;
-          // Closer segments have more weight to maintain local accuracy
-          const weight = 1.0 - (j / lookCount) * 0.5;
-          avgDX += segDX * weight;
-          avgDY += segDY * weight;
-      }
-
-      if (Math.hypot(avgDX, avgDY) < 0.001) {
-        avgDX = c.x - prevC.x;
-        avgDY = c.y - prevC.y;
-      }
-
-      const len = Math.hypot(avgDX, avgDY);
-      const nx = len > 0.001 ? -avgDY / len : 0;
-      const ny = len > 0.001 ? avgDX / len : 0;
-      
-      let wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX + nx * lo;
-      let wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY + ny * lo;
-
-      // Build 388: Removed aggressive 'Smart Lane Compression' (Broad Formation Support)
-      // We no longer compress lanes when nearing obstacles; let local avoidance (Step 3) handle it.
-      // This ensures formations stay wide even in rocky terrain.
-
-      // Build 369: If this is the last cell of the path, prioritize the actual final destination
       if (cache.idx === cache.cells.length - 1) {
           wx = finalX;
           wy = finalY;
-      }
-
-      // Build 389: Relaxed clearance check to allow for wide formations.
-      // We only clamp if the unit is REALLY deep inside an obstacle, otherwise let Step 3 (Obstacle Avoidance) 
-      // nudge around boulders without collapsing the whole formation to the center.
-      if (this.clearanceGrid && this.clearanceGrid.length > 0) {
-        const gridIdx = c.y * this.gridW + c.x;
-        const cl = this.clearanceGrid[gridIdx];
-        if (cl !== undefined && cl < 1.0) { // Only force center if the path itself is very narrow
-          const maxDistPx = Math.max(TILE_SIZE * 0.1, (cl * TILE_SIZE) - unitRadius - 2);
-          const currentOffX = wx - (c.x * TILE_SIZE + TILE_SIZE / 2);
-          const currentOffY = wy - (c.y * TILE_SIZE + TILE_SIZE / 2);
-          const currentDist = Math.hypot(currentOffX, currentOffY);
-          if (currentDist > maxDistPx && currentDist > 0.1) {
-            const scale = maxDistPx / currentDist;
-            wx = (c.x * TILE_SIZE + TILE_SIZE / 2) + currentOffX * scale;
-            wy = (c.y * TILE_SIZE + TILE_SIZE / 2) + currentOffY * scale;
-          }
-        }
       }
 
       if (Math.hypot(wx - ux, wy - uy) <= TILE_SIZE * 0.45) {
