@@ -858,29 +858,38 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       }
     }
 
-    // 3. WALL AVOIDANCE FORCE
+    // 3. OBSTACLE AVOIDANCE FORCE (Build 370: Improved 5x5 edge-based detection)
     if (!isJammedGhost) {
       const gx = Math.floor(s.x / TILE_SIZE);
       const gy = Math.floor(s.y / TILE_SIZE);
-      const wallR = this.localUnitBodyRadius(u) + TILE_SIZE * 1.5;
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          if (dx === 0 && dy === 0) continue;
+      
+      const p = this.physicsTuner;
+      const wallR = p ? p.wallAvoidanceRange : this.localUnitBodyRadius(u) + TILE_SIZE * 1.8;
+      const baseWForce = p ? p.wallAvoidanceForce : 35000;
+
+      // Check 5x5 area around unit
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dy = -2; dy <= 2; dy++) {
           const cx = gx + dx;
           const cy = gy + dy;
           if (this.tileAt(cx, cy) !== 0 || (this.hasStructureAt(cx, cy) && this.getStructureIdAt(cx, cy) !== ignoreSid) || this.hasCoreAt(cx, cy)) {
-            const tileCX = (cx + 0.5) * TILE_SIZE;
-            const tileCY = (cy + 0.5) * TILE_SIZE;
-            const wdx = s.x - tileCX;
-            const wdy = s.y - tileCY;
+            // Build 370: Closest point on the square tile boundary logic
+            const tileMinX = cx * TILE_SIZE;
+            const tileMaxX = (cx + 1) * TILE_SIZE;
+            const tileMinY = cy * TILE_SIZE;
+            const tileMaxY = (cy + 1) * TILE_SIZE;
+
+            // Find closest point on this tile to unit center s.x, s.y
+            const closestX = Math.max(tileMinX, Math.min(s.x, tileMaxX));
+            const closestY = Math.max(tileMinY, Math.min(s.y, tileMaxY));
+
+            const wdx = s.x - closestX;
+            const wdy = s.y - closestY;
             const wdist = Math.hypot(wdx, wdy);
             
-            const p = this.physicsTuner;
-            const wallR = p ? p.wallAvoidanceRange : this.localUnitBodyRadius(u) + TILE_SIZE * 1.5;
-            
             if (wdist < wallR && wdist > 0.01) {
-              const baseWForce = p ? p.wallAvoidanceForce : 8000;
               const pushStrength = (1.0 - wdist / wallR) * baseWForce;
+              // Smooth normalized push direction
               steerForce.x += (wdx / wdist) * pushStrength;
               steerForce.y += (wdy / wdist) * pushStrength;
             }

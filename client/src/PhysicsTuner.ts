@@ -7,8 +7,8 @@ export class PhysicsTuner {
   public formationSpacing = TILE_SIZE * 3.0;
   public syncThreshold = TILE_SIZE * 2.5;
   public snapAmount = 0.05;
-  public wallAvoidanceRange = TILE_SIZE * 1.5;
-  public wallAvoidanceForce = 8000;
+  public wallAvoidanceRange = TILE_SIZE * 2.2; // Build 370: Increased for anticipatory steering
+  public wallAvoidanceForce = 35000;
   public pathSpread = 60; // Build 365: Width of lanes on shared paths
 
   private container: HTMLDivElement | null = null;
@@ -44,14 +44,14 @@ export class PhysicsTuner {
 
     this.container.innerHTML = `
       <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px;">PHYSICS TUNER</div>
-      ${this.createSliderHTML("Range", "range", 0, 300, Math.round(this.repulsionRangePadding))}
-      ${this.createSliderHTML("Force", "force", 100, 200000, this.repulsionForce)}
-      ${this.createSliderHTML("Spacing", "spacing", 10, 200, Math.round(this.formationSpacing))}
-      ${this.createSliderHTML("Sync Limit", "syncLimit", 10, 300, Math.round(this.syncThreshold))}
-      ${this.createSliderHTML("Snap %", "snap", 1, 100, Math.round(this.snapAmount * 100))}
-      ${this.createSliderHTML("Path Spacing", "pathSpread", 0, 200, this.pathSpread)}
-      ${this.createSliderHTML("Wall Range", "wallRange", 0, 200, Math.round(this.wallAvoidanceRange))}
-      ${this.createSliderHTML("Wall Force", "wallForce", 100, 50000, this.wallAvoidanceForce)}
+      ${this.createSliderHTML("Unit Repel Range", "repulsionRange", 10, 300, Math.round(this.repulsionRangePadding))}
+      ${this.createSliderHTML("Unit Repel Power", "repulsionForce", 100, 1000000, this.repulsionForce)}
+      ${this.createSliderHTML("Target Group Gap", "spacing", 10, 200, Math.round(this.formationSpacing))}
+      ${this.createSliderHTML("Sync Drift Limit", "syncLimit", 10, 300, Math.round(this.syncThreshold))}
+      ${this.createSliderHTML("Server Sync %", "snap", 1, 100, Math.round(this.snapAmount * 100))}
+      ${this.createSliderHTML("Lane Width on Paths", "pathSpread", 0, 200, this.pathSpread)}
+      ${this.createSliderHTML("Obstacle Warn Dist", "wallRange", 0, 200, Math.round(this.wallAvoidanceRange))}
+      ${this.createSliderHTML("Obstacle Repel Power", "wallForce", 100, 50000, this.wallAvoidanceForce)}
       <div style="font-size: 10px; opacity: 0.6; text-align: center; margin-top: 4px;">Adjust values to see real-time impact</div>
     `;
 
