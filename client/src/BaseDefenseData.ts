@@ -30,7 +30,6 @@ import { PhysicsTuner } from "./PhysicsTuner";
 
 export class BaseDefenseScene_Data extends Phaser.Scene {
   physicsTuner!: PhysicsTuner;
-  unitGrid = new UnitGrid();
   phaserHudEnabled = false;
   localOnly = false;
   desktopMobileFallback = false;
