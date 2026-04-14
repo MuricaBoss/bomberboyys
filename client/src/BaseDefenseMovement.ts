@@ -855,6 +855,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const errX = Number(u.x) - s.x;
     const errY = Number(u.y) - s.y;
     const err = Math.hypot(errX, errY);
+    const unitType = String(u.type || "");
     const isClientDriven = isLocalOwned && this.isClientAuthoritativeUnitType(unitType);
 
     if (isClientDriven) {
