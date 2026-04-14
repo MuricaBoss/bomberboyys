@@ -104,6 +104,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
   localFormationSpacingForIds(unitIds: string[]) {
     if (!this.room?.state?.units) return TILE_SIZE * 0.8;
     let maxRadius = TILE_SIZE * 0.42;
+
     for (const id of unitIds) {
       const unit = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
       if (!unit || (unit.hp ?? 0) <= 0) continue;
@@ -794,7 +795,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         const minDist = myRadius + oRadius + 12;
         
         if (dist > 0 && dist < minDist) {
-          const pushStrength = (1.0 - dist / minDist) * 9000;
+          const pushStrength = (1.0 - dist / minDist) * 1200;
           steerForce.x += (dx / dist) * pushStrength;
           steerForce.y += (dy / dist) * pushStrength;
         }
@@ -818,7 +819,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
             const wdy = s.y - tileCY;
             const wdist = Math.hypot(wdx, wdy);
             if (wdist < wallR && wdist > 0.01) {
-              const pushStrength = (1.0 - wdist / wallR) * 8500;
+              const pushStrength = (1.0 - wdist / wallR) * 1000;
               steerForce.x += (wdx / wdist) * pushStrength;
               steerForce.y += (wdy / wdist) * pushStrength;
             }

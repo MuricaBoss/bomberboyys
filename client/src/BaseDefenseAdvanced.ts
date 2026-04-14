@@ -1411,6 +1411,18 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     let countSoldiers = 0;
     let countTanks = 0;
 
+    // Build 357: Clear and populate UnitGrid for steering/separation before simulation starts
+    this.unitGrid.clear();
+    if (state.units?.forEach) {
+      state.units.forEach((u: any, id: string) => {
+        if ((u.hp ?? 0) <= 0) return;
+        const rs = this.localUnitRenderState.get(id);
+        const ux = rs ? rs.x : Number(u.x);
+        const uy = rs ? rs.y : Number(u.y);
+        this.unitGrid.add(id, ux, uy);
+      });
+    }
+
     if (state.units?.forEach) {
       try {
         state.units.forEach((u: any, id: string) => {
