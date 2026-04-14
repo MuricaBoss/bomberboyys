@@ -501,16 +501,30 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const nextC = cache.cells[cache.idx + 1] || c;
       const prevC = cache.cells[cache.idx - 1] || c;
 
-      // Build 365: Calculate segment direction for perpendicular lane shift
-      let dx = nextC.x - c.x;
-      let dy = nextC.y - c.y;
-      if (dx === 0 && dy === 0) {
-        dx = c.x - prevC.x;
-        dy = c.y - prevC.y;
+      // Build 367: Smooth Lane Look-Ahead (Normal Smoothing)
+      // Look ahead up to 4 cells to average the path direction, preventing 45-degree snaps.
+      let avgDX = 0;
+      let avgDY = 0;
+      const lookCount = 4;
+      for (let j = 0; j < lookCount; j++) {
+          const curr = cache.cells[cache.idx + j] || cache.cells[cache.cells.length - 1];
+          const next = cache.cells[cache.idx + j + 1] || curr;
+          const segDX = next.x - curr.x;
+          const segDY = next.y - curr.y;
+          // Closer segments have more weight to maintain local accuracy
+          const weight = 1.0 - (j / lookCount) * 0.5;
+          avgDX += segDX * weight;
+          avgDY += segDY * weight;
       }
-      const len = Math.hypot(dx, dy);
-      const nx = len > 0.001 ? -dy / len : 0;
-      const ny = len > 0.001 ? dx / len : 0;
+
+      if (Math.hypot(avgDX, avgDY) < 0.001) {
+        avgDX = c.x - prevC.x;
+        avgDY = c.y - prevC.y;
+      }
+
+      const len = Math.hypot(avgDX, avgDY);
+      const nx = len > 0.001 ? -avgDY / len : 0;
+      const ny = len > 0.001 ? avgDX / len : 0;
       
       const lo = (cache as any).laneOffset || 0;
       let wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX + nx * lo;
