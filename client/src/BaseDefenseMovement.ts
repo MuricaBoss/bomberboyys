@@ -554,16 +554,18 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           wy = finalY;
       }
 
-      // Secondary check against clearance grid for extra safety
+      // Build 389: Relaxed clearance check to allow for wide formations.
+      // We only clamp if the unit is REALLY deep inside an obstacle, otherwise let Step 3 (Obstacle Avoidance) 
+      // nudge around boulders without collapsing the whole formation to the center.
       if (this.clearanceGrid && this.clearanceGrid.length > 0) {
         const gridIdx = c.y * this.gridW + c.x;
         const cl = this.clearanceGrid[gridIdx];
-        if (cl !== undefined) {
-          const maxDistPx = Math.max(TILE_SIZE * 0.1, (cl * TILE_SIZE) - unitRadius - 4);
+        if (cl !== undefined && cl < 1.0) { // Only force center if the path itself is very narrow
+          const maxDistPx = Math.max(TILE_SIZE * 0.1, (cl * TILE_SIZE) - unitRadius - 2);
           const currentOffX = wx - (c.x * TILE_SIZE + TILE_SIZE / 2);
           const currentOffY = wy - (c.y * TILE_SIZE + TILE_SIZE / 2);
           const currentDist = Math.hypot(currentOffX, currentOffY);
-          if (currentDist > maxDistPx && currentDist > 0.001) {
+          if (currentDist > maxDistPx && currentDist > 0.1) {
             const scale = maxDistPx / currentDist;
             wx = (c.x * TILE_SIZE + TILE_SIZE / 2) + currentOffX * scale;
             wy = (c.y * TILE_SIZE + TILE_SIZE / 2) + currentOffY * scale;
