@@ -767,9 +767,11 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const inGracePeriod = manualTarget && (Date.now() - manualTarget.setAt) < 800;
     const producedExitGraceActive = Number(u.manualUntil || 0) > nowMs;
     const uid = String(id);
-    const isGhost = (this.localUnitGhostMode?.has(uid) ?? false) || producedExitGraceActive;
+    const ignoreSid = producedExitGraceActive ? this.getStructureIdAt(Math.floor(s.x / TILE_SIZE), Math.floor(s.y / TILE_SIZE)) : undefined;
+    const isJammedGhost = this.localUnitGhostMode?.has(uid) ?? false;
 
-    if (!isGhost && isLocalOwned && !inGracePeriod && this.room?.state?.units?.forEach) {
+    // Build 353: Enable separation even during spawn (unless jammed), but respect factory ignore
+    if (!isJammedGhost && isLocalOwned && !inGracePeriod && this.room?.state?.units?.forEach) {
       const me = this.room.state.players?.get ? this.room.state.players.get(this.currentPlayerId) : this.room.state.players?.[this.currentPlayerId];
       const myTeam = me?.team;
       const myRadius = this.localUnitBodyRadius(u);
@@ -800,7 +802,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     }
 
     // 3. WALL AVOIDANCE FORCE
-    if (!isGhost) {
+    if (!isJammedGhost) {
       const gx = Math.floor(s.x / TILE_SIZE);
       const gy = Math.floor(s.y / TILE_SIZE);
       const wallR = this.localUnitBodyRadius(u) + 6;
@@ -809,7 +811,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           if (dx === 0 && dy === 0) continue;
           const cx = gx + dx;
           const cy = gy + dy;
-          if (this.tileAt(cx, cy) !== 0 || this.hasStructureAt(cx, cy) || this.hasCoreAt(cx, cy)) {
+          if (this.tileAt(cx, cy) !== 0 || (this.hasStructureAt(cx, cy) && this.getStructureIdAt(cx, cy) !== ignoreSid) || this.hasCoreAt(cx, cy)) {
             const tileCX = (cx + 0.5) * TILE_SIZE;
             const tileCY = (cy + 0.5) * TILE_SIZE;
             const wdx = s.x - tileCX;
@@ -840,11 +842,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const nx = s.x + s.vx * dt;
     const ny = s.y + s.vy * dt;
     const r = this.localUnitBodyRadius(u);
-
-    // Build 352: Selective Hard Collision (Add collisions back, except for spawning building)
-    const ignoreSid = producedExitGraceActive ? this.getStructureIdAt(Math.floor(s.x / TILE_SIZE), Math.floor(s.y / TILE_SIZE)) : undefined;
-    const isJammedGhost = this.localUnitGhostMode?.has(uid) ?? false;
-
+    // Build 353: Use selective constraint
     if (isJammedGhost || this.canOccupyLocalUnit(nx, ny, r, uid, ignoreSid as any)) {
       s.x = nx;
       s.y = ny;
