@@ -179,7 +179,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       .setScrollFactor(0)
       .setDepth(105);
 
-    const defs: Array<{ type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory"; label: string; cost: number; buildMs: number; x: number }> = [
+    const defs: Array<{ type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | "vaina"; label: string; cost: number; buildMs: number; x: number }> = [
       { type: "ore_refinery", label: "Ore Refinery", cost: 55, buildMs: 5000, x: 170 },
       { type: "solar_panel", label: "Solar Panel", cost: 40, buildMs: 3500, x: 360 },
       { type: "barracks", label: "Barracks", cost: 80, buildMs: 6500, x: 550 },

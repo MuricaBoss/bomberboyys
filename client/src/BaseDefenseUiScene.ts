@@ -9,7 +9,7 @@ export class BaseDefenseUiScene extends Phaser.Scene {
   bottomBg: Phaser.GameObjects.Rectangle | null = null;
   bottomStatsText: Phaser.GameObjects.Text | null = null;
   bottomBuildButtons: Array<{
-    type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory";
+    type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | "vaina";
     rect: Phaser.GameObjects.Rectangle;
     title: Phaser.GameObjects.Text;
     meta: Phaser.GameObjects.Text;
@@ -149,7 +149,7 @@ export class BaseDefenseUiScene extends Phaser.Scene {
       }).setPadding(6, 4, 6, 4).setOrigin(0, 0).setScrollFactor(0).setDepth(1001);
     }
     if (this.bottomBuildButtons.length === 0) {
-      const defs: Array<{ type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory"; label: string; cost: number; buildMs: number }> = [
+      const defs: Array<{ type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | "vaina"; label: string; cost: number; buildMs: number }> = [
         { type: "ore_refinery", label: "Ore Refinery", cost: 55, buildMs: 5000 },
         { type: "solar_panel", label: "Solar Panel", cost: 40, buildMs: 3500 },
         { type: "barracks", label: "Barracks", cost: 80, buildMs: 6500 },

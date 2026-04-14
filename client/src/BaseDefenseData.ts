@@ -121,11 +121,11 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   keyEsc!: Phaser.Input.Keyboard.Key;
   keyL!: Phaser.Input.Keyboard.Key;
   showDetailedPaths = false;
-  selectedBuild: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" = "ore_refinery";
+  selectedBuild: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | "vaina" = "ore_refinery";
   actionMode: "move" | "build" = "move";
   mobileCommandMode: "select" | "move" | "attack" = "select";
   isMobileInput = false;
-  draggingBuildType: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | null = null;
+  draggingBuildType: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | "vaina" | null = null;
   buildGhost: Phaser.GameObjects.Rectangle | null = null;
   buildGhostText: Phaser.GameObjects.Text | null = null;
   moveTarget: { x: number; y: number } | null = null;
@@ -975,11 +975,11 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     return type;
   }
 
-  canStartBuildType(type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory") {
+  canStartBuildType(type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | "vaina") {
     return this.getBuildBlockedReason(type) === null;
   }
 
-  getBuildBlockedReason(type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory") {
+  getBuildBlockedReason(type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | "vaina") {
     if (!this.room?.state) return "Initializing";
     const me = this.getOwnPlayer();
     if (!me?.isAlive) return "Player dead";
@@ -1450,7 +1450,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     return px >= cx - hw && px <= cx + hw && py >= cy - hh && py <= cy + hh;
   }
 
-  startBuildDrag(type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory", pointer?: Phaser.Input.Pointer) {
+  startBuildDrag(type: "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | "vaina", pointer?: Phaser.Input.Pointer) {
     this.draggingBuildType = type;
     this.selectedBuild = type;
     this.ensureBuildGhost();
