@@ -1305,6 +1305,8 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       cache = { goalGX, goalGY, radiusBucket, cells, idx: bestIdx, updatedAt: now };
       this.unitClientPathCache.set(unitId, cache);
     }
+    } // End of if (needRecalc)
+
     if (!cache) return null;
 
     if (cache.idx >= cache.cells.length - 1) {
