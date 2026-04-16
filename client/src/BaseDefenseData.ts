@@ -184,7 +184,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     isAuto?: boolean;
     sharedPathKey?: string;
     persistentPathId?: string; // Build 468: Locked path tracking
-    sharedPathCenterX: number;
+    sharedPathCenterX?: number;
     sharedPathCenterY?: number;
     sharedPathOffsetX?: number;
     sharedPathOffsetY?: number;
