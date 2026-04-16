@@ -445,11 +445,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           if (cells && cells.length > 0) this.sharedPathCache.set(sharedPathKey, cells);
         }
       } else {
-        const sectorKey = `sector_${Math.floor(goalGX / 4)}_${Math.floor(goalGY / 4)}_r${radiusBucket}`;
-        cells = this.sharedPathCache.get(sectorKey) ?? null;
-        if ((!cells || cells.length === 0) && this.isPathWalkableForRadius(goalGX, goalGY, useRadius)) {
+        if (this.isPathWalkableForRadius(goalGX, goalGY, useRadius)) {
           cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
-          if (cells && cells.length > 0) this.sharedPathCache.set(sectorKey, cells);
         }
       }
 
