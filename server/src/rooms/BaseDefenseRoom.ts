@@ -1037,7 +1037,8 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     for (const p of samples) {
       const gx = Math.floor(p.x / TILE_SIZE);
       const gy = Math.floor(p.y / TILE_SIZE);
-      if (this.hasStructureAt(gx, gy)) return false;
+      // Build 466: Ghost Buildings on server. Sync with client Build 465.
+      // if (this.hasStructureAt(gx, gy)) return false;
       if (this.hasCoreAt(gx, gy)) return false;
     }
     return true;
