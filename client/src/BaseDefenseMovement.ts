@@ -458,8 +458,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         // Build 472: Support larger squads (up to 12). Grid pattern around leader.
         const fCol = (f % 3) - 1;
         const fRow = Math.floor(f / 3) - 1;
-        let ox = fCol * TILE_SIZE * 0.45;
-        let oy = fRow * TILE_SIZE * 0.45;
+        let ox = fCol * TILE_SIZE * 0.35;
+        let oy = fRow * TILE_SIZE * 0.35;
 
         this.localUnitFollowState.set(followerId, {
           leaderId: leaderId,

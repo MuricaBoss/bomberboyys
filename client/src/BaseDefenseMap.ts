@@ -1527,7 +1527,7 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       const leaderX = Number(leaderRs?.x ?? leader?.x ?? follow.leaderGoalX);
       const leaderY = Number(leaderRs?.y ?? leader?.y ?? follow.leaderGoalY);
       const leaderGoalDist = Math.hypot(follow.leaderGoalX - leaderX, follow.leaderGoalY - leaderY);
-      if (leaderGoalDist > TILE_SIZE * 1.4) {
+      if (leaderGoalDist > TILE_SIZE * 0.6) {
         currentX = leaderX + follow.offsetX;
         currentY = leaderY + follow.offsetY;
         directSteer = true;

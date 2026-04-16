@@ -1,1 +1,1 @@
-export const DISPLAY_BUILD_NUMBER = '473';
+export const DISPLAY_BUILD_NUMBER = '474';
