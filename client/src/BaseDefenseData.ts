@@ -1064,7 +1064,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   canPlaceBuildAt(type: string, gx: number, gy: number) {
     const me = this.getOwnPlayer();
     if (!me?.isAlive) return false;
-    if (!this.canStartBuildType(type as "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | "vaina")) return false;
+    if (!this.canStartBuildType(type as "ore_refinery" | "solar_panel" | "barracks" | "war_factory")) return false;
     let blocked = false;
     this.forEachStructureFootprintCell(gx, gy, type, (cx, cy) => {
       if (cx < 0 || cy < 0 || cx >= this.room.state.mapWidth || cy >= this.room.state.mapHeight) {
@@ -1308,8 +1308,8 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     if (id === "build" || id === "dev" || id === "full") return "";
     if (id === "soldier") return this.getUnitProduceBlockedReason() || "";
     if (id === "tank") return this.getFactoryProduceBlockedReason("tank") || "";
-    if (id === "ore_refinery" || id === "solar_panel" || id === "barracks" || id === "war_factory" || id === "vaina") {
-      return this.getBuildBlockedReason(id as "ore_refinery" | "solar_panel" | "barracks" | "war_factory" | "vaina") || "";
+    if (id === "ore_refinery" || id === "solar_panel" || id === "barracks" || id === "war_factory") {
+      return this.getBuildBlockedReason(id as "ore_refinery" | "solar_panel" | "barracks" | "war_factory") || "";
     }
     return "";
   }

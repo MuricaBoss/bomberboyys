@@ -1065,13 +1065,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       if (!target || (target.hp ?? 0) <= 0) {
         this.autoEngagedUnitIds.delete(id);
         this.unitAttackTarget.delete(id);
-        const rs = this.localUnitRenderState.get(id);
-        const ux = Number(rs?.x ?? u.x);
-        const uy = Number(rs?.y ?? u.y);
-        const dir = (this as any).unitFacing?.get(id) ?? Number(u.dir ?? 0);
-        this.room.send("unit_client_pose_batch", {
-          poses: [{ unitId: id, x: ux, y: uy, dir, tx: ux, ty: uy, final: true }]
-        });
         continue;
       }
 
@@ -1081,10 +1074,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       if (Math.hypot(Number(target.x) - ux, Number(target.y) - uy) > engageRange * 1.6) {
         this.autoEngagedUnitIds.delete(id);
         this.unitAttackTarget.delete(id);
-        const dir = (this as any).unitFacing?.get(id) ?? Number(u.dir ?? 0);
-        this.room.send("unit_client_pose_batch", {
-          poses: [{ unitId: id, x: ux, y: uy, dir, tx: ux, ty: uy, final: true }]
-        });
       }
     }
   }

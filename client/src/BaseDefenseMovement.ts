@@ -445,8 +445,11 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           if (cells && cells.length > 0) this.sharedPathCache.set(sharedPathKey, cells);
         }
       } else {
-        if (this.isPathWalkableForRadius(goalGX, goalGY, useRadius)) {
+        const sectorKey = `sector_${Math.floor(goalGX / 4)}_${Math.floor(goalGY / 4)}_r${radiusBucket}`;
+        cells = this.sharedPathCache.get(sectorKey) ?? null;
+        if ((!cells || cells.length === 0) && this.isPathWalkableForRadius(goalGX, goalGY, useRadius)) {
           cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
+          if (cells && cells.length > 0) this.sharedPathCache.set(sectorKey, cells);
         }
       }
 
@@ -692,7 +695,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         tx = manualTarget.currentX;
         ty = manualTarget.currentY;
       }
-      if (!manualTarget.directSteer && distToSlot <= TILE_SIZE * 0.65) {
+      if (!manualTarget.directSteer && distToSlot <= TILE_SIZE * 0.48) {
         if (!this.unitSlotLocked.has(String(id))) {
           const velSpeed = Math.hypot(s.vx, s.vy);
           let arrivalDir: number | null = null;
@@ -730,15 +733,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         e.x = s.x;
         e.y = s.y;
         s.lastAt = performance.now();
-        // Build 420: Clear ALL path state so unit stays put after arrival
-        this.localUnitTargetOverride.delete(String(id));
-        this.unitClientPathCache.delete(String(id));
-        if (manualTarget.sharedPathKey) {
-          this.sharedPathCache.delete(manualTarget.sharedPathKey);
-        }
-        this.localUnitMovePriority.delete(String(id));
-        this.localUnitPathRadiusOverride.delete(String(id));
-        this.unitSlotLocked.delete(String(id));
         return;
       }
 
@@ -759,21 +753,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       e.y = s.y;
       s.lastAt = performance.now();
       return;
-    }
-
-    // Build 422: When grace ends, if unit is already at its spawn exit slot, clear it immediately
-    // so it doesn't try to re-navigate back to the slot from a stale path cache.
-    if (manualTarget && !manualTarget.sharedPathKey && distToSlot <= TILE_SIZE * 1.5) {
-      this.localUnitGhostMode?.delete(String(id));
-      // Send final:true so server sets aiState=idle and doesn't run its fallback movement
-      const dir = this.unitFacing.get(id) ?? Number(u.dir ?? 1);
-      this.room.send("unit_client_pose_batch", {
-        poses: [{ unitId: id, x: s.x, y: s.y, dir, tx: s.x, ty: s.y, final: true }]
-      });
-      this.localUnitTargetOverride.delete(String(id));
-      this.unitClientPathCache.delete(String(id));
-      this.localUnitMovePriority.delete(String(id));
-      this.localUnitPathRadiusOverride.delete(String(id));
     }
 
     const waypointInput = manualTarget
