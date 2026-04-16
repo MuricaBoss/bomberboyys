@@ -290,22 +290,30 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
 
   sendClientAvoidIntents(now: number) {
     if (!this.room?.state?.units?.forEach) return;
-    if (this.selectedUnitIds.size <= 0) return;
-    const sendInterval = this.selectedUnitIds.size >= 160 ? 220 : this.selectedUnitIds.size >= 80 ? 160 : 120;
+    const selectedCount = this.selectedUnitIds.size;
+    if (selectedCount <= 0) return;
+    // Build 456: Skip entirely if massive group — server avoidance handles it, and O(n²) here kills FPS
+    if (selectedCount >= 100) return;
+    const sendInterval = selectedCount >= 80 ? 200 : 140;
     if (now - this.lastAvoidIntentSentAt < sendInterval) return;
     const me = this.room.state.players.get ? this.room.state.players.get(this.currentPlayerId) : this.room.state.players?.[this.currentPlayerId];
     const myTeam = me?.team;
     if (!myTeam) return;
 
-    const friendly: Array<{ id: string; x: number; y: number }> = [];
+    // Build 456: Spatial grid — O(1) lookup vs O(n) inner loop
+    const cellSize = Math.ceil(TILE_SIZE * 1.35);
+    const spatialGrid = new Map<string, Array<{ id: string; x: number; y: number }>>();
     this.room.state.units.forEach((u: any, id: string) => {
       if (u.team !== myTeam || (u.hp ?? 0) <= 0) return;
-      friendly.push({ id, x: Number(u.x), y: Number(u.y) });
+      const cx = Math.floor(Number(u.x) / cellSize);
+      const cy = Math.floor(Number(u.y) / cellSize);
+      const key = `${cx},${cy}`;
+      if (!spatialGrid.has(key)) spatialGrid.set(key, []);
+      spatialGrid.get(key)!.push({ id, x: Number(u.x), y: Number(u.y) });
     });
-    if (friendly.length <= 1) return;
 
     const intents: Array<{ unitId: string; tx: number; ty: number }> = [];
-    const maxUnits = this.selectedUnitIds.size >= 160 ? 100 : 120;
+    const maxUnits = Math.min(selectedCount, 80);
     const selected = Array.from(this.selectedUnitIds).slice(0, maxUnits);
     for (const unitId of selected) {
       const u = this.room.state.units.get ? this.room.state.units.get(unitId) : this.room.state.units?.[unitId];
@@ -327,15 +335,24 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       const navNY = navY / navMag;
       let pushX = 0;
       let pushY = 0;
-      for (const o of friendly) {
-        if (o.id === unitId) continue;
-        const dx = ux - o.x;
-        const dy = uy - o.y;
-        const d = Math.hypot(dx, dy);
-        if (d < 0.001 || d > TILE_SIZE * 1.35) continue;
-        const w = 1 - (d / (TILE_SIZE * 1.35));
-        pushX += (dx / d) * w;
-        pushY += (dy / d) * w;
+      // Build 456: Only check units in adjacent spatial grid cells
+      const gcx = Math.floor(ux / cellSize);
+      const gcy = Math.floor(uy / cellSize);
+      for (let ddx = -1; ddx <= 1; ddx++) {
+        for (let ddy = -1; ddy <= 1; ddy++) {
+          const neighbors = spatialGrid.get(`${gcx + ddx},${gcy + ddy}`);
+          if (!neighbors) continue;
+          for (const o of neighbors) {
+            if (o.id === unitId) continue;
+            const dx = ux - o.x;
+            const dy = uy - o.y;
+            const d = Math.hypot(dx, dy);
+            if (d < 0.001 || d > TILE_SIZE * 1.35) continue;
+            const w = 1 - (d / (TILE_SIZE * 1.35));
+            pushX += (dx / d) * w;
+            pushY += (dy / d) * w;
+          }
+        }
       }
       const pushMag = Math.hypot(pushX, pushY);
       const pushNX = pushMag > 0.001 ? (pushX / pushMag) : 0;

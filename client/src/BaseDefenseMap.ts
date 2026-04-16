@@ -1131,23 +1131,24 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     const radiusBucket = Math.max(4, Math.round(useRadius / 4) * 4);
 
     const isJammed = this.localUnitGhostMode?.has(unitId) ?? false;
+    const hasSharedPath = !isJammed && !!unit.sharedPathKey;
 
     let cache = this.unitClientPathCache.get(unitId);
+    // Build 456: If unit follows a pre-computed shared lane path, skip the expensive 520ms timer.
+    // Only recalc if goal tile changed, path exhausted, or unit got jammed.
+    const sharedPathStillValid = hasSharedPath && this.sharedPathCache.has(unit.sharedPathKey);
     const needRecalc = !cache
       || cache.goalGX !== goalGX
       || cache.goalGY !== goalGY
       || cache.radiusBucket !== radiusBucket
-      || (now - cache.updatedAt) > 520
+      || (!sharedPathStillValid && (now - cache.updatedAt) > 520)
       || cache.idx >= cache.cells.length
       || isJammed; // Build 373: Force unique path if jammed
 
     if (needRecalc) {
-      const targetSectorGX = Math.floor(goalGX / 4);
-      const targetSectorGY = Math.floor(goalGY / 4);
-      const sectorKey = `sector_${targetSectorGX}_${targetSectorGY}_r${radiusBucket}`;
-      
-      // Build 258: Fix severe cache miss by using precisely calculated shared path key instead of generic sector
-      const pathCacheKey = unit.sharedPathKey || sectorKey;
+      // Build 456: For shared paths, use the existing sharedPathKey directly.
+      // Fall back to sector-based key for solo-navigating units.
+      const pathCacheKey = unit.sharedPathKey || `sector_${Math.floor(goalGX / 4)}_${Math.floor(goalGY / 4)}_r${radiusBucket}`;
 
       // Build 373: Stuck units bypass shared cache to find an individual detour
       let cells = !isJammed ? this.sharedPathCache.get(pathCacheKey) : null;
@@ -1182,10 +1183,12 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       let bestForwardIdx = -1;
       let bestForwardDist = Infinity;
 
-      // Build 454: Optimized Search — Use existing index as a hint to avoid full scans if following the same path
-      const searchStart = (cache && !isJammed) ? Math.max(0, cache.idx - 8) : 0;
+      // Build 456: Start search at current index (no backward look for shared-path units).
+      // For fresh entry, start from 0.
+      const searchStart = (cache && !isJammed) ? cache.idx : 0;
+      const searchLimit = Math.min(cells.length, searchStart + 64);
       
-      for (let i = searchStart; i < cells.length; i++) {
+      for (let i = searchStart; i < searchLimit; i++) {
         const wx = cells[i].x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
         const wy = cells[i].y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
         const d = Math.hypot(wx - ux, wy - uy);
@@ -1202,6 +1205,8 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
           minD = d;
           bestIdx = i;
         }
+        // Early exit: if we found a forward candidate and distance is increasing, stop
+        if (bestForwardIdx >= 0 && d > bestForwardDist + TILE_SIZE * 2) break;
       }
       if (bestForwardIdx >= 0) bestIdx = bestForwardIdx;
       
