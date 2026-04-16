@@ -814,9 +814,10 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         const gridIdx = gy * this.gridW + gx;
         const clearanceTiles = this.clearanceGrid[gridIdx];
         if (clearanceTiles !== undefined) {
-            // Build 373: Conservative padding (+0.25 offset + 4px buffer)
+            // Build 461: Conservative padding (+0.25 offset + 10px buffer for structures/corners)
             // This forces paths to stay at least half-tank-width away from obstacle edges.
-            return (clearanceTiles + 0.25) * TILE_SIZE >= (radius + 4);
+            const structureBuffer = 10;
+            return (clearanceTiles + 0.25) * TILE_SIZE >= (radius + structureBuffer);
         }
     }
 
@@ -1185,6 +1186,7 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
 
       // Build 456: Start search at current index (no backward look for shared-path units).
       // For fresh entry, start from 0.
+      // Build 461: Start search at current index. If jammed, we reset to 0 to look for rescue.
       const searchStart = (cache && !isJammed) ? cache.idx : 0;
       const searchLimit = Math.min(cells.length, searchStart + 64);
       
@@ -1196,8 +1198,9 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         const forwardDot = (cells[i].x * TILE_SIZE + TILE_SIZE / 2 - ux) * gdNX
           + (cells[i].y * TILE_SIZE + TILE_SIZE / 2 - uy) * gdNY;
           
-        // Build 459: Stricter forward-only rule for path entry (searchStart === 0)
-        const dotThreshold = (searchStart === 0) ? 0 : -TILE_SIZE * 0.5;
+        // Build 461: Aggressive forward-only rule.
+        // If starting fresh or jammed, ONLY pick waypoints strictly in front (> 4px buffer).
+        const dotThreshold = (searchStart === 0 || isJammed) ? 4 : -TILE_SIZE * 0.4;
 
         if (forwardDot >= dotThreshold && d < bestForwardDist) {
           bestForwardDist = d;
@@ -1208,10 +1211,20 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
           minD = d;
           bestIdx = i;
         }
-        // Early exit: if we found a forward candidate and distance is increasing, stop
+        // Early exit: if we found a forward candidate and distance is increasing, stop.
+        // But keep scanning if we haven't found a forward one yet.
         if (bestForwardIdx >= 0 && d > bestForwardDist + TILE_SIZE * 2) break;
       }
-      if (bestForwardIdx >= 0) bestIdx = bestForwardIdx;
+      
+      // Build 461: If we found no forward waypoints (all are behind us), 
+      // check if we are already closer to the target than the path's first segment.
+      if (bestForwardIdx === -1) {
+        // If the absolute closest node is still "behind" us and we are far along, 
+        // just keep our current index or jump to the end if we have line-of-sight.
+        bestIdx = Math.max(bestIdx, searchStart);
+      } else {
+        bestIdx = bestForwardIdx;
+      }
       
       cache = { goalGX, goalGY, radiusBucket, cells, idx: bestIdx, updatedAt: now };
       this.unitClientPathCache.set(unitId, cache);

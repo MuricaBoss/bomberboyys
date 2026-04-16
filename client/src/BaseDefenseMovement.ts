@@ -311,7 +311,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       this.localUnitArrivalPos?.delete(id);
     }
 
-    const pathRadius = Math.max(maxUnitRadius + 4, TILE_SIZE * 0.28);
+    const pathRadius = Math.max(maxUnitRadius + 8, TILE_SIZE * 0.35);
     let sharedPathCenterX = targetX;
     let sharedPathCenterY = targetY;
     const targetGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
@@ -329,7 +329,20 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       sharedPathCenterY = nearestSlot.y;
     }
 
-    const startGrid = this.worldToGrid(groupCX, groupCY);
+    // Build 461: Start paths from the unit FURTHEST from the target to avoid backward movement.
+    let pathStartCX = groupCX;
+    let pathStartCY = groupCY;
+    let maxDistToGoal = -1;
+    for (const up of unitPositions) {
+      const d = Math.hypot(up.x - sharedPathCenterX, up.y - sharedPathCenterY);
+      if (d > maxDistToGoal) {
+        maxDistToGoal = d;
+        pathStartCX = up.x;
+        pathStartCY = up.y;
+      }
+    }
+
+    const startGrid = this.worldToGrid(pathStartCX, pathStartCY);
     const goalGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
     const now = Date.now();
     
@@ -341,16 +354,16 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const sharedPathBaseKey = this.getSharedMovePathKey(now, sharedPathCenterX, sharedPathCenterY, ids.length);
     
     // Perpendicular vector for parallel lanes
-    const wayDirX = sharedPathCenterX - groupCX;
-    const wayDirY = sharedPathCenterY - groupCY;
+    const wayDirX = sharedPathCenterX - pathStartCX;
+    const wayDirY = sharedPathCenterY - pathStartCY;
     const wayLen = Math.hypot(wayDirX, wayDirY);
     const pnx = wayLen > 1 ? -wayDirY / wayLen : 0;
     const pny = wayLen > 1 ? wayDirX / wayLen : 0;
 
     for (let l = 0; l < laneCount; l++) {
       const lOffset = (l - (laneCount - 1) / 2) * laneGap;
-      const lStartGX = Math.floor((groupCX + pnx * lOffset) / TILE_SIZE);
-      const lStartGY = Math.floor((groupCY + pny * lOffset) / TILE_SIZE);
+      const lStartGX = Math.floor((pathStartCX + pnx * lOffset) / TILE_SIZE);
+      const lStartGY = Math.floor((pathStartCY + pny * lOffset) / TILE_SIZE);
       const lEndGX = Math.floor((sharedPathCenterX + pnx * lOffset) / TILE_SIZE);
       const lEndGY = Math.floor((sharedPathCenterY + pny * lOffset) / TILE_SIZE);
       
