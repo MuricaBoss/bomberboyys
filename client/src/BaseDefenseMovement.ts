@@ -761,6 +761,16 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       return;
     }
 
+    // Build 421: When grace ends, if unit is already at its spawn exit slot, clear it immediately
+    // so it doesn't try to re-navigate back to the slot from a stale path cache.
+    if (manualTarget && !manualTarget.sharedPathKey && distToSlot <= TILE_SIZE * 1.5) {
+      this.localUnitGhostMode?.delete(String(id));
+      this.localUnitTargetOverride.delete(String(id));
+      this.unitClientPathCache.delete(String(id));
+      this.localUnitMovePriority.delete(String(id));
+      this.localUnitPathRadiusOverride.delete(String(id));
+    }
+
     const waypointInput = manualTarget
       ? {
         x: s.x,
