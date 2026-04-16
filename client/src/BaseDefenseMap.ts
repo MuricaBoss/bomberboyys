@@ -1214,6 +1214,8 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       // Build 464: Unlimited search for the absolute best entry node when joining a path (searchStart === 0).
       const searchLimit = (searchStart === 0 || isJammed) ? cells.length : Math.min(cells.length, searchStart + 64);
       
+      const distToGoal = Math.hypot(centerX - ux, centerY - uy);
+
       for (let i = (isJammed ? 0 : searchStart); i < searchLimit; i++) {
         const wx = cells[i].x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
         const wy = cells[i].y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
@@ -1226,7 +1228,12 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         // If starting fresh or jammed, ONLY pick waypoints strictly in front (> 4px buffer).
         const dotThreshold = (searchStart === 0 || isJammed) ? 4 : -TILE_SIZE * 0.4;
 
-        if (forwardDot >= dotThreshold && d < bestForwardDist) {
+        // Build 467: Strictly-Closer Rule. 
+        // Only join a path at a waypoint that is actually closer to the goal than we are.
+        const wpDistToGoal = Math.hypot(centerX - wx, centerY - wy);
+        const isCloser = (searchStart === 0) ? (wpDistToGoal < distToGoal - 4) : true;
+
+        if (forwardDot >= dotThreshold && isCloser && d < bestForwardDist) {
           bestForwardDist = d;
           bestForwardIdx = i;
         }
@@ -1240,11 +1247,15 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         if (bestForwardIdx >= 0 && d > bestForwardDist + TILE_SIZE * 2) break;
       }
       
+      // Build 467: If we were joining fresh but couldn't find ANY waypoint that is closer to goal
+      // than us, it means we are ahead of the whole shared path. Fallback to individual.
+      if (searchStart === 0 && bestForwardIdx === -1) {
+          isJammed = true;
+      }
+
       // Build 461: If we found no forward waypoints (all are behind us), 
       // check if we are already closer to the target than the path's first segment.
       if (bestForwardIdx === -1) {
-        // If the absolute closest node is still "behind" us and we are far along, 
-        // just keep our current index or jump to the end if we have line-of-sight.
         bestIdx = Math.max(bestIdx, searchStart);
       } else {
         bestIdx = bestForwardIdx;
