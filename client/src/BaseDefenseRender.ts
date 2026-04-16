@@ -628,6 +628,10 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
         const rs = this.localUnitRenderState.get(unitId);
         const u = this.room?.state?.units?.get ? this.room.state.units.get(unitId) : this.room?.state?.units?.[unitId];
         if (!u || (u.hp ?? 0) <= 0) continue;
+        
+        // Build 471: Don't draw individual lines for followers (keep screen clean)
+        if (this.localUnitFollowState.has(unitId)) continue;
+
         const ux = Number(rs?.x ?? u.x);
         const uy = Number(rs?.y ?? u.y);
         const dist = Math.hypot(slotPos.x - ux, slotPos.y - uy);

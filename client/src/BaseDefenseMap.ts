@@ -1124,6 +1124,10 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
   }
 
   getClientUnitWaypoint(unitId: string, unit: any, now: number, unitRadius = this.localUnitBodyRadius(unit)) {
+    // Build 471: Performance Optimization. 
+    // If unit is in a follow squad, skip all path processing (thinking).
+    if (this.localUnitFollowState.has(unitId)) return null;
+
     const ux = Number(unit?.x ?? 0);
     const uy = Number(unit?.y ?? 0);
     const tx = Number(unit?.targetX ?? ux);

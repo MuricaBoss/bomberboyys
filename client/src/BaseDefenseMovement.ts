@@ -394,57 +394,94 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
 
     let priority = 0;
     const commandedUnitIds: string[] = [];
-    for (const entry of priorityOrder) {
-      const slot = assignments.get(entry.id);
-      if (!slot) continue;
+    
+    // Build 471: Hierarchical Squad Follow logic.
+    // Partition units into squads of 5. One leader per squad.
+    const squadSize = 5;
+    for (let sStart = 0; sStart < priorityOrder.length; sStart += squadSize) {
+      const squad = priorityOrder.slice(sStart, sStart + squadSize);
+      const leaderEntry = squad[0];
+      const leaderId = leaderEntry.id;
+      const leaderSlot = assignments.get(leaderId);
+      if (!leaderSlot) continue;
 
-      // Build 468: Clean up old persistent path participation
-      const oldTarget = this.localUnitTargetOverride.get(entry.id);
-      if (oldTarget?.persistentPathId) {
-        const oldP = this.activeCommandPaths.get(oldTarget.persistentPathId);
-        oldP?.participants.delete(entry.id);
-      }
-
-      const laneIdx = priority % laneKeys.length;
+      // --- Setup Leader ---
+      const laneIdx = Math.floor(sStart / squadSize) % laneKeys.length;
       const pPathId = laneKeys[laneIdx];
+      
+      // Clean up previous context
+      this.localUnitFollowState.delete(leaderId);
+      const oldTarget = this.localUnitTargetOverride.get(leaderId);
+      if (oldTarget?.persistentPathId) {
+        this.activeCommandPaths.get(oldTarget.persistentPathId)?.participants.delete(leaderId);
+      }
       if (pPathId) {
-        this.activeCommandPaths.get(pPathId)?.participants.add(entry.id);
+        this.activeCommandPaths.get(pPathId)?.participants.add(leaderId);
       }
 
-      this.localUnitTargetOverride.set(entry.id, {
-        x: slot.x,
-        y: slot.y,
+      this.localUnitTargetOverride.set(leaderId, {
+        x: leaderSlot.x,
+        y: leaderSlot.y,
         setAt: now,
         isAuto: isAutoSegment,
         persistentPathId: pPathId,
         sharedPathCenterX,
         sharedPathCenterY,
-        sharedPathOffsetX: slot.x - sharedPathCenterX,
-        sharedPathOffsetY: slot.y - sharedPathCenterY,
+        sharedPathOffsetX: leaderSlot.x - sharedPathCenterX,
+        sharedPathOffsetY: leaderSlot.y - sharedPathCenterY,
         pathRadius,
       });
-      
-      this.unitClientPathCache.delete(entry.id);
-      this.localUnitMovePriority.set(entry.id, priority);
-      this.localUnitPathRadiusOverride.set(entry.id, pathRadius);
-      this.localUnitGhostMode?.delete(entry.id);
-      
-      const serverUnit = this.room?.state?.units?.[entry.id];
-      if (serverUnit) serverUnit.manualUntil = 0;
 
-      const sim = this.localUnitRenderState.get(entry.id);
-      if (sim) {
-        const dx = slot.x - sim.x;
-        const dy = slot.y - sim.y;
-        const d = Math.hypot(dx, dy);
-        if (d > 1) {
-          sim.vx = (dx / d) * 2.5;
-          sim.vy = (dy / d) * 2.5;
+      this.unitClientPathCache.delete(leaderId);
+      this.localUnitMovePriority.set(leaderId, priority++);
+      this.localUnitPathRadiusOverride.set(leaderId, pathRadius);
+      this.localUnitGhostMode?.delete(leaderId);
+      
+      const lServerUnit = this.room?.state?.units?.[leaderId];
+      if (lServerUnit) lServerUnit.manualUntil = 0;
+      commandedUnitIds.push(leaderId);
+
+      // --- Setup Followers ---
+      for (let f = 1; f < squad.length; f++) {
+        const followerId = squad[f].id;
+        const followerSlot = assignments.get(followerId);
+        if (!followerSlot) continue;
+
+        // Clean up previous context
+        this.localUnitTargetOverride.delete(followerId);
+        const fOldTarget = this.localUnitTargetOverride.get(followerId);
+        if (fOldTarget?.persistentPathId) {
+            this.activeCommandPaths.get(fOldTarget.persistentPathId)?.participants.delete(followerId);
         }
-      }
 
-      commandedUnitIds.push(entry.id);
-      priority++;
+        // Simple diamond pattern around leader (Build 471)
+        let ox = 0, oy = 0;
+        if (f === 1) { ox = -15; oy = -15; }
+        if (f === 2) { ox =  15; oy = -15; }
+        if (f === 3) { ox = -15; oy =  15; }
+        if (f === 4) { ox =  15; oy =  15; }
+
+        this.localUnitFollowState.set(followerId, {
+          leaderId: leaderId,
+          offsetX: ox,
+          offsetY: oy,
+          slotX: followerSlot.x,
+          slotY: followerSlot.y,
+          leaderGoalX: leaderSlot.x,
+          leaderGoalY: leaderSlot.y,
+          setAt: now,
+          isAuto: isAutoSegment
+        });
+
+        this.unitClientPathCache.delete(followerId);
+        this.localUnitMovePriority.set(followerId, priority++);
+        this.localUnitPathRadiusOverride.set(followerId, pathRadius);
+        this.localUnitGhostMode?.delete(followerId);
+
+        const fServerUnit = this.room?.state?.units?.[followerId];
+        if (fServerUnit) fServerUnit.manualUntil = 0;
+        commandedUnitIds.push(followerId);
+      }
     }
 
     if (commandedUnitIds.length > 0) {
