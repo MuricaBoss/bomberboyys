@@ -1285,7 +1285,26 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         }
       }
 
-      if (Math.hypot(wx - ux, wy - uy) <= TILE_SIZE * 0.45) {
+      // Build 463: Path Entry LOS Check. 
+      // If our straight line to the first/target waypoint is blocked, we need a local rescue path.
+      const distToWp = Math.hypot(wx - ux, wy - uy);
+      if (distToWp > TILE_SIZE * 0.5) {
+        if (!this.lineOfSightClear(ux, uy, wx, wy)) {
+          // Blocked by structure or terrain! Generate a short individual path to the join point.
+          const localEntryPath = this.findPath(
+            Math.floor(ux / TILE_SIZE), Math.floor(uy / TILE_SIZE),
+            Math.floor(wx / TILE_SIZE), Math.floor(wy / TILE_SIZE),
+            false, unitId, useRadius
+          );
+          if (localEntryPath && localEntryPath.length > 1) {
+            // Steering target is the first node of the rescue path
+            const nextNode = localEntryPath[1];
+            return this.gridToWorld(nextNode.x, nextNode.y);
+          }
+        }
+      }
+
+      if (distToWp <= TILE_SIZE * 0.45) {
         cache.idx += 1;
       } else {
         return { x: wx, y: wy };
