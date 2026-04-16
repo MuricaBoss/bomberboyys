@@ -119,9 +119,10 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
         data.unitIds.forEach((uid: string) => {
           const unit = this.state.units.get(uid);
           if (unit && unit.ownerId === client.sessionId) {
-            unit.targetX = data.x;
-            unit.targetY = data.y;
+            unit.targetX = Number(data.targetX ?? data.x);
+            unit.targetY = Number(data.targetY ?? data.y);
             unit.aiState = "walking";
+            unit.manualUntil = 0; // Clear exit grace period gracefully
             this.unitPaths.delete(uid); // Clear old path so a new one is calculated if needed
           }
         });

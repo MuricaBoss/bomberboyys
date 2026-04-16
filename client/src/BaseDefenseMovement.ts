@@ -383,6 +383,11 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       
       this.localUnitMovePriority.set(entry.id, priority);
       this.localUnitPathRadiusOverride.set(entry.id, pathRadius);
+      this.localUnitGhostMode?.delete(entry.id);
+      
+      const serverUnit = this.room?.state?.units?.get?.(entry.id) ?? this.room?.state?.units?.[entry.id];
+      if (serverUnit) serverUnit.manualUntil = 0;
+
       this.room.send("command_units", {
         unitIds: [entry.id],
         targetX: slot.x,
