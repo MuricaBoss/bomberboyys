@@ -1391,7 +1391,24 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         }
       }
 
-      if (distToWp <= TILE_SIZE * 0.45) {
+      // Build 477: Fluid Cornering & Node Skipping
+      // Use a larger threshold for persistent rails (round corners instead of hitting them)
+      const arrivalThreshold = unit.persistentPathId ? TILE_SIZE * 0.85 : TILE_SIZE * 0.45;
+
+      // Build 477: Node Skipping
+      // If the NEXT node is already closer to us than the current one, jump to it!
+      if (cache.idx < cache.cells.length - 1) {
+        const nextC = cache.cells[cache.idx + 1];
+        const nx = nextC.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
+        const ny = nextC.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
+        const distToNext = Math.hypot(nx - ux, ny - uy);
+        if (distToNext < distToWp) {
+          cache.idx += 1;
+          continue; 
+        }
+      }
+
+      if (distToWp <= arrivalThreshold) {
         cache.idx += 1;
       } else {
         return { x: wx, y: wy };

@@ -312,7 +312,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     }
 
     const isTankGroup = firstU?.type === "tank";
-    const pathRadius = isTankGroup ? 24 : 6;
+    const pathRadius = isTankGroup ? 24 : 10;
     let sharedPathCenterX = targetX;
     let sharedPathCenterY = targetY;
     const targetGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
