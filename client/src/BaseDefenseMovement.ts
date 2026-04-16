@@ -8,6 +8,21 @@ import {
 import { BaseDefenseScene_Server } from "./BaseDefenseServer";
 
 export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
+  pendingFinalPoses: any[] = [];
+
+  sendClientUnitPoses(now: number) {
+    if (this.pendingFinalPoses && this.pendingFinalPoses.length > 0) {
+      // Build 434: Group all final:true poses into a single batch to avoid dropping packets when 50 units arrive simultaneously
+      const maxBatchSize = 100;
+      for (let i = 0; i < this.pendingFinalPoses.length; i += maxBatchSize) {
+        const batch = this.pendingFinalPoses.slice(i, i + maxBatchSize);
+        this.room.send("unit_client_pose_batch", { poses: batch });
+      }
+      this.pendingFinalPoses = [];
+    }
+    super.sendClientUnitPoses(now);
+  }
+
   shouldKeepLocalUnitSimulationActive(id: string, u: any, ux: number, uy: number) {
     const rs = this.localUnitRenderState.get(id);
     return (String(u.ownerId || "") === this.currentPlayerId) && (u.hp ?? 0) > 0 && (
@@ -342,6 +357,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     this.lastMoveSubgroupSize = ids.length;
 
     let priority = 0;
+    const commandedUnitIds: string[] = [];
     for (const entry of priorityOrder) {
       const slot = assignments.get(entry.id);
       if (!slot) continue;
@@ -368,12 +384,16 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const serverUnit = this.room?.state?.units?.get?.(entry.id) ?? this.room?.state?.units?.[entry.id];
       if (serverUnit) serverUnit.manualUntil = 0;
 
-      this.room.send("command_units", {
-        unitIds: [entry.id],
-        targetX: slot.x,
-        targetY: slot.y,
-      });
+      commandedUnitIds.push(entry.id);
       priority++;
+    }
+
+    if (commandedUnitIds.length > 0) {
+      this.room.send("command_units", {
+        unitIds: commandedUnitIds,
+        targetX: sharedPathCenterX,
+        targetY: sharedPathCenterY,
+      });
     }
 
     // Clear shared caches just in case
@@ -699,16 +719,14 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           this.unitSlotLocked.add(String(id));
 
           const committedDir = this.unitFacing.get(id) ?? arrivalDir ?? (u.dir || 1);
-          this.room.send("unit_client_pose_batch", {
-            poses: [{
-              unitId: id,
-              x: manualTarget.finalX,
-              y: manualTarget.finalY,
-              dir: committedDir,
-              tx: manualTarget.finalX,
-              ty: manualTarget.finalY,
-              final: true,
-            }],
+          this.pendingFinalPoses.push({
+            unitId: id,
+            x: manualTarget.finalX,
+            y: manualTarget.finalY,
+            dir: committedDir,
+            tx: manualTarget.finalX,
+            ty: manualTarget.finalY,
+            final: true,
           });
         }
 
@@ -773,9 +791,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       } else {
         // Re-send final:true to ensure server gets it
         const dir = this.unitFacing.get(String(id)) ?? Number(u.dir ?? 1);
-        this.room.send("unit_client_pose_batch", {
-          poses: [{ unitId: id, x: arrivalPos.x, y: arrivalPos.y, dir, tx: arrivalPos.x, ty: arrivalPos.y, final: true }]
-        });
+        this.pendingFinalPoses.push({ unitId: id, x: arrivalPos.x, y: arrivalPos.y, dir, tx: arrivalPos.x, ty: arrivalPos.y, final: true });
       }
       return;
     }
@@ -786,9 +802,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       this.localUnitGhostMode?.delete(String(id));
       // Send final:true so server sets aiState=idle and doesn't run its fallback movement
       const dir = this.unitFacing.get(id) ?? Number(u.dir ?? 1);
-      this.room.send("unit_client_pose_batch", {
-        poses: [{ unitId: id, x: s.x, y: s.y, dir, tx: s.x, ty: s.y, final: true }]
-      });
+      this.pendingFinalPoses.push({ unitId: id, x: s.x, y: s.y, dir, tx: s.x, ty: s.y, final: true });
       this.localUnitTargetOverride.delete(String(id));
       this.unitClientPathCache.delete(String(id));
       this.localUnitMovePriority.delete(String(id));
