@@ -730,7 +730,15 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         e.x = s.x;
         e.y = s.y;
         s.lastAt = performance.now();
+        // Build 420: Clear ALL path state so unit stays put after arrival
         this.localUnitTargetOverride.delete(String(id));
+        this.unitClientPathCache.delete(String(id));
+        if (manualTarget.sharedPathKey) {
+          this.sharedPathCache.delete(manualTarget.sharedPathKey);
+        }
+        this.localUnitMovePriority.delete(String(id));
+        this.localUnitPathRadiusOverride.delete(String(id));
+        this.unitSlotLocked.delete(String(id));
         return;
       }
 
