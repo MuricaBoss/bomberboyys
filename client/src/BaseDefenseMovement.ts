@@ -311,7 +311,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       this.localUnitArrivalPos?.delete(id);
     }
 
-    const pathRadius = Math.max(maxUnitRadius + 8, TILE_SIZE * 0.35);
+    const isTankGroup = firstU?.type === "tank";
+    const pathRadius = isTankGroup ? 24 : 6;
     let sharedPathCenterX = targetX;
     let sharedPathCenterY = targetY;
     const targetGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);

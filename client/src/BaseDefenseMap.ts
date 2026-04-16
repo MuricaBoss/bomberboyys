@@ -1299,7 +1299,7 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         if (bForwardIdx >= 0 && d > bForwardDist + TILE_SIZE * 2) break;
       }
       
-      if (searchStart === 0 && bForwardIdx === -1) {
+      if (searchStart === 0 && bForwardIdx === -1 && !unit.persistentPathId) {
           isJammed = true;
       }
 

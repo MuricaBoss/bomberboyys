@@ -3,12 +3,12 @@ import { TILE_SIZE } from "./constants";
 export class PhysicsTuner {
   // Build 364: Real-time adjustable parameters
   public repulsionRange = 96;
-  public repulsionForce = 25000;
+  public repulsionForce = 12000;
   public formationSpacing = 65;
   public syncThreshold = 79;
   public snapAmount = 0.05;
-  public wallAvoidanceRange = 27;
-  public wallAvoidanceForce = 5918;
+  public wallAvoidanceRange = 12;
+  public wallAvoidanceForce = 400;
   public pathSpread = 87;
 
   // Build 385: Separate Lane Management for Tanks vs Soldiers
