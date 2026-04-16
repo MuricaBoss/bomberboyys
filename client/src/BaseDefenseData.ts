@@ -227,7 +227,8 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   formationPreviewSlots: Array<{ x: number; y: number; r: number }> = [];
   formationPreviewAssignments = new Map<string, { x: number; y: number }>();
   formationPreviewCenter: { x: number; y: number } | null = null;
-  lastCommandedUnitIds = new Set<string>();
+  lastCommandedUnitIds: Set<string> = new Set();
+  lastKnownStructureCount: number = 0;
   formationPreviewUntil = 0;
   moveClickMarkerSprite: Phaser.GameObjects.Image | null = null;
   moveClickMarker: { x: number; y: number; createdAt: number; expiresAt: number } | null = null;
@@ -848,16 +849,12 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
 
   getStructureFootprint(type: string) {
     const t = String(type || "").toLowerCase();
-    if (
-      t === "ore_refinery"
-      || t === "solar_panel"
-      || t === "barracks"
-      || t === "war_factory"
-      || t === "factory"
-      || t === "vaina"
-    ) {
-      return { width: 3, height: 3 };
-    }
+    if (t === "ore_refinery") return { width: 3, height: 3 };
+    if (t === "solar_panel") return { width: 2, height: 2 };
+    if (t === "barracks") return { width: 3, height: 3 };
+    if (t === "war_factory" || t === "factory") return { width: 5, height: 4 };
+    if (t === "vaina") return { width: 1, height: 1 };
+    if (t === "command_center") return { width: 5, height: 5 };
     return { width: 1, height: 1 };
   }
 

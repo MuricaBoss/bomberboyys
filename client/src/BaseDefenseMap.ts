@@ -413,6 +413,14 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     // 2. Mark structures
     const structures = this.room?.state?.structures;
     if (structures) {
+      // Build 462: Invalidate path cache if structure count changes (dynamic avoidance)
+      const currentCount = structures.size || Object.keys(structures).length || 0;
+      if (currentCount !== this.lastKnownStructureCount) {
+        console.log(`[BaseDefenseMap] Structure count changed (${this.lastKnownStructureCount} -> ${currentCount}). Clearing path cache.`);
+        this.lastKnownStructureCount = currentCount;
+        this.sharedPathCache.clear();
+      }
+
       const processStructure = (s: any) => {
         if (!s || (s.hp ?? 0) <= 0) return;
         const sgx = Math.floor(Number(s.x) / TILE_SIZE);
@@ -1188,9 +1196,21 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       // For fresh entry, start from 0.
       // Build 461: Start search at current index. If jammed, we reset to 0 to look for rescue.
       const searchStart = (cache && !isJammed) ? cache.idx : 0;
-      const searchLimit = Math.min(cells.length, searchStart + 64);
+
+      // Build 462: Path Validation. If we have a cached index, check if the NEXT waypoint is still walkable.
+      // If a building was placed on our path, we force isJammed to recalc.
+      if (cache && !isJammed) {
+        const checkIdx = Math.min(cells.length - 1, cache.idx + 1);
+        const checkWP = cells[checkIdx];
+        if (!this.isPathWalkableForRadius(checkWP.x, checkWP.y, useRadius)) {
+            isJammed = true;
+            console.log(`[BaseDefenseMap] Path blocked at waypoint ${checkIdx}. Recalculating.`);
+        }
+      }
+
+      const searchLimit = Math.min(cells.length, (isJammed ? 0 : searchStart) + 64);
       
-      for (let i = searchStart; i < searchLimit; i++) {
+      for (let i = (isJammed ? 0 : searchStart); i < searchLimit; i++) {
         const wx = cells[i].x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
         const wy = cells[i].y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
         const d = Math.hypot(wx - ux, wy - uy);
