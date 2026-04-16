@@ -557,8 +557,11 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     for (const p of samples) {
       const gx = Math.floor(p.x / TILE_SIZE);
       const gy = Math.floor(p.y / TILE_SIZE);
-      const sid = this.getStructureIdAt(gx, gy);
-      if (sid && sid !== _ignoreStructureId) return false;
+      // Build 465: Ghost Buildings. We remove structure collision from PHYSICS 
+      // but keep it in PATHFINDING (isPathWalkable). This ensures units try to avoid buildings
+      // but if they are shoved into one, they simply pass through without getting stuck.
+      // const sid = this.getStructureIdAt(gx, gy);
+      // if (sid && sid !== _ignoreStructureId) return false;
       if (this.hasCoreAt(gx, gy)) return false;
       if (this.hasResourceAt(gx, gy)) return false;
     }
