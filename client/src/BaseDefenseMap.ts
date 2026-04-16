@@ -1149,24 +1149,45 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         this.unitClientPathCache.delete(unitId);
         return null;
       }
-      // Build 244: Smart Path Entry — Find the closest waypoint instead of defaulting to idx 0.
-      // This prevents units from running backwards to reach the start of a shared path.
-      let bestIdx = 0;
-      let minD = Infinity;
+      // Build 427: Smart Path Entry — Find the closest FORWARD waypoint to prevent running backwards.
       const centerX = goalGX * TILE_SIZE + TILE_SIZE / 2;
       const centerY = goalGY * TILE_SIZE + TILE_SIZE / 2;
       const railOffsetX = (unit.targetX ?? tx) - centerX;
       const railOffsetY = (unit.targetY ?? ty) - centerY;
+      
+      const effectiveTX = (unit?.targetX ?? tx);
+      const effectiveTY = (unit?.targetY ?? ty);
+      const goalDirX = effectiveTX - ux;
+      const goalDirY = effectiveTY - uy;
+      const goalDirLen = Math.hypot(goalDirX, goalDirY);
+      const gdNX = goalDirLen > 0.001 ? goalDirX / goalDirLen : 0;
+      const gdNY = goalDirLen > 0.001 ? goalDirY / goalDirLen : 0;
+      
+      let bestIdx = 0;
+      let minD = Infinity;
+      let bestForwardIdx = -1;
+      let bestForwardDist = Infinity;
 
       for (let i = 0; i < cells.length; i++) {
         const wx = cells[i].x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
         const wy = cells[i].y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
         const d = Math.hypot(wx - ux, wy - uy);
+        
+        const forwardDot = (cells[i].x * TILE_SIZE + TILE_SIZE / 2 - ux) * gdNX
+          + (cells[i].y * TILE_SIZE + TILE_SIZE / 2 - uy) * gdNY;
+          
+        if (forwardDot >= -TILE_SIZE * 0.5 && d < bestForwardDist) {
+          bestForwardDist = d;
+          bestForwardIdx = i;
+        }
+        
         if (d < minD) {
           minD = d;
           bestIdx = i;
         }
       }
+      if (bestForwardIdx >= 0) bestIdx = bestForwardIdx;
+      
       cache = { goalGX, goalGY, radiusBucket, cells, idx: bestIdx, updatedAt: now };
       this.unitClientPathCache.set(unitId, cache);
     }
