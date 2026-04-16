@@ -22,8 +22,8 @@ export function updateTankVisual(scene: any, args: TankVisualArgs) {
   const shouldTick = shouldProcessUnitVisual(scene, id, isSelected || lod === "full");
   const needsInitialSync = tState.key === undefined || tState.dir === undefined || tState.dead === undefined || tState.lod === undefined;
 
-  // Build 443: Sprite Debounce (0.2s)
-  // Prevent direction/state flipping by requiring 200ms of consistent request.
+  // Build 443: Sprite Debounce (0.1s)
+  // Prevent direction/state flipping by requiring 100ms of consistent request.
   const now = scene.time.now;
   if (tState.targetDir !== dir) {
     tState.targetDir = dir;
