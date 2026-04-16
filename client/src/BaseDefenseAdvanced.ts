@@ -836,16 +836,22 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         vtt.draw(brush);
     };
 
-    this.room.state.units?.forEach((u: any) => {
-        if (u.team === myTeam && (u.hp ?? 0) > 0) {
-            drawSoftVision(Number(u.x), Number(u.y), Math.sqrt(Number(u.visionRadiusSq || 40000)) * 1.35);
-        }
-    });
-    this.room.state.structures?.forEach((s: any) => {
-        if (s.team === myTeam && (s.hp ?? 0) > 0) {
-            drawSoftVision(Number(s.x), Number(s.y), Math.sqrt(Number(s.visionRadiusSq || 57600)) * 1.35);
-        }
-    });
+    if (this.room.state.units?.forEach) {
+        this.room.state.units.forEach((u: any) => {
+            if (u.team === myTeam && (u.hp ?? 0) > 0) {
+                // Build 479: Batch Vision Rendering. Skip followers to save GPU draw calls.
+                if (this.localUnitFollowState.has(String(u.id || ""))) return;
+                drawSoftVision(Number(u.x), Number(u.y), Math.sqrt(Number(u.visionRadiusSq || 40000)) * 1.35);
+            }
+        });
+    }
+    if (this.room.state.structures?.forEach) {
+        this.room.state.structures.forEach((s: any) => {
+            if (s.team === myTeam && (s.hp ?? 0) > 0) {
+                drawSoftVision(Number(s.x), Number(s.y), Math.sqrt(Number(s.visionRadiusSq || 57600)) * 1.35);
+            }
+        });
+    }
   }
 
   updateWorldFog(now: number) {
@@ -873,15 +879,16 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       || Math.abs(camView.x - this.lastFogCamX) >= 0.5
       || Math.abs(camView.y - this.lastFogCamY) >= 0.5;
     
-    // Build 315: Restore stable 500ms throttle for everything (Rollback to 311 logic)
-    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < FOG_UPDATE_MS) return; 
+    // Build 315/479: Highly aggressive throttle (100ms) for redrawing Fog graphics to save GPU fill rate.
+    // If camera moves only slightly, we just reposition the overlay instead of redrawing.
+    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < 100) return; 
 
     this.lastWorldFogDrawAt = now;
     this.lastFogCamX = camView.x;
     this.lastFogCamY = camView.y;
     this.lastFogZoom = camZoom;
     
-    this.updateFogMemory(now);
+    // Build 479: updateFogMemory is now triggered by refreshVisionSources (staggered) in BaseDefenseMap.
     this.stampPersistentVisionTrail();
 
     let overlay = this.worldFogOverlay;

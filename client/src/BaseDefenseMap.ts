@@ -914,11 +914,13 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       });
     }
     
-    // Build 99: Stagger vision grid update (8 FPS)
+    // Build 99/479: Stagger vision grid update (8 FPS)
     const now = Date.now();
     if (now - this.lastVisionUpdateAt > 120) {
        this.lastVisionUpdateAt = now;
        this.updateVisionGrid();
+       // Build 479: Move heavy memory grid scan to this staggered timer
+       this.updateFogMemory(now);
     }
   }
 
