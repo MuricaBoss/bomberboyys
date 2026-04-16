@@ -349,8 +349,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const firstU = this.room.state.units.get ? this.room.state.units.get(ids[0]) : this.room.state.units?.[ids[0]];
     // Build 468: Overhaul to Persistent Paths. Generate 1-5 locked lanes.
     const laneKeys: string[] = [];
-    const laneCount = Math.max(1, Math.min(5, Math.ceil(ids.length / 20)));
-    const laneGap = firstU?.type === "tank" ? 64 : 32;
+    const laneCount = Math.max(1, Math.min(3, Math.ceil(ids.length / 25)));
+    const laneGap = firstU?.type === "tank" ? 40 : 16;
 
     // Perpendicular vector for parallel lanes
     const wayDirX = sharedPathCenterX - pathStartCX;
