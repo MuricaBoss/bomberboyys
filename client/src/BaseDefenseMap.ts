@@ -1245,23 +1245,23 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
 
     if (!cache) {
       // Build 455: Synchronous shared path retrieval.
-      const sharedPath = this.sharedPathCache.get(sharedPathKey || "");
+      const sharedPath = this.sharedPathCache.get(unit.sharedPathKey || "");
       if (sharedPath) {
         cells = sharedPath.map(n => ({ x: n.x, y: n.y }));
       }
 
       if (!cells || cells.length === 0) {
         // Individual fallback
-        const res = this.findPath(ugx, ugy, goalGX, goalGY, false, undefined, radiusBucket);
+        const res = this.findPath(startGX, startGY, goalGX, goalGY, false, undefined, radiusBucket);
         if (res) cells = res;
       }
       
       if (!cells || cells.length === 0) return null;
 
-      let bestIdx = -1;
+      let bIdx = -1;
       let minD = Infinity;
-      let bestForwardIdx = -1;
-      let bestForwardDist = Infinity;
+      let bForwardIdx = -1;
+      let bForwardDist = Infinity;
 
       const searchLimit = (searchStart === 0 || isJammed) ? cells.length : Math.min(cells.length, searchStart + 64);
       
@@ -1280,29 +1280,29 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         const wpDistToGoal = Math.hypot(centerX - wx, centerY - wy);
         const isCloser = (searchStart === 0) ? (wpDistToGoal < distToGoal - 4) : true;
 
-        if (forwardDot >= dotThreshold && isCloser && d < bestForwardDist) {
-          bestForwardDist = d;
-          bestForwardIdx = i;
+        if (forwardDot >= dotThreshold && isCloser && d < bForwardDist) {
+          bForwardDist = d;
+          bForwardIdx = i;
         }
         
         if (d < minD) {
           minD = d;
-          bestIdx = i;
+          bIdx = i;
         }
-        if (bestForwardIdx >= 0 && d > bestForwardDist + TILE_SIZE * 2) break;
+        if (bForwardIdx >= 0 && d > bForwardDist + TILE_SIZE * 2) break;
       }
       
-      if (searchStart === 0 && bestForwardIdx === -1) {
+      if (searchStart === 0 && bForwardIdx === -1) {
           isJammed = true;
       }
 
-      if (bestForwardIdx === -1) {
-        bestIdx = Math.max(bestIdx, searchStart);
+      if (bForwardIdx === -1) {
+        bIdx = Math.max(bIdx, searchStart);
       } else {
-        bestIdx = bestForwardIdx;
+        bIdx = bForwardIdx;
       }
       
-      cache = { goalGX, goalGY, radiusBucket, cells, idx: bestIdx, updatedAt: now };
+      cache = { goalGX, goalGY, radiusBucket, cells, idx: bIdx, updatedAt: now };
       this.unitClientPathCache.set(unitId, cache);
     }
     } // End of if (needRecalc)
