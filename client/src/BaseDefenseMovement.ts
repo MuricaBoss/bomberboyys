@@ -429,7 +429,9 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           if (cells && cells.length > 0) this.sharedPathCache.set(sharedPathKey, cells);
         }
       } else {
-        const sectorKey = `sector_${Math.floor(goalGX / 4)}_${Math.floor(goalGY / 4)}_r${radiusBucket}`;
+        // Build 429: Include start position in sector key so units at different positions
+        // don't reuse a path calculated from another unit's starting location.
+        const sectorKey = `sector_${startGX}_${startGY}_${goalGX}_${goalGY}_r${radiusBucket}`;
         cells = this.sharedPathCache.get(sectorKey) ?? null;
         if ((!cells || cells.length === 0) && this.isPathWalkableForRadius(goalGX, goalGY, useRadius)) {
           cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
@@ -862,12 +864,11 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           const ratio = 1.0 - dist / minDist;
           let pushStrength = ratio * ratio * baseForce;
           
-          // Build 387: Mandatory Overlap Kick
-          // If units are physically crossing (dist < radii), apply a massive force to resolve the jam.
+          // Build 429: Reduced overlap kick to prevent explosive separation
           if (dist < (myRadius + oRadius)) {
-              pushStrength *= 5.0; // Hard separation kick
+              pushStrength *= 2.0; // Hard separation kick (reduced from 5x)
           } else if (ratio > 0.5) {
-              pushStrength *= 2.0;
+              pushStrength *= 1.3; // (reduced from 2x)
           }
 
           steerForce.x += (dx / dist) * pushStrength;
