@@ -779,7 +779,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     } else {
       this.unitSlotLocked.delete(String(id));
     }
-    const producedExitGraceActive = Number(u.manualUntil || 0) > nowMs;
+    const producedExitGraceActive = Number(u.manualUntil || 0) > nowMs && (!manualTarget || !!manualTarget.isAuto);
 
     // Build 382: True Legacy/Absolute Lock. If spawning, bypass EVERYTHING.
     // This allows the server to guide the unit to its slot 'on-rails' without any physics interference.
