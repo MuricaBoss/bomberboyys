@@ -411,29 +411,44 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     }
 
     // 2. Mark structures
-    const structures = this.room.state.structures;
-    if (structures?.forEach) {
-      structures.forEach((s: any) => {
+    const structures = this.room?.state?.structures;
+    if (structures) {
+      const processStructure = (s: any) => {
+        if (!s || (s.hp ?? 0) <= 0) return;
         const sgx = Math.floor(Number(s.x) / TILE_SIZE);
         const sgy = Math.floor(Number(s.y) / TILE_SIZE);
-        this.forEachStructureFootprintCell(sgx, sgy, String(s.type || ""), (cx, cy) => {
+        const type = String(s.type || s.id || ""); // Fallback to id if type is missing
+        this.forEachStructureFootprintCell(sgx, sgy, type, (cx, cy) => {
           if (cx >= 0 && cx < this.gridW && cy >= 0 && cy < this.gridH) {
             this.obstacleGrid![cy * this.gridW + cx] = 1;
           }
         });
-      });
+      };
+      
+      if (typeof structures.forEach === "function") {
+        structures.forEach(processStructure);
+      } else {
+        Object.values(structures).forEach(processStructure);
+      }
     }
 
     // 3. Mark resources (stones/ore)
-    const resources = this.room.state.resources;
-    if (resources?.forEach) {
-      resources.forEach((r: any) => {
+    const resources = this.room?.state?.resources;
+    if (resources) {
+      const processResource = (r: any) => {
+        if (!r) return;
         const rgx = Math.floor(Number(r.x) / TILE_SIZE);
         const rgy = Math.floor(Number(r.y) / TILE_SIZE);
         if (rgx >= 0 && rgx < this.gridW && rgy >= 0 && rgy < this.gridH) {
           this.obstacleGrid![rgy * this.gridW + rgx] = 1;
         }
-      });
+      };
+      
+      if (typeof resources.forEach === "function") {
+        resources.forEach(processResource);
+      } else {
+        Object.values(resources).forEach(processResource);
+      }
     }
 
     // Build 374: Mark stuck units (GhostMode) as static obstacles to clog detection

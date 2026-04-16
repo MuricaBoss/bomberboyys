@@ -867,10 +867,17 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     visitor: (gx: number, gy: number) => boolean | void,
   ) {
     const footprint = this.getStructureFootprint(type);
-    const halfW = Math.floor(footprint.width / 2);
-    const halfH = Math.floor(footprint.height / 2);
-    for (let gy = centerGY - halfH; gy <= centerGY + halfH; gy++) {
-      for (let gx = centerGX - halfW; gx <= centerGX + halfW; gx++) {
+    const w = footprint.width;
+    const h = footprint.height;
+    
+    // For even sizes (like 2x2), the center is between tiles. 
+    // Shift the start based on half-width (e.g. 2/2 = 1, start = center - 1, count 2).
+    // For odd sizes (like 3x3), 3/2 = 1.5 -> floor is 1, start = center - 1, count 3.
+    const startX = centerGX - Math.floor(w / 2);
+    const startY = centerGY - Math.floor(h / 2);
+    
+    for (let gy = startY; gy < startY + h; gy++) {
+      for (let gx = startX; gx < startX + w; gx++) {
         if (visitor(gx, gy)) return;
       }
     }
@@ -878,8 +885,10 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
 
   hasStructureAt(gx: number, gy: number) {
     if (!this.obstacleGrid) return false;
-    if (gx < 0 || gx >= this.gridW || gy < 0 || gy >= this.gridH) return false;
-    return this.obstacleGrid[gy * this.gridW + gx] === 1;
+    const igx = Math.floor(gx);
+    const igy = Math.floor(gy);
+    if (igx < 0 || igx >= this.gridW || igy < 0 || igy >= this.gridH) return false;
+    return this.obstacleGrid[igy * this.gridW + igx] === 1;
   }
 
   hasCoreAt(gx: number, gy: number) {
