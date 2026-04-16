@@ -98,10 +98,10 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
     if (producer) producer.produceCooldownUntil = now + (type === "soldier" ? 800 : 1100);
 
     const stats = type === "tank"
-      ? { hp: 140, speed: 64.4 }
+      ? { hp: 140, speed: 140 }
       : type === "harvester"
-        ? { hp: 110, speed: 76 }
-        : { hp: 70, speed: 50 };
+        ? { hp: 110, speed: 150 }
+        : { hp: 70, speed: 120 };
 
     const id = this.nextLocalId("unit");
     state.units.set(id, {

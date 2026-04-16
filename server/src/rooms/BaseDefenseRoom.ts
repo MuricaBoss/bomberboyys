@@ -457,8 +457,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
               const dy = (unit.targetY ?? unit.y) - unit.y;
               const dist = Math.hypot(dx, dy);
               if (dist > 5) {
-                  const speedFactor = unit.type === "tank" ? 0.75 : 0.95;
-                  const speed = (unit.speed * speedFactor * deltaTime) / 1000;
+                  const speed = (unit.speed * deltaTime) / 1000;
                   unit.x += (dx / dist) * speed;
                   unit.y += (dy / dist) * speed;
                   unit.dir = this.angleToDir8(Math.atan2(dy, dx));
@@ -512,8 +511,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
         const dist = Math.sqrt(dx * dx + dy * dy);
         
         if (dist > 5) {
-          const speedFactor = unit.type === "tank" ? 0.8 : 1.0;
-          const speed = (unit.speed * speedFactor * deltaTime) / 1000;
+          const speed = (unit.speed * deltaTime) / 1000;
           unit.x += (dx / dist) * speed;
           unit.y += (dy / dist) * speed;
           unit.dir = this.angleToDir8(Math.atan2(dy, dx));
@@ -735,9 +733,9 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     unit.manualUntil = now + PRODUCED_UNIT_EXIT_GRACE_MS;
     unit.hp = type === "tank" ? 150 : 60;
     unit.maxHp = unit.hp;
-    if (type === "tank") unit.speed = 64.4;
-    else if (type === "harvester") unit.speed = 76;
-    else if (type === "soldier") unit.speed = 50;
+    if (type === "tank") unit.speed = 140;
+    else if (type === "harvester") unit.speed = 150;
+    else if (type === "soldier") unit.speed = 120;
     producer.produceCooldownUntil = now + (type === "soldier" ? 800 : 1100);
     this.state.units.set(unit.id, unit);
     this.unitPoseAudit.set(unit.id, { x: unit.x, y: unit.y, at: now });
