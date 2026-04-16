@@ -292,6 +292,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       this.autoEngagedUnitIds.delete(id);
       this.unitAttackTarget.delete(id);
       this.unitClientPathCache.delete(id);
+      this.unitSlotLocked.delete(id);
+      this.localUnitArrivalPos?.delete(id);
     }
 
     const pathRadius = Math.max(maxUnitRadius + 4, TILE_SIZE * 0.28);
@@ -681,7 +683,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         tx = manualTarget.currentX;
         ty = manualTarget.currentY;
       }
-      if (!manualTarget.directSteer && distToSlot <= TILE_SIZE * 0.75) {
+      if (!manualTarget.directSteer && distToSlot <= TILE_SIZE * 0.65) {
         if (!this.unitSlotLocked.has(String(id))) {
           const velSpeed = Math.hypot(s.vx, s.vy);
           let arrivalDir: number | null = null;
@@ -719,6 +721,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         e.x = s.x;
         e.y = s.y;
         s.lastAt = performance.now();
+        // Save arrival position for post-arrival hold
+        this.localUnitArrivalPos.set(String(id), { x: manualTarget.finalX, y: manualTarget.finalY });
         this.localUnitTargetOverride.delete(String(id));
         this.unitClientPathCache.delete(String(id));
         if (manualTarget.sharedPathKey) {
@@ -750,8 +754,46 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     }
 
 
+    // Build 431: Post-arrival hold — keep unit locked at arrival position until server confirms idle
+    // This prevents physics or server-state drift from pulling the unit after it has arrived.
+    const arrivalPos = this.localUnitArrivalPos?.get(String(id));
+    if (!manualTarget && arrivalPos && this.unitSlotLocked.has(String(id))) {
+      const serverIdle = String(u.aiState || "") !== "walking";
+      s.x = arrivalPos.x;
+      s.y = arrivalPos.y;
+      s.vx = 0;
+      s.vy = 0;
+      e.x = s.x;
+      e.y = s.y;
+      s.lastAt = performance.now();
+      if (serverIdle) {
+        // Server confirmed idle — release lock
+        this.unitSlotLocked.delete(String(id));
+        this.localUnitArrivalPos?.delete(String(id));
+      } else {
+        // Re-send final:true to ensure server gets it
+        const dir = this.unitFacing.get(String(id)) ?? Number(u.dir ?? 1);
+        this.room.send("unit_client_pose_batch", {
+          poses: [{ unitId: id, x: arrivalPos.x, y: arrivalPos.y, dir, tx: arrivalPos.x, ty: arrivalPos.y, final: true }]
+        });
+      }
+      return;
+    }
 
-
+    // Build 427: When grace ends, if unit is already at its spawn exit slot, clear it immediately
+    // so it doesn't try to re-navigate back to the slot from a stale path cache.
+    if (manualTarget && !manualTarget.sharedPathKey && distToSlot <= TILE_SIZE * 1.5) {
+      this.localUnitGhostMode?.delete(String(id));
+      // Send final:true so server sets aiState=idle and doesn't run its fallback movement
+      const dir = this.unitFacing.get(id) ?? Number(u.dir ?? 1);
+      this.room.send("unit_client_pose_batch", {
+        poses: [{ unitId: id, x: s.x, y: s.y, dir, tx: s.x, ty: s.y, final: true }]
+      });
+      this.localUnitTargetOverride.delete(String(id));
+      this.unitClientPathCache.delete(String(id));
+      this.localUnitMovePriority.delete(String(id));
+      this.localUnitPathRadiusOverride.delete(String(id));
+    }
     const waypointInput = manualTarget
       ? {
         x: s.x,

@@ -204,6 +204,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   localUnitPathRadiusOverride = new Map<string, number>();
   localUnitJamTicks = new Map<string, number>();
   localUnitGhostMode = new Set<string>();
+  localUnitArrivalPos = new Map<string, { x: number; y: number }>();
   unitGrid = new UnitGrid();
 
   isGridUnitOccupied(gx: number, gy: number, ignoreUnitId?: string) {
