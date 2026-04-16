@@ -395,9 +395,9 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     let priority = 0;
     const commandedUnitIds: string[] = [];
     
-    // Build 471: Hierarchical Squad Follow logic.
-    // Partition units into squads of 5. One leader per squad.
-    const squadSize = 5;
+    // Build 472: Deep Optimization. Increased squad size from 5 to 12.
+    const squadSize = 12;
+    let totalSquads = 0;
     for (let sStart = 0; sStart < priorityOrder.length; sStart += squadSize) {
       const squad = priorityOrder.slice(sStart, sStart + squadSize);
       const leaderEntry = squad[0];
@@ -405,6 +405,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const leaderSlot = assignments.get(leaderId);
       if (!leaderSlot) continue;
 
+      totalSquads++;
       // --- Setup Leader ---
       const laneIdx = Math.floor(sStart / squadSize) % laneKeys.length;
       const pPathId = laneKeys[laneIdx];
@@ -454,12 +455,11 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
             this.activeCommandPaths.get(fOldTarget.persistentPathId)?.participants.delete(followerId);
         }
 
-        // Simple diamond pattern around leader (Build 471)
-        let ox = 0, oy = 0;
-        if (f === 1) { ox = -15; oy = -15; }
-        if (f === 2) { ox =  15; oy = -15; }
-        if (f === 3) { ox = -15; oy =  15; }
-        if (f === 4) { ox =  15; oy =  15; }
+        // Build 472: Support larger squads (up to 12). Grid pattern around leader.
+        const fCol = (f % 3) - 1;
+        const fRow = Math.floor(f / 3) - 1;
+        let ox = fCol * TILE_SIZE * 0.45;
+        let oy = fRow * TILE_SIZE * 0.45;
 
         this.localUnitFollowState.set(followerId, {
           leaderId: leaderId,
@@ -483,6 +483,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         commandedUnitIds.push(followerId);
       }
     }
+    this.activeSquadCount = totalSquads;
 
     if (commandedUnitIds.length > 0) {
       this.room.send("command_units", {

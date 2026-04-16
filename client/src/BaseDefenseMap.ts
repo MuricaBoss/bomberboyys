@@ -1313,18 +1313,31 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
 
     if (!cache) return null;
 
+    const centerX = goalGX * TILE_SIZE + TILE_SIZE / 2;
+    const centerY = goalGY * TILE_SIZE + TILE_SIZE / 2;
+    const railOffsetX = (unit.targetX ?? tx) - centerX;
+    const railOffsetY = (unit.targetY ?? ty) - centerY;
+
     if (cache.idx >= cache.cells.length - 1) {
-      if (unit.persistentPathId) {
-        const pPath = this.activeCommandPaths.get(unit.persistentPathId);
-        if (pPath) {
-          pPath.participants.delete(unitId);
-          if (pPath.participants.size === 0) {
-            this.activeCommandPaths.delete(unit.persistentPathId);
+      const lastCell = cache.cells[cache.cells.length - 1];
+      const finalWX = lastCell.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
+      const finalWY = lastCell.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
+      const distToFinal = Math.hypot(finalWX - ux, finalWY - uy);
+
+      // Build 472: Only clear rail if VERY close to final slot (8px instead of immediate)
+      if (distToFinal < 8) {
+        if (unit.persistentPathId) {
+          const pPath = this.activeCommandPaths.get(unit.persistentPathId);
+          if (pPath) {
+            pPath.participants.delete(unitId);
+            if (pPath.participants.size === 0) {
+              this.activeCommandPaths.delete(unit.persistentPathId);
+            }
           }
+          unit.persistentPathId = undefined;
         }
-        unit.persistentPathId = undefined;
+        return null;
       }
-      return null;
     }
 
     while (cache.idx < cache.cells.length) {
@@ -1332,14 +1345,7 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       let wx = c.x * TILE_SIZE + TILE_SIZE / 2;
       let wy = c.y * TILE_SIZE + TILE_SIZE / 2;
 
-      // Build 241: "Imaginary Rails" — Units follow the shared path but maintain their personal slot offset.
-
       // Build 241: "Imaginary Rails"
-      // Offset = difference between the unit's personal target and the center of the sector target.
-      const centerX = goalGX * TILE_SIZE + TILE_SIZE / 2;
-      const centerY = goalGY * TILE_SIZE + TILE_SIZE / 2;
-      const railOffsetX = (unit.targetX ?? tx) - centerX;
-      const railOffsetY = (unit.targetY ?? ty) - centerY;
       wx += railOffsetX;
       wy += railOffsetY;
 

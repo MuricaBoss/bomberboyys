@@ -231,6 +231,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   lastCommandedUnitIds: Set<string> = new Set();
   lastKnownStructureCount: number = 0;
   activeCommandPaths: Map<string, { nodes: Array<{x: number, y: number}>, participants: Set<string> }> = new Map();
+  activeSquadCount: number = 0;
   formationPreviewUntil = 0;
   moveClickMarkerSprite: Phaser.GameObjects.Image | null = null;
   moveClickMarker: { x: number; y: number; createdAt: number; expiresAt: number } | null = null;

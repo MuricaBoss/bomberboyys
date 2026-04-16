@@ -333,8 +333,9 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
     const fpsLabel = Number.isFinite(fps) ? Math.round(Number(fps)) : "--";
     const zoomLabel = Number.isFinite(zoom) ? `${zoom!.toFixed(2)}x` : "--";
     const unitStats = `[SOTILAAT: ${this.soldierCount} | TANKIT: ${this.tankCount}]`;
-    const groupStats = `[POLUT: ${this.lastMoveLeaderCount} | YKS: ${this.lastMoveFollowerCount} | KOKO: ${this.lastMoveSubgroupSize}]`;
-    this.clientVersionRootEl.textContent = `BUILD ${DISPLAY_BUILD_NUMBER} · ${unitStats} · ${groupStats} · ${activeClientBuildId || CLIENT_BUNDLE_VERSION} · ZOOM ${zoomLabel} · FPS ${fpsLabel}`;
+    const squadStats = `[RYHMAT: ${this.activeSquadCount}]`;
+    const groupStats = `[POLUT: ${this.lastMoveLeaderCount} | YKS: ${this.lastMoveFollowerCount}]`;
+    this.clientVersionRootEl.textContent = `BUILD ${DISPLAY_BUILD_NUMBER} · ${unitStats} · ${squadStats} · ${groupStats} · ${activeClientBuildId || CLIENT_BUNDLE_VERSION} · ZOOM ${zoomLabel} · FPS ${fpsLabel}`;
   }
 
   destroyClientVersionDom() {
