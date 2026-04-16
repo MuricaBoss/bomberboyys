@@ -346,13 +346,12 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const goalGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
     const now = Date.now();
     
-    // Build 455: Restore Build 390 Synchronous Path Generation (1-5 lanes)
-    // We calculate paths immediately on click to avoid update-loop spikes.
     const firstU = this.room.state.units.get ? this.room.state.units.get(ids[0]) : this.room.state.units?.[ids[0]];
+    // Build 468: Overhaul to Persistent Paths. Generate 1-5 locked lanes.
+    const laneKeys: string[] = [];
     const laneCount = Math.max(1, Math.min(5, Math.ceil(ids.length / 20)));
     const laneGap = firstU?.type === "tank" ? 64 : 32;
-    const sharedPathBaseKey = this.getSharedMovePathKey(now, sharedPathCenterX, sharedPathCenterY, ids.length);
-    
+
     // Perpendicular vector for parallel lanes
     const wayDirX = sharedPathCenterX - pathStartCX;
     const wayDirY = sharedPathCenterY - pathStartCY;
@@ -369,6 +368,14 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       
       const lPath = this.findPath(lStartGX, lStartGY, lEndGX, lEndGY, false, undefined, pathRadius);
       if (lPath && lPath.length > 0) {
+        const pKey = `pPath_${now}_${l}`;
+        this.activeCommandPaths.set(pKey, {
+          nodes: lPath.map(n => ({ x: n.x, y: n.y })),
+          participants: new Set()
+        });
+        laneKeys.push(pKey);
+        // Also keep in shared cache for backward compatibility in internal methods
+        const sharedPathBaseKey = this.getSharedMovePathKey(now, sharedPathCenterX, sharedPathCenterY, ids.length);
         this.sharedPathCache.set(`${sharedPathBaseKey}_L${l}`, lPath);
       }
     }
@@ -376,7 +383,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     this.lastMoveLeaderCount = laneCount;
     this.lastMoveFollowerCount = ids.length;
     this.lastMoveSubgroupSize = ids.length;
-
 
     priorityOrder.sort((a, b) => {
       const aPos = unitPositions.find((entry) => entry.id === a.id);
@@ -386,50 +392,54 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       return bDist - aDist;
     });
 
-    this.lastMoveSubgroupSize = ids.length;
-
     let priority = 0;
     const commandedUnitIds: string[] = [];
     for (const entry of priorityOrder) {
       const slot = assignments.get(entry.id);
       if (!slot) continue;
 
-      const laneIdx = priority % laneCount;
-      const myLanePathKey = `${sharedPathBaseKey}_L${laneIdx}`;
-      const hasLanePath = this.sharedPathCache.has(myLanePathKey);
+      // Build 468: Clean up old persistent path participation
+      const oldTarget = this.localUnitTargetOverride.get(entry.id);
+      if (oldTarget?.persistentPathId) {
+        const oldP = this.activeCommandPaths.get(oldTarget.persistentPathId);
+        oldP?.participants.delete(entry.id);
+      }
+
+      const laneIdx = priority % laneKeys.length;
+      const pPathId = laneKeys[laneIdx];
+      if (pPathId) {
+        this.activeCommandPaths.get(pPathId)?.participants.add(entry.id);
+      }
 
       this.localUnitTargetOverride.set(entry.id, {
         x: slot.x,
         y: slot.y,
         setAt: now,
         isAuto: isAutoSegment,
-        sharedPathKey: hasLanePath ? myLanePathKey : undefined,
+        persistentPathId: pPathId,
         sharedPathCenterX,
         sharedPathCenterY,
         sharedPathOffsetX: slot.x - sharedPathCenterX,
         sharedPathOffsetY: slot.y - sharedPathCenterY,
         pathRadius,
       });
-      // Build 391: Force-clear local path cache to prevent "ghost path" sticking
-      this.unitClientPathCache.delete(entry.id);
       
+      this.unitClientPathCache.delete(entry.id);
       this.localUnitMovePriority.set(entry.id, priority);
       this.localUnitPathRadiusOverride.set(entry.id, pathRadius);
       this.localUnitGhostMode?.delete(entry.id);
       
-      const serverUnit = this.room?.state?.units?.get?.(entry.id) ?? this.room?.state?.units?.[entry.id];
-      if (serverUnit) {
-        serverUnit.manualUntil = 0;
-        // Build 460: Apply an initial velocity 'nudge' towards the target to prevent stickiness
-        const sim = this.localUnitRenderState.get(entry.id);
-        if (sim) {
-          const dx = slot.x - sim.x;
-          const dy = slot.y - sim.y;
-          const d = Math.hypot(dx, dy);
-          if (d > 1) {
-            sim.vx = (dx / d) * 2.5;
-            sim.vy = (dy / d) * 2.5;
-          }
+      const serverUnit = this.room?.state?.units?.[entry.id];
+      if (serverUnit) serverUnit.manualUntil = 0;
+
+      const sim = this.localUnitRenderState.get(entry.id);
+      if (sim) {
+        const dx = slot.x - sim.x;
+        const dy = slot.y - sim.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 1) {
+          sim.vx = (dx / d) * 2.5;
+          sim.vy = (dy / d) * 2.5;
         }
       }
 

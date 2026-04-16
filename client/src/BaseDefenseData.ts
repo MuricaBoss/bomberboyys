@@ -183,7 +183,8 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     setAt: number;
     isAuto?: boolean;
     sharedPathKey?: string;
-    sharedPathCenterX?: number;
+    persistentPathId?: string; // Build 468: Locked path tracking
+    sharedPathCenterX: number;
     sharedPathCenterY?: number;
     sharedPathOffsetX?: number;
     sharedPathOffsetY?: number;
@@ -229,6 +230,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   formationPreviewCenter: { x: number; y: number } | null = null;
   lastCommandedUnitIds: Set<string> = new Set();
   lastKnownStructureCount: number = 0;
+  activeCommandPaths: Map<string, { nodes: Array<{x: number, y: number}>, participants: Set<string> }> = new Map();
   formationPreviewUntil = 0;
   moveClickMarkerSprite: Phaser.GameObjects.Image | null = null;
   moveClickMarker: { x: number; y: number; createdAt: number; expiresAt: number } | null = null;
