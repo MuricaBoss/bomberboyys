@@ -733,6 +733,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         e.x = s.x;
         e.y = s.y;
         s.lastAt = performance.now();
+        this.localUnitTargetOverride.delete(String(id));
         return;
       }
 
