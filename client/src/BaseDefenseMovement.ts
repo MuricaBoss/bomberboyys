@@ -329,18 +329,18 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       sharedPathCenterY = nearestSlot.y;
     }
 
-    // Build 461: Start paths from the unit FURTHEST from the target to avoid backward movement.
-    let pathStartCX = groupCX;
-    let pathStartCY = groupCY;
-    let maxDistToGoal = -1;
-    for (const up of unitPositions) {
-      const d = Math.hypot(up.x - sharedPathCenterX, up.y - sharedPathCenterY);
-      if (d > maxDistToGoal) {
-        maxDistToGoal = d;
-        pathStartCX = up.x;
-        pathStartCY = up.y;
-      }
-    }
+    // Build 464: Outlier-resistant path start. Sort by distance and pick the 90th percentile.
+    // This ensures the path starts behind the main body but ignores extreme outliers far at the base.
+    const sortedByDist = [...unitPositions].sort((a, b) => {
+      const da = Math.hypot(a.x - sharedPathCenterX, a.y - sharedPathCenterY);
+      const db = Math.hypot(b.x - sharedPathCenterX, b.y - sharedPathCenterY);
+      return db - da; // Furthest first
+    });
+    
+    // Pick the unit at the 90th percentile of distance
+    const startUnit = sortedByDist[Math.min(sortedByDist.length - 1, Math.floor(sortedByDist.length * 0.1))];
+    let pathStartCX = startUnit.x;
+    let pathStartCY = startUnit.y;
 
     const startGrid = this.worldToGrid(pathStartCX, pathStartCY);
     const goalGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);

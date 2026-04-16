@@ -1208,7 +1208,8 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         }
       }
 
-      const searchLimit = Math.min(cells.length, (isJammed ? 0 : searchStart) + 64);
+      // Build 464: Unlimited search for the absolute best entry node when joining a path (searchStart === 0).
+      const searchLimit = (searchStart === 0 || isJammed) ? cells.length : Math.min(cells.length, searchStart + 64);
       
       for (let i = (isJammed ? 0 : searchStart); i < searchLimit; i++) {
         const wx = cells[i].x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
