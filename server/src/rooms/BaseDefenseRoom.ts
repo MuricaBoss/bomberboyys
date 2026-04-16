@@ -393,6 +393,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
                     unit.targetX = validTarget.x;
                     unit.targetY = validTarget.y;
                     unit.aiState = "walking";
+                    unit.manualUntil = 0; // Build 457: User command overrides spawn guidance
                     this.unitPaths.delete(uid);
                 }
             });

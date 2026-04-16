@@ -798,25 +798,31 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     // Build 431: Post-arrival hold — keep unit locked at arrival position until server confirms idle
     // This prevents physics or server-state drift from pulling the unit after it has arrived.
     const arrivalPos = this.localUnitArrivalPos?.get(String(id));
-    if (!manualTarget && arrivalPos && this.unitSlotLocked.has(String(id))) {
-      const serverIdle = String(u.aiState || "") !== "walking";
-      s.x = arrivalPos.x;
-      s.y = arrivalPos.y;
-      s.vx = 0;
-      s.vy = 0;
-      e.x = s.x;
-      e.y = s.y;
-      s.lastAt = performance.now();
-      if (serverIdle) {
-        // Server confirmed idle — release lock
+    if (arrivalPos && this.unitSlotLocked.has(String(id))) {
+      if (manualTarget && !manualTarget.isAuto) {
+        // Build 457: If user issued a manual command, immediately break the arrival lock
         this.unitSlotLocked.delete(String(id));
         this.localUnitArrivalPos?.delete(String(id));
-      } else {
-        // Re-send final:true to ensure server gets it
-        const dir = this.unitFacing.get(String(id)) ?? Number(u.dir ?? 1);
-        this.pendingFinalPoses.push({ unitId: id, x: arrivalPos.x, y: arrivalPos.y, dir, tx: arrivalPos.x, ty: arrivalPos.y, final: true });
+      } else if (!manualTarget) {
+        const serverIdle = String(u.aiState || "") !== "walking";
+        s.x = arrivalPos.x;
+        s.y = arrivalPos.y;
+        s.vx = 0;
+        s.vy = 0;
+        e.x = s.x;
+        e.y = s.y;
+        s.lastAt = performance.now();
+        if (serverIdle) {
+          // Server confirmed idle — release lock
+          this.unitSlotLocked.delete(String(id));
+          this.localUnitArrivalPos?.delete(String(id));
+        } else {
+          // Re-send final:true to ensure server gets it
+          const dir = this.unitFacing.get(String(id)) ?? Number(u.dir ?? 1);
+          this.pendingFinalPoses.push({ unitId: id, x: arrivalPos.x, y: arrivalPos.y, dir, tx: arrivalPos.x, ty: arrivalPos.y, final: true });
+        }
+        return;
       }
-      return;
     }
 
     // Build 427: When grace ends, if unit is already at its spawn exit slot, clear it immediately
