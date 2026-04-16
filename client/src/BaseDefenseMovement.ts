@@ -333,15 +333,12 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const goalGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
     const now = Date.now();
     
-    // Build 390: Multi-Path Generation (L0 to L(laneCount-1))
-    const pTuner = this.physicsTuner;
-    // Determine lane count from the FIRST unit type in the group (usually same type move)
-    const firstU = this.room.state.units.get(ids[0]);
-    const groupLCount = firstU?.type === "tank" ? (pTuner?.tankLaneCount ?? 3) : (pTuner?.soldierLaneCount ?? 3);
-    const groupLGap = firstU?.type === "tank" ? (pTuner?.tankLaneSpacing ?? 100) : (pTuner?.soldierLaneSpacing ?? 48);
-    // Build 428: Removed shared path (lane) calculation here because it caused 
-    // scattered units to run towards the center of the group's start point (often NW/SE) 
-    // to join a path that wasn't calculated for them. Paths are now calculated individually.
+    // Build 454: Re-implemented Shared Multi-Lane Pathfinding (1-5 lanes)
+    // For 100 units, we generate ~5 shared paths. Each unit joins the path at the nearest forward point.
+    const laneCount = Math.max(1, Math.min(5, Math.ceil(ids.length / 20)));
+    this.lastMoveLeaderCount = laneCount;
+    this.lastMoveFollowerCount = ids.length;
+    this.lastMoveSubgroupSize = ids.length;
 
 
     priorityOrder.sort((a, b) => {
@@ -352,8 +349,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       return bDist - aDist;
     });
 
-    this.lastMoveLeaderCount = groupLCount;
-    this.lastMoveFollowerCount = ids.length;
     this.lastMoveSubgroupSize = ids.length;
 
     let priority = 0;
@@ -362,12 +357,15 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const slot = assignments.get(entry.id);
       if (!slot) continue;
 
+      const laneIdx = priority % laneCount;
+      const sharedPathKey = `cmd_${now}_L${laneIdx}`;
+
       this.localUnitTargetOverride.set(entry.id, {
         x: slot.x,
         y: slot.y,
         setAt: now,
         isAuto: isAutoSegment,
-        sharedPathKey: undefined,
+        sharedPathKey,
         sharedPathCenterX,
         sharedPathCenterY,
         sharedPathOffsetX: slot.x - sharedPathCenterX,

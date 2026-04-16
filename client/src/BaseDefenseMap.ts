@@ -1182,7 +1182,10 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       let bestForwardIdx = -1;
       let bestForwardDist = Infinity;
 
-      for (let i = 0; i < cells.length; i++) {
+      // Build 454: Optimized Search — Use existing index as a hint to avoid full scans if following the same path
+      const searchStart = (cache && !isJammed) ? Math.max(0, cache.idx - 8) : 0;
+      
+      for (let i = searchStart; i < cells.length; i++) {
         const wx = cells[i].x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
         const wy = cells[i].y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
         const d = Math.hypot(wx - ux, wy - uy);
