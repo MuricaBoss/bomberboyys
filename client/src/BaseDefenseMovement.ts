@@ -322,26 +322,10 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const firstU = this.room.state.units.get(ids[0]);
     const groupLCount = firstU?.type === "tank" ? (pTuner?.tankLaneCount ?? 3) : (pTuner?.soldierLaneCount ?? 3);
     const groupLGap = firstU?.type === "tank" ? (pTuner?.tankLaneSpacing ?? 100) : (pTuner?.soldierLaneSpacing ?? 48);
-    const sharedPathBaseKey = this.getSharedMovePathKey(now, sharedPathCenterX, sharedPathCenterY, ids.length);
-    
-    const wayDirX = sharedPathCenterX - groupCX;
-    const wayDirY = sharedPathCenterY - groupCY;
-    const wayLen = Math.hypot(wayDirX, wayDirY);
-    const pnx = wayLen > 1 ? -wayDirY / wayLen : 0;
-    const pny = wayLen > 1 ? wayDirX / wayLen : 0;
+    // Build 428: Removed shared path (lane) calculation here because it caused 
+    // scattered units to run towards the center of the group's start point (often NW/SE) 
+    // to join a path that wasn't calculated for them. Paths are now calculated individually.
 
-    for (let l = 0; l < groupLCount; l++) {
-      const lOffset = (l - (groupLCount - 1) / 2) * groupLGap;
-      const lStartGX = Math.floor((groupCX + pnx * lOffset) / TILE_SIZE);
-      const lStartGY = Math.floor((groupCY + pny * lOffset) / TILE_SIZE);
-      const lEndGX = Math.floor((sharedPathCenterX + pnx * lOffset) / TILE_SIZE);
-      const lEndGY = Math.floor((sharedPathCenterY + pny * lOffset) / TILE_SIZE);
-      
-      const lPath = this.findPath(lStartGX, lStartGY, lEndGX, lEndGY, false, undefined, pathRadius);
-      if (lPath && lPath.length > 0) {
-        this.sharedPathCache.set(`${sharedPathBaseKey}_L${l}`, lPath);
-      }
-    }
 
     priorityOrder.sort((a, b) => {
       const aPos = unitPositions.find((entry) => entry.id === a.id);
@@ -360,18 +344,12 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const slot = assignments.get(entry.id);
       if (!slot) continue;
 
-      // Assign unit to a persistent lane index based on its hash
-      const hash = Math.abs(this.stringHash(entry.id));
-      const myLaneIdx = hash % Math.max(1, groupLCount);
-      const myLanePathKey = `${sharedPathBaseKey}_L${myLaneIdx}`;
-      const hasLanePath = this.sharedPathCache.has(myLanePathKey);
-
       this.localUnitTargetOverride.set(entry.id, {
         x: slot.x,
         y: slot.y,
         setAt: now,
         isAuto: isAutoSegment,
-        sharedPathKey: hasLanePath ? myLanePathKey : undefined,
+        sharedPathKey: undefined,
         sharedPathCenterX,
         sharedPathCenterY,
         sharedPathOffsetX: slot.x - sharedPathCenterX,
@@ -396,8 +374,9 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       priority++;
     }
 
+    // Clear shared caches just in case
     for (const key of previousSharedKeys) {
-      if (!this.sharedPathStillUsed(key)) this.sharedPathCache.delete(key);
+      this.sharedPathCache.delete(key);
     }
   }
 
