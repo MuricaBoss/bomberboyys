@@ -13,6 +13,8 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
   lastAvoidIntentSentAt = 0;
   nextTeam: "A" | "B" = "A";
   unitDestroyedAt = new Map<string, number>();
+  recentAssignedSlots = new Map<string, { x: number; y: number; at: number }>();
+  nearTargetSince = new Map<string, number>();
 
   onCreate(options: any) {
     console.log("BaseDefenseRoom Phase 1 created!", options);
@@ -89,6 +91,13 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
             this.state.cores.delete(id);
             this.unitDestroyedAt.delete(id);
           }
+        }
+      });
+
+      // 4. Cleanup Slot Reservations (15s)
+      this.recentAssignedSlots.forEach((slot, id) => {
+        if (now - slot.at > 15000) {
+          this.recentAssignedSlots.delete(id);
         }
       });
     }, 500);
@@ -270,10 +279,30 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
               unit.y = nextY;
               if (Number.isFinite(Number(p?.tx))) unit.targetX = Number(p.tx);
               if (Number.isFinite(Number(p?.ty))) unit.targetY = Number(p.ty);
+              
               const distToTarget = Math.hypot(Number(unit.targetX) - nextX, Number(unit.targetY) - nextY);
-              unit.aiState = distToTarget > 5 ? "walking" : "idle";
-              if (distToTarget <= TILE_SIZE * 0.65 || now >= Number(unit.manualUntil || 0)) {
-                unit.manualUntil = 0;
+              
+              // Build 442: Stuck-check (proximity timeout)
+              // If within 30px of target for > 2s, force stop here.
+              if (distToTarget < 30) {
+                if (!this.nearTargetSince.has(unitId)) this.nearTargetSince.set(unitId, now);
+                const stuckTime = now - (this.nearTargetSince.get(unitId) ?? now);
+                if (stuckTime > 2000) {
+                  unit.x = nextX;
+                  unit.y = nextY;
+                  unit.aiState = "idle";
+                  unit.manualUntil = 0;
+                } else {
+                  unit.aiState = distToTarget > 10 ? "walking" : "idle";
+                  if (distToTarget <= 10) {
+                    unit.x = unit.targetX;
+                    unit.y = unit.targetY;
+                    unit.manualUntil = 0;
+                  }
+                }
+              } else {
+                this.nearTargetSince.delete(unitId);
+                unit.aiState = "walking"; // Too far to be near-target
               }
             }
             this.unitPoseAudit.set(unitId, { x: nextX, y: nextY, at: now });
@@ -457,7 +486,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
               const dx = (unit.targetX ?? unit.x) - unit.x;
               const dy = (unit.targetY ?? unit.y) - unit.y;
               const dist = Math.hypot(dx, dy);
-              if (dist > 5) {
+              if (dist > 10) {
                   const speed = (unit.speed * deltaTime) / 1000;
                   unit.x += (dx / dist) * speed;
                   unit.y += (dy / dist) * speed;
@@ -511,7 +540,20 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
         const dy = nextTargetY - unit.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         
-        if (dist > 5) {
+        // Build 442: Stuck check for server-guided units
+        if (dist < 30) {
+            if (!this.nearTargetSince.has(id)) this.nearTargetSince.set(id, now);
+            const stuckMs = now - (this.nearTargetSince.get(id) ?? now);
+            if (stuckMs > 2000) {
+                unit.aiState = "idle";
+                this.nearTargetSince.delete(id);
+                return;
+            }
+        } else {
+            this.nearTargetSince.delete(id);
+        }
+
+        if (dist > 10) {
           const speed = (unit.speed * deltaTime) / 1000;
           unit.x += (dx / dist) * speed;
           unit.y += (dy / dist) * speed;
@@ -545,6 +587,9 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
   }
 
   isClientAuthoritativeUnit(unit: BaseUnit) {
+    // Build 439: Ensure server is absolute authority during birth grace period to prevent rubber-banding
+    if (Number(unit.manualUntil || 0) > Date.now()) return false;
+    
     const type = String(unit?.type || "");
     return type === "tank" || type === "harvester" || type === "soldier";
   }
@@ -666,17 +711,13 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
 
   isProducedUnitExitPointClaimed(worldX: number, worldY: number, radius: number, now: number) {
     let claimed = false;
-    this.state.units.forEach((u) => {
-      if (claimed || (u.hp ?? 0) <= 0) return;
-      const currentX = Number(u.x);
-      const currentY = Number(u.y);
-      const targetX = Number(u.targetX ?? u.x);
-      const targetY = Number(u.targetY ?? u.y);
-      const targetDist = Math.hypot(targetX - worldX, targetY - worldY);
-      const currentDist = Math.hypot(currentX - worldX, currentY - worldY);
-      const claimRadius = Math.max(TILE_SIZE * 0.42, radius + this.getUnitBodyRadius(String(u.type || "")) + 4);
-      if (targetDist > claimRadius && currentDist > claimRadius) return;
-      claimed = true;
+    this.recentAssignedSlots.forEach((slot) => {
+      if (claimed) return;
+      if (now - slot.at > 15000) return;
+      
+      const dist = Math.hypot(slot.x - worldX, slot.y - worldY);
+      // Claim if within a reasonable collision distance (radius * 1.8)
+      if (dist < radius * 1.8) claimed = true;
     });
     return claimed;
   }
@@ -709,28 +750,35 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     const producer = this.findOwnedReadyStructure(ownerId, producerType, now);
     if (!producer) return;
     
-    // Just find a simple fixed exit point adjacent to the producer
+    const radius = this.getUnitBodyRadius(type);
+    const exitPoint = this.findProducedUnitExitPoint(producer, player.team, radius, now);
+    
+    // Default exit if no formation slot found: right under the building
     const footprint = this.getStructureFootprint(String(producer.type || ""));
     const halfH = Math.floor(footprint.height / 2);
     const centerGX = Math.floor(Number(producer.x) / TILE_SIZE);
     const centerGY = Math.floor(Number(producer.y) / TILE_SIZE);
+    const fallbackPoint = { x: centerGX * TILE_SIZE + TILE_SIZE / 2, y: (centerGY + halfH + 1) * TILE_SIZE + TILE_SIZE / 2 };
     
-    // Default exit: right under the building
-    const exitPoint = { x: centerGX * TILE_SIZE + TILE_SIZE / 2, y: (centerGY + halfH + 1) * TILE_SIZE + TILE_SIZE / 2 };
-    const startPoint = this.getProducedUnitStartPoint(producer, exitPoint);
+    const finalTarget = exitPoint || fallbackPoint;
+    const startPoint = this.getProducedUnitStartPoint(producer, finalTarget);
 
     const unit = new BaseUnit();
-    unit.id = `unit_${ownerId}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    unit.id = `unit_${ownerId}_${now}_${Math.floor(Math.random() * 1000)}`;
     unit.ownerId = ownerId;
     unit.team = player.team;
     unit.type = type;
     unit.homeStructureId = producer.id;
     unit.x = startPoint.x;
     unit.y = startPoint.y;
-    unit.targetX = startPoint.x;
-    unit.targetY = startPoint.y;
-    unit.aiState = "idle";
+    unit.targetX = finalTarget.x;
+    unit.targetY = finalTarget.y;
+    unit.aiState = "walking";
     this.unitPaths.delete(unit.id);
+    
+    // Register reservation
+    this.recentAssignedSlots.set(unit.id, { x: finalTarget.x, y: finalTarget.y, at: now });
+    
     unit.manualUntil = now + PRODUCED_UNIT_EXIT_GRACE_MS;
     unit.hp = type === "tank" ? 150 : 60;
     unit.maxHp = unit.hp;

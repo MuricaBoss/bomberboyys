@@ -1229,7 +1229,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.perfEnd("camera");
     let nowMs = Date.now();
     this.drawMoveClickMarker(nowMs);
-    this.reflowDefensiveAssignments(nowMs);
+    // this.reflowDefensiveAssignments(nowMs);
     this.drawFormationPreview(nowMs);
     if (this.phaserHudEnabled && this.attackCursorGraphics) {
       this.attackCursorGraphics.clear();
