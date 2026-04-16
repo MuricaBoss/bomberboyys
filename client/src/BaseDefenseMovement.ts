@@ -335,6 +335,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     
     // Build 455: Restore Build 390 Synchronous Path Generation (1-5 lanes)
     // We calculate paths immediately on click to avoid update-loop spikes.
+    const firstU = this.room.state.units.get ? this.room.state.units.get(ids[0]) : this.room.state.units?.[ids[0]];
     const laneCount = Math.max(1, Math.min(5, Math.ceil(ids.length / 20)));
     const laneGap = firstU?.type === "tank" ? 64 : 32;
     const sharedPathBaseKey = this.getSharedMovePathKey(now, sharedPathCenterX, sharedPathCenterY, ids.length);
