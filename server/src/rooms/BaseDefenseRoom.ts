@@ -125,14 +125,18 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
       if (!player) return;
 
       if (data.unitIds && Array.isArray(data.unitIds)) {
+        // Build 449: Validate shared target once
+        const rawTarget = { x: Number(data.targetX ?? data.x), y: Number(data.targetY ?? data.y) };
+        const validTarget = this.validateWorldTarget(rawTarget.x, rawTarget.y);
+
         data.unitIds.forEach((uid: string) => {
           const unit = this.state.units.get(uid);
           if (unit && unit.ownerId === client.sessionId) {
-            unit.targetX = Number(data.targetX ?? data.x);
-            unit.targetY = Number(data.targetY ?? data.y);
+            unit.targetX = validTarget.x;
+            unit.targetY = validTarget.y;
             unit.aiState = "walking";
-            unit.manualUntil = 0; // Clear exit grace period gracefully
-            this.unitPaths.delete(uid); // Clear old path so a new one is calculated if needed
+            unit.manualUntil = 0;
+            this.unitPaths.delete(uid);
           }
         });
       }
@@ -269,6 +273,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
               unit.targetY = nextY;
               unit.aiState = "idle";
               unit.manualUntil = 0;
+              this.nearTargetSince.delete(unitId);
             } else {
               const radius = this.getUnitBodyRadius(String(unit.type || ""));
               const canExitStructure = this.canOccupyProducedUnitExit(unit, nextX, nextY, radius, now);
@@ -282,27 +287,31 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
               
               const distToTarget = Math.hypot(Number(unit.targetX) - nextX, Number(unit.targetY) - nextY);
               
-              // Build 442: Stuck-check (proximity timeout)
-              // If within 30px of target for > 2s, force stop here.
-              if (distToTarget < 30) {
+              // Build 442/443: Stuck-check (proximity timeout)
+              // If within 60px of target for > 2s, force stop here.
+              if (distToTarget < 60) {
                 if (!this.nearTargetSince.has(unitId)) this.nearTargetSince.set(unitId, now);
                 const stuckTime = now - (this.nearTargetSince.get(unitId) ?? now);
                 if (stuckTime > 2000) {
                   unit.x = nextX;
                   unit.y = nextY;
+                  unit.targetX = nextX;
+                  unit.targetY = nextY;
                   unit.aiState = "idle";
                   unit.manualUntil = 0;
+                  this.nearTargetSince.delete(unitId);
                 } else {
                   unit.aiState = distToTarget > 10 ? "walking" : "idle";
                   if (distToTarget <= 10) {
                     unit.x = unit.targetX;
                     unit.y = unit.targetY;
                     unit.manualUntil = 0;
+                    this.nearTargetSince.delete(unitId);
                   }
                 }
               } else {
                 this.nearTargetSince.delete(unitId);
-                unit.aiState = "walking"; // Too far to be near-target
+                // Build 443: Removed aiState = "walking" override here as it could conflict with other server-side states.
               }
             }
             this.unitPoseAudit.set(unitId, { x: nextX, y: nextY, at: now });
@@ -375,11 +384,14 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
         const player = this.state.players.get(client.sessionId);
         if (!player) return;
         if (data.unitIds && Array.isArray(data.unitIds)) {
+            // Build 449: Validate shared target
+            const validTarget = this.validateWorldTarget(Number(data.targetX), Number(data.targetY));
+
             data.unitIds.forEach((uid: string) => {
                 const unit = this.state.units.get(uid);
                 if (unit && unit.ownerId === client.sessionId) {
-                    unit.targetX = data.targetX;
-                    unit.targetY = data.targetY;
+                    unit.targetX = validTarget.x;
+                    unit.targetY = validTarget.y;
                     unit.aiState = "walking";
                     this.unitPaths.delete(uid);
                 }
@@ -540,11 +552,15 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
         const dy = nextTargetY - unit.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         
-        // Build 442: Stuck check for server-guided units
-        if (dist < 30) {
+        // Build 442/443: Stuck check for server-guided units
+        if (dist < 60) {
             if (!this.nearTargetSince.has(id)) this.nearTargetSince.set(id, now);
             const stuckMs = now - (this.nearTargetSince.get(id) ?? now);
             if (stuckMs > 2000) {
+                unit.x = unit.x;
+                unit.y = unit.y;
+                unit.targetX = unit.x;
+                unit.targetY = unit.y;
                 unit.aiState = "idle";
                 this.nearTargetSince.delete(id);
                 return;
@@ -565,11 +581,48 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
           } else {
             unit.x = unit.targetX;
             unit.y = unit.targetY;
+            unit.targetX = unit.x;
+            unit.targetY = unit.y;
             unit.aiState = "idle";
+            this.nearTargetSince.delete(id);
           }
         }
       }
     });
+  }
+
+  findNearestWalkableTile(gx: number, gy: number): { gx: number, gy: number } {
+    if (!this.hasStructureAt(gx, gy) && !this.hasCoreAt(gx, gy)) {
+      return { gx, gy };
+    }
+    
+    // Build 449: Simple Spiral Search
+    for (let radius = 1; radius <= 15; radius++) {
+      for (let i = -radius; i <= radius; i++) {
+        const potential = [
+            { gx: gx + i, gy: gy - radius }, // Top
+            { gx: gx + i, gy: gy + radius }, // Bottom
+            { gx: gx - radius, gy: gy + i }, // Left
+            { gx: gx + radius, gy: gy + i }  // Right
+        ];
+        for (const p of potential) {
+            if (this.isInsideMap(p.gx, p.gy) && !this.hasStructureAt(p.gx, p.gy) && !this.hasCoreAt(p.gx, p.gy)) {
+                return p;
+            }
+        }
+      }
+    }
+    return { gx, gy };
+  }
+
+  validateWorldTarget(worldX: number, worldY: number): { x: number, y: number } {
+    const gx = Math.floor(worldX / TILE_SIZE);
+    const gy = Math.floor(worldY / TILE_SIZE);
+    const best = this.findNearestWalkableTile(gx, gy);
+    return {
+      x: best.gx * TILE_SIZE + TILE_SIZE / 2,
+      y: best.gy * TILE_SIZE + TILE_SIZE / 2
+    };
   }
 
   onDispose() {
@@ -760,7 +813,12 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     const centerGY = Math.floor(Number(producer.y) / TILE_SIZE);
     const fallbackPoint = { x: centerGX * TILE_SIZE + TILE_SIZE / 2, y: (centerGY + halfH + 1) * TILE_SIZE + TILE_SIZE / 2 };
     
-    const finalTarget = exitPoint || fallbackPoint;
+    // Build 449/450: Validate exit point and fallback
+    let finalTarget = exitPoint || fallbackPoint;
+    if (this.hasStructureAt(Math.floor(finalTarget.x / TILE_SIZE), Math.floor(finalTarget.y / TILE_SIZE))) {
+        finalTarget = this.validateWorldTarget(finalTarget.x, finalTarget.y);
+    }
+    
     const startPoint = this.getProducedUnitStartPoint(producer, finalTarget);
 
     const unit = new BaseUnit();
@@ -978,7 +1036,6 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     for (const p of samples) {
       const gx = Math.floor(p.x / TILE_SIZE);
       const gy = Math.floor(p.y / TILE_SIZE);
-      if (this.tileAt(gx, gy) !== 0) return false;
       if (this.hasStructureAt(gx, gy)) return false;
       if (this.hasCoreAt(gx, gy)) return false;
     }
@@ -996,7 +1053,6 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     for (const p of samples) {
       const gx = Math.floor(p.x / TILE_SIZE);
       const gy = Math.floor(p.y / TILE_SIZE);
-      if (this.tileAt(gx, gy) !== 0) return false;
       if (this.hasStructureAtExcept(gx, gy, ignoredStructureId)) return false;
       if (this.hasCoreAt(gx, gy)) return false;
     }

@@ -25,10 +25,23 @@ export function updateSoldierVisual(scene: any, args: SoldierVisualArgs) {
   const moving = (renderState && Math.hypot(renderState.vx, renderState.vy) > 10)
     || (unit.aiState === "walking" && !scene.hasLocalUnitManualCommand(id));
 
-  if (shouldTick || needsInitialSync || sState.dead !== isDead || sState.idleDir !== dir || sState.moving !== moving || sState.lod !== lod) {
-    if (moving) {
+  // Build 443: Sprite Debounce (0.2s)
+  // Prevent direction/state flipping by requiring 200ms of consistent request.
+  const now = scene.time.now;
+  if (sState.targetDir !== dir || sState.targetMoving !== moving) {
+    sState.targetDir = dir;
+    sState.targetMoving = moving;
+    sState.targetDirAt = now;
+  }
+  
+  const debounceReady = (now - (sState.targetDirAt ?? 0)) > 100;
+  const activeDir = debounceReady ? dir : (sState.idleDir ?? dir);
+  const activeMoving = debounceReady ? moving : (sState.moving ?? moving);
+
+  if (shouldTick || needsInitialSync || sState.dead !== isDead || sState.idleDir !== activeDir || sState.moving !== activeMoving || sState.lod !== lod) {
+    if (activeMoving) {
       if (lod === "full") {
-        const runKey = scene.getSoldierAnimKey("run", dir);
+        const runKey = scene.getSoldierAnimKey("run", activeDir);
         if (sState.animKey !== runKey || !soldier.anims.isPlaying) {
           soldier.anims.play(runKey, true);
           sState.animKey = runKey;
@@ -44,18 +57,18 @@ export function updateSoldierVisual(scene: any, args: SoldierVisualArgs) {
         const frameOffset = lod === "static"
           ? ((getUnitVisualFrameSlotNumber(id) + 1) % RTS_SOLDIER_RUN_FRAME_COLS)
           : (typeof sState.manualFrameOffset === "number" ? sState.manualFrameOffset : 0);
-        const rowStart = scene.getSoldierSheetRowByDir(dir) * RTS_SOLDIER_RUN_FRAME_COLS;
+        const rowStart = scene.getSoldierSheetRowByDir(activeDir) * RTS_SOLDIER_RUN_FRAME_COLS;
         soldier.setTexture(scene.getSoldierSheetTextureKey("run"), rowStart + frameOffset);
         sState.animKey = "";
       }
       sState.isIdle = false;
-      sState.idleDir = dir;
-    } else if (!sState.isIdle || sState.idleDir !== dir) {
+      sState.idleDir = activeDir;
+    } else if (!sState.isIdle || sState.idleDir !== activeDir) {
       soldier.anims.stop();
-      soldier.setTexture(scene.getSoldierSheetTextureKey("run"), scene.getSoldierIdleFrame(dir));
+      soldier.setTexture(scene.getSoldierSheetTextureKey("run"), scene.getSoldierIdleFrame(activeDir));
       sState.animKey = "";
       sState.isIdle = true;
-      sState.idleDir = dir;
+      sState.idleDir = activeDir;
       sState.manualFrameOffset = RTS_SOLDIER_IDLE_FRAME;
     }
 
@@ -65,7 +78,7 @@ export function updateSoldierVisual(scene: any, args: SoldierVisualArgs) {
       sState.dead = isDead;
     }
     sState.lod = lod;
-    sState.moving = moving;
+    sState.moving = activeMoving;
     (soldier as any)._rState = sState;
   }
 

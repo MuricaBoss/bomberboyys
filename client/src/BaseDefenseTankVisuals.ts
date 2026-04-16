@@ -22,8 +22,19 @@ export function updateTankVisual(scene: any, args: TankVisualArgs) {
   const shouldTick = shouldProcessUnitVisual(scene, id, isSelected || lod === "full");
   const needsInitialSync = tState.key === undefined || tState.dir === undefined || tState.dead === undefined || tState.lod === undefined;
 
-  if (shouldTick || needsInitialSync || tState.dir !== dir || tState.dead !== isDead || tState.lod !== lod) {
-    const texKey = scene.getTankTextureKeyByDir(dir);
+  // Build 443: Sprite Debounce (0.2s)
+  // Prevent direction/state flipping by requiring 200ms of consistent request.
+  const now = scene.time.now;
+  if (tState.targetDir !== dir) {
+    tState.targetDir = dir;
+    tState.targetDirAt = now;
+  }
+  
+  const debounceReady = (now - (tState.targetDirAt ?? 0)) > 100;
+  const activeDir = debounceReady ? dir : (tState.dir ?? dir);
+
+  if (shouldTick || needsInitialSync || tState.dir !== activeDir || tState.dead !== isDead || tState.lod !== lod) {
+    const texKey = scene.getTankTextureKeyByDir(activeDir);
     if (tState.key !== texKey) {
       tank.setTexture(texKey);
       tank.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
@@ -34,16 +45,16 @@ export function updateTankVisual(scene: any, args: TankVisualArgs) {
       else tank.clearTint();
       tState.dead = isDead;
     }
-    tState.dir = dir;
+    tState.dir = activeDir;
     tState.lod = lod;
     (tank as any)._rState = tState;
   }
 
-  const shadowPos = scene.getTankShadowPosition(tank, dir);
+  const shadowPos = scene.getTankShadowPosition(tank, activeDir);
   const shadowVisible = visible && shouldRenderTankShadow(scene, tank.x, tank.y, isSelected);
   let shadow = scene.tankShadowEntities[id];
   if (!shadow && shadowVisible) {
-    const shadowKey = scene.getTankShadowTextureKey(dir);
+    const shadowKey = scene.getTankShadowTextureKey(activeDir);
     
     // Build 292: Check pool first
     const pooled = scene.tankShadowPool?.pop();
@@ -71,13 +82,13 @@ export function updateTankVisual(scene: any, args: TankVisualArgs) {
       if (scene.game.loop.frame % 3 === 0) {
         shadow.setPosition(shadowPos.x, shadowPos.y);
         if (shouldTick || sState.dir === undefined || sState.lod !== lod) {
-          const shadowKey = scene.getTankShadowTextureKey(dir);
+          const shadowKey = scene.getTankShadowTextureKey(activeDir);
           if (sState.key !== shadowKey) {
             shadow.setTexture(shadowKey);
             shadow.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
             sState.key = shadowKey;
           }
-          sState.dir = dir;
+          sState.dir = activeDir;
         }
         sState.lod = lod;
         

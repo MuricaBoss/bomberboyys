@@ -881,6 +881,20 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         const ou = this.room.state.units.get ? this.room.state.units.get(oid) : (this.room.state.units as any)?.[oid];
         if (!ou || (ou.hp ?? 0) <= 0) continue;
         if (myTeam && ou.team !== myTeam) continue;
+
+        // Build 448: Social Distance Relaxation
+        // If both units are idle and settled near their slots, skip repulsion
+        // to prevent vibration near destinations.
+        const myDistToTarget = toTLen; 
+        const ouX = Number(ou.x);
+        const ouY = Number(ou.y);
+        const ouTX = Number(ou.targetX ?? ouX);
+        const ouTY = Number(ou.targetY ?? ouY);
+        const ouDistToTarget = Math.sqrt((ouX - ouTX)**2 + (ouY - ouTY)**2);
+
+        if (u.aiState === "idle" && ou.aiState === "idle" && myDistToTarget < 12 && ouDistToTarget < 12) {
+            continue;
+        }
         
         const ors = this.localUnitRenderState.get(oid);
         const ox = Number(ors?.x ?? ou.x);

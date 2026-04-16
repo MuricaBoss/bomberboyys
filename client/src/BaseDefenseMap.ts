@@ -534,7 +534,6 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     for (const p of samples) {
       const gx = Math.floor(p.x / TILE_SIZE);
       const gy = Math.floor(p.y / TILE_SIZE);
-      if (this.tileAt(gx, gy) !== 0) return false;
       const sid = this.getStructureIdAt(gx, gy);
       if (sid && sid !== _ignoreStructureId) return false;
       if (this.hasCoreAt(gx, gy)) return false;
@@ -1451,7 +1450,8 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       if (!unit || (unit.hp ?? 0) <= 0) continue;
       maxRadius = Math.max(maxRadius, this.localFormationRadiusForUnit(unit));
     }
-    return Math.max(TILE_SIZE * 0.8, maxRadius * 2 + 2);
+    // Build 450: Increase slots
+    return Math.max(TILE_SIZE * 1.0, maxRadius * 3 + 4);
   }
 
   localFormationSlot(centerX: number, centerY: number, gridIndex: number, _totalUnits: number, spacing: number, angle = 0) {
