@@ -333,9 +333,32 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const goalGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
     const now = Date.now();
     
-    // Build 454: Re-implemented Shared Multi-Lane Pathfinding (1-5 lanes)
-    // For 100 units, we generate ~5 shared paths. Each unit joins the path at the nearest forward point.
+    // Build 455: Restore Build 390 Synchronous Path Generation (1-5 lanes)
+    // We calculate paths immediately on click to avoid update-loop spikes.
     const laneCount = Math.max(1, Math.min(5, Math.ceil(ids.length / 20)));
+    const laneGap = firstU?.type === "tank" ? 64 : 32;
+    const sharedPathBaseKey = this.getSharedMovePathKey(now, sharedPathCenterX, sharedPathCenterY, ids.length);
+    
+    // Perpendicular vector for parallel lanes
+    const wayDirX = sharedPathCenterX - groupCX;
+    const wayDirY = sharedPathCenterY - groupCY;
+    const wayLen = Math.hypot(wayDirX, wayDirY);
+    const pnx = wayLen > 1 ? -wayDirY / wayLen : 0;
+    const pny = wayLen > 1 ? wayDirX / wayLen : 0;
+
+    for (let l = 0; l < laneCount; l++) {
+      const lOffset = (l - (laneCount - 1) / 2) * laneGap;
+      const lStartGX = Math.floor((groupCX + pnx * lOffset) / TILE_SIZE);
+      const lStartGY = Math.floor((groupCY + pny * lOffset) / TILE_SIZE);
+      const lEndGX = Math.floor((sharedPathCenterX + pnx * lOffset) / TILE_SIZE);
+      const lEndGY = Math.floor((sharedPathCenterY + pny * lOffset) / TILE_SIZE);
+      
+      const lPath = this.findPath(lStartGX, lStartGY, lEndGX, lEndGY, false, undefined, pathRadius);
+      if (lPath && lPath.length > 0) {
+        this.sharedPathCache.set(`${sharedPathBaseKey}_L${l}`, lPath);
+      }
+    }
+
     this.lastMoveLeaderCount = laneCount;
     this.lastMoveFollowerCount = ids.length;
     this.lastMoveSubgroupSize = ids.length;
@@ -358,14 +381,15 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       if (!slot) continue;
 
       const laneIdx = priority % laneCount;
-      const sharedPathKey = `cmd_${now}_L${laneIdx}`;
+      const myLanePathKey = `${sharedPathBaseKey}_L${laneIdx}`;
+      const hasLanePath = this.sharedPathCache.has(myLanePathKey);
 
       this.localUnitTargetOverride.set(entry.id, {
         x: slot.x,
         y: slot.y,
         setAt: now,
         isAuto: isAutoSegment,
-        sharedPathKey,
+        sharedPathKey: hasLanePath ? myLanePathKey : undefined,
         sharedPathCenterX,
         sharedPathCenterY,
         sharedPathOffsetX: slot.x - sharedPathCenterX,
