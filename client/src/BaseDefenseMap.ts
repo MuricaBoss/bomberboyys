@@ -1196,7 +1196,10 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         const forwardDot = (cells[i].x * TILE_SIZE + TILE_SIZE / 2 - ux) * gdNX
           + (cells[i].y * TILE_SIZE + TILE_SIZE / 2 - uy) * gdNY;
           
-        if (forwardDot >= -TILE_SIZE * 0.5 && d < bestForwardDist) {
+        // Build 459: Stricter forward-only rule for path entry (searchStart === 0)
+        const dotThreshold = (searchStart === 0) ? 0 : -TILE_SIZE * 0.5;
+
+        if (forwardDot >= dotThreshold && d < bestForwardDist) {
           bestForwardDist = d;
           bestForwardIdx = i;
         }
