@@ -553,11 +553,14 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
         const dy = nextTargetY - unit.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         
-        // Build 442/443: Stuck check for server-guided units
+        // Build 442/443/478: Stuck check for server-guided units. 
+        // Build 478: Increased leniency (8s instead of 2s) for player-owned units to prevent stalling in dense squads.
         if (dist < 60) {
             if (!this.nearTargetSince.has(id)) this.nearTargetSince.set(id, now);
             const stuckMs = now - (this.nearTargetSince.get(id) ?? now);
-            if (stuckMs > 2000) {
+            const isPlayerUnit = !!unit.ownerId;
+            const threshold = isPlayerUnit ? 8000 : 2000;
+            if (stuckMs > threshold) {
                 unit.x = unit.x;
                 unit.y = unit.y;
                 unit.targetX = unit.x;

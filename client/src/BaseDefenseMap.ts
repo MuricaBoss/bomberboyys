@@ -891,6 +891,13 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       this.room.state.units.forEach((u: any) => {
         if (u.team !== myTeam || (u.hp ?? 0) <= 0) return;
         const unitId = String(u.id || "");
+        
+        // Build 478: Vision Optimization. 
+        // Only Squad Leaders and standalone units clear FOW. 
+        // Followers skip vision calculation as they are in the same footprint.
+        const isFollower = this.localUnitFollowState.has(unitId);
+        if (isFollower) return;
+
         const isLocalOwned = String(u.ownerId || "") === this.currentPlayerId;
         const localRender = isLocalOwned ? this.localUnitRenderState.get(unitId) : null;
         const t = String(u.type || "");
