@@ -1139,7 +1139,7 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     const useRadius = radiusOverride ?? unitRadius;
     const radiusBucket = Math.max(4, Math.round(useRadius / 4) * 4);
 
-    const isJammed = this.localUnitGhostMode?.has(unitId) ?? false;
+    let isJammed = this.localUnitGhostMode?.has(unitId) ?? false;
     const hasSharedPath = !isJammed && !!unit.sharedPathKey;
 
     let cache = this.unitClientPathCache.get(unitId);
