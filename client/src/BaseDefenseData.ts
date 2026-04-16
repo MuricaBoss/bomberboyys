@@ -847,13 +847,14 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   }
 
   getStructureFootprint(type: string) {
+    const t = String(type || "").toLowerCase();
     if (
-      type === "ore_refinery"
-      || type === "solar_panel"
-      || type === "barracks"
-      || type === "war_factory"
-      || type === "factory"
-      || type === "vaina"
+      t === "ore_refinery"
+      || t === "solar_panel"
+      || t === "barracks"
+      || t === "war_factory"
+      || t === "factory"
+      || t === "vaina"
     ) {
       return { width: 3, height: 3 };
     }

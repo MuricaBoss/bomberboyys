@@ -417,7 +417,7 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         if (!s || (s.hp ?? 0) <= 0) return;
         const sgx = Math.floor(Number(s.x) / TILE_SIZE);
         const sgy = Math.floor(Number(s.y) / TILE_SIZE);
-        const type = String(s.type || s.id || ""); // Fallback to id if type is missing
+        const type = String(s.type || s.id || "").toLowerCase();
         this.forEachStructureFootprintCell(sgx, sgy, type, (cx, cy) => {
           if (cx >= 0 && cx < this.gridW && cy >= 0 && cy < this.gridH) {
             this.obstacleGrid![cy * this.gridW + cx] = 1;
