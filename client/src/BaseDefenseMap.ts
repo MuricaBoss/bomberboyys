@@ -1282,7 +1282,10 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         const dotThreshold = (searchStart === 0 || isJammed) ? 4 : -TILE_SIZE * 0.4;
 
         const wpDistToGoal = Math.hypot(centerX - wx, centerY - wy);
-        const isCloser = (searchStart === 0) ? (wpDistToGoal < distToGoal - 4) : true;
+        
+        // Build 473: Relax 'isCloser' for persistent paths. 
+        // This stops units from walking BACKWARDS to reach index 0 if they are slightly ahead of it.
+        const isCloser = (unit.persistentPathId || searchStart > 0) ? true : (wpDistToGoal < distToGoal - 4);
 
         if (forwardDot >= dotThreshold && isCloser && d < bForwardDist) {
           bForwardDist = d;
@@ -1301,6 +1304,8 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       }
 
       if (bForwardIdx === -1) {
+        // Build 473: If we found no forward node, don't just stay at index 0. 
+        // Use the closest node available (minD).
         bIdx = Math.max(bIdx, searchStart);
       } else {
         bIdx = bForwardIdx;
