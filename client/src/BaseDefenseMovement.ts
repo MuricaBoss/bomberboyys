@@ -407,8 +407,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const serverUnit = this.room?.state?.units?.get?.(entry.id) ?? this.room?.state?.units?.[entry.id];
       if (serverUnit) {
         serverUnit.manualUntil = 0;
-        // Build 459: Apply an initial velocity 'nudge' towards the target to prevent stickiness
-        const sim = this.simUnits.get(entry.id);
+        // Build 460: Apply an initial velocity 'nudge' towards the target to prevent stickiness
+        const sim = this.localUnitRenderState.get(entry.id);
         if (sim) {
           const dx = slot.x - sim.x;
           const dy = slot.y - sim.y;
