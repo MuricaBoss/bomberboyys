@@ -132,6 +132,33 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     return { x: worldX, y: worldY };
   }
 
+  getVisiblePathShortcut(
+    cache: { cells: { x: number; y: number }[]; idx: number },
+    ux: number,
+    uy: number,
+    tx: number,
+    ty: number,
+    manualTarget: LocalManualTarget | null,
+    useRadius: number
+  ) {
+    const maxLookAhead = 8;
+    let best: { x: number; y: number } | null = null;
+    const maxIdx = Math.min(cache.cells.length - 1, cache.idx + maxLookAhead);
+    for (let i = maxIdx; i >= cache.idx; i--) {
+      const cell = cache.cells[i];
+      const baseWorld = this.gridToWorld(cell.x, cell.y);
+      const nextCell = i < cache.cells.length - 1 ? cache.cells[i + 1] : { x: Math.floor(tx / TILE_SIZE), y: Math.floor(ty / TILE_SIZE) };
+      const nextWorld = this.gridToWorld(nextCell.x, nextCell.y);
+      const distToGoal = Math.hypot(tx - ux, ty - uy);
+      const world = this.getLaneAdjustedWaypoint(baseWorld, nextWorld, manualTarget, distToGoal, useRadius);
+      if (!this.lineOfSightClear(ux, uy, world.x, world.y)) continue;
+      cache.idx = i;
+      best = world;
+      break;
+    }
+    return best;
+  }
+
   shouldDeferPathRecalc(unitId: string, unitCount: number, cache: { updatedAt: number } | undefined, now: number, recalcIntervalMs: number) {
     if (!cache) return false;
     const stride = this.getUnitPathFrameStride(unitCount);
@@ -551,6 +578,9 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     if (!cache) return null;
     cache.updatedAt = now;
 
+    const shortcut = this.getVisiblePathShortcut(cache, ux, uy, tx, ty, manualTarget, useRadius);
+    if (shortcut) return shortcut;
+
     while (cache.idx < cache.cells.length) {
       const cell = cache.cells[cache.idx];
       const baseWorld = this.gridToWorld(cell.x, cell.y);
@@ -851,7 +881,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const tuner = this.physicsTuner;
       const unitCount = Number((this.room?.state?.units as { size?: number } | undefined)?.size ?? 0);
       const crowdScale = unitCount >= 80 ? 1.15 : 1.8;
-      const searchRadius = tuner ? tuner.repulsionRange * crowdScale : (unitCount >= 80 ? TILE_SIZE * 4.2 : TILE_SIZE * 6.0);
+      const searchRadius = tuner ? tuner.repulsionRange * crowdScale : (unitCount >= 80 ? TILE_SIZE * 3.1 : TILE_SIZE * 4.0);
       const neighborLimit = this.getCrowdRepulsionNeighborLimit(unitCount);
       const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
       let processedNeighbors = 0;
@@ -883,7 +913,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         let dist = Math.hypot(dx, dy);
 
         const uType = String(u.type || "");
-        const padding = uType === "tank" ? (tuner?.tankRepulsionRange ?? 120) : (tuner?.soldierRepulsionRange ?? 48);
+        const padding = uType === "tank" ? (tuner?.tankRepulsionRange ?? 84) : (tuner?.soldierRepulsionRange ?? 30);
         const minDist = myRadius + oRadius + padding;
         if (dist >= minDist) continue;
 
@@ -894,11 +924,11 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           dist = 0.1;
         }
 
-        const baseForce = tuner ? tuner.repulsionForce : 100000;
+        const baseForce = tuner ? tuner.repulsionForce : 22000;
         const ratio = 1.0 - dist / minDist;
         let pushStrength = ratio * ratio * baseForce;
-        if (dist < (myRadius + oRadius)) pushStrength *= 2.0;
-        else if (ratio > 0.5) pushStrength *= 1.3;
+        if (dist < (myRadius + oRadius)) pushStrength *= 1.35;
+        else if (ratio > 0.5) pushStrength *= 1.1;
 
         steerForce.x += (dx / dist) * pushStrength;
         steerForce.y += (dy / dist) * pushStrength;
@@ -910,7 +940,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const gy = Math.floor(s.y / TILE_SIZE);
       const tuner = this.physicsTuner;
       const wallR = tuner ? tuner.wallAvoidanceRange : this.localUnitBodyRadius(u) + TILE_SIZE * 1.8;
-      const baseWForce = tuner ? tuner.wallAvoidanceForce : 35000;
+      const baseWForce = tuner ? tuner.wallAvoidanceForce : 18000;
 
       for (let dx = -2; dx <= 2; dx++) {
         for (let dy = -2; dy <= 2; dy++) {
