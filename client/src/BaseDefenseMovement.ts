@@ -351,8 +351,15 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const startGrid = this.worldToGrid(pathStartCX, pathStartCY);
     const goalGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
     
-    const masterPath = this.findPath(startGrid.gx, startGrid.gy, goalGrid.gx, goalGrid.gy, false, undefined, pathRadius);
-    if (!masterPath || masterPath.length === 0) return;
+    const gridPath = this.findPath(startGrid.gx, startGrid.gy, goalGrid.gx, goalGrid.gy, false, undefined, pathRadius);
+    if (!gridPath || gridPath.length === 0) return;
+
+    // Build 486: Convert grid nodes (e.g. 10) to world pixels (e.g. 320)
+    // This allows lOffset (16px) to be added correctly in world scale.
+    const masterPath = gridPath.map(node => ({
+        x: node.x * TILE_SIZE + TILE_SIZE / 2,
+        y: node.y * TILE_SIZE + TILE_SIZE / 2
+    }));
 
     const laneKeys: string[] = [];
     const laneCount = Math.max(1, Math.min(3, Math.ceil(ids.length / 25)));
