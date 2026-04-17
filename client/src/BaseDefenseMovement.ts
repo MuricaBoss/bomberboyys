@@ -235,9 +235,10 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     uy: number,
     unitRadius: number
   ) {
-    if (!cache || cache.idx >= cache.cells.length) return null;
-    const maxIdx = Math.min(cache.cells.length - 1, cache.idx + 3);
-    for (let i = cache.idx; i <= maxIdx; i++) {
+    if (!cache || cache.cells.length <= 0) return null;
+    const startIdx = Math.max(0, Math.min(cache.idx, cache.cells.length - 1));
+    const maxIdx = Math.min(cache.cells.length - 1, startIdx + 10);
+    for (let i = startIdx; i <= maxIdx; i++) {
       const cell = cache.cells[i];
       if (!this.isPathWalkableForRadius(cell.x, cell.y, unitRadius)) continue;
       const world = this.gridToWorld(cell.x, cell.y);
@@ -245,6 +246,22 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         cache.idx = i;
         return cache;
       }
+    }
+    let bestIdx = -1;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < cache.cells.length; i++) {
+      const cell = cache.cells[i];
+      if (!this.isPathWalkableForRadius(cell.x, cell.y, unitRadius)) continue;
+      const world = this.gridToWorld(cell.x, cell.y);
+      const dist = Math.hypot(world.x - ux, world.y - uy);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx >= 0 && bestDist <= TILE_SIZE * 4.5) {
+      cache.idx = bestIdx;
+      return cache;
     }
     return null;
   }
@@ -563,11 +580,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     let cache = this.unitClientPathCache.get(unitId);
     const resolvedGoal = this.resolvePathGoal(rawGoalGX, rawGoalGY, useRadius, tx, ty);
     if (!resolvedGoal) {
-      const fallbackCache = this.getUsableCachedWaypoint(cache, ux, uy, useRadius);
-      if (fallbackCache) {
-        fallbackCache.updatedAt = now;
-        return this.gridToWorld(fallbackCache.cells[fallbackCache.idx].x, fallbackCache.cells[fallbackCache.idx].y);
-      }
       this.unitClientPathCache.delete(unitId);
       return Math.hypot(tx - ux, ty - uy) <= TILE_SIZE * 0.9 ? { x: tx, y: ty } : null;
     }
@@ -609,18 +621,11 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         }
 
         if (!cells || cells.length === 0) {
-          const fallbackCache = this.getUsableCachedWaypoint(existingCache, ux, uy, useRadius);
-          if (fallbackCache) {
-            fallbackCache.updatedAt = now;
-            cache = fallbackCache;
-            this.unitClientPathCache.set(unitId, fallbackCache);
-          } else {
-            this.unitClientPathCache.delete(unitId);
-            if (Math.hypot(tx - ux, ty - uy) <= TILE_SIZE * 0.9) {
-              return { x: tx, y: ty };
-            }
-            return null;
+          this.unitClientPathCache.delete(unitId);
+          if (Math.hypot(tx - ux, ty - uy) <= TILE_SIZE * 0.9) {
+            return { x: tx, y: ty };
           }
+          return null;
         } else {
           const resolvedCells = cells;
 
@@ -630,13 +635,12 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           const dirNX = goalDirLen > 0.001 ? goalDirX / goalDirLen : 0;
           const dirNY = goalDirLen > 0.001 ? goalDirY / goalDirLen : 0;
 
-          const startSearchIdx = (existingCache && existingCache.cells === resolvedCells) ? existingCache.idx : 0;
-          let bestIdx = startSearchIdx;
+          let bestIdx = 0;
           let bestDistance = Number.POSITIVE_INFINITY;
           let bestForwardIdx = -1;
           let bestForwardDistance = Number.POSITIVE_INFINITY;
 
-          for (let i = startSearchIdx; i < resolvedCells.length; i++) {
+          for (let i = 0; i < resolvedCells.length; i++) {
             const world = this.gridToWorld(resolvedCells[i].x, resolvedCells[i].y);
             const dist = Math.hypot(world.x - ux, world.y - uy);
             const forwardDot = (world.x - ux) * dirNX + (world.y - uy) * dirNY;
@@ -1097,19 +1101,21 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       s.vy *= 0.8;
     }
 
-    const errX = Number(u.x) - s.x;
-    const errY = Number(u.y) - s.y;
-    const err = Math.hypot(errX, errY);
-    const threshold = 44;
-    const snap = 0.05;
-    if (err > threshold) {
-      s.x = Number(u.x);
-      s.y = Number(u.y);
-      s.vx = 0;
-      s.vy = 0;
-    } else {
-      s.x += errX * snap;
-      s.y += errY * snap;
+    if (!manualTarget) {
+      const errX = Number(u.x) - s.x;
+      const errY = Number(u.y) - s.y;
+      const err = Math.hypot(errX, errY);
+      const threshold = 44;
+      const snap = 0.05;
+      if (err > threshold) {
+        s.x = Number(u.x);
+        s.y = Number(u.y);
+        s.vx = 0;
+        s.vy = 0;
+      } else {
+        s.x += errX * snap;
+        s.y += errY * snap;
+      }
     }
 
     if (s.jamRefX === undefined || !moving) {
