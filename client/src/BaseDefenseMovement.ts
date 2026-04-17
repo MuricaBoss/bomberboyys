@@ -641,6 +641,13 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
 
       const distToWaypoint = Math.hypot(worldX - ux, worldY - uy);
 
+      const dirX = nextBaseWorld.x - baseWorld.x;
+      const dirY = nextBaseWorld.y - baseWorld.y;
+      const dirLen = Math.hypot(dirX, dirY);
+      const forwardNX = dirLen > 0.001 ? dirX / dirLen : 0;
+      const forwardNY = dirLen > 0.001 ? dirY / dirLen : 0;
+      const forwardDot = (ux - baseWorld.x) * forwardNX + (uy - baseWorld.y) * forwardNY;
+
       if (cache.idx < cache.cells.length - 1) {
         const nextNextCell = cache.idx + 2 < cache.cells.length
           ? cache.cells[cache.idx + 2]
@@ -653,7 +660,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           useRadius,
         );
         const distToNext = Math.hypot(nextWorld.x - ux, nextWorld.y - uy);
-        if (distToWaypoint <= TILE_SIZE * 0.38 || distToNext + TILE_SIZE * 0.12 < distToWaypoint) {
+        if (distToWaypoint <= TILE_SIZE * 0.75 || distToNext + TILE_SIZE * 0.12 < distToWaypoint || forwardDot >= -TILE_SIZE * 0.15) {
           cache.idx += 1;
           continue;
         }
@@ -661,7 +668,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         return { x: tx, y: ty };
       }
 
-      if (distToWaypoint <= TILE_SIZE * 0.38) {
+      if (distToWaypoint <= TILE_SIZE * 0.75 || forwardDot >= -TILE_SIZE * 0.15) {
         cache.idx += 1;
         continue;
       }
