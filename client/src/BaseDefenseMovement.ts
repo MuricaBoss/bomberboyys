@@ -20,6 +20,15 @@ type LocalManualTarget = {
   laneDepth: number;
 };
 
+type LocalUnitPathCache = {
+  goalGX: number;
+  goalGY: number;
+  radiusBucket: number;
+  cells: { x: number; y: number }[];
+  idx: number;
+  updatedAt: number;
+};
+
 export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
   pendingFinalPoses: any[] = [];
 
@@ -183,10 +192,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const hasBreakout = Number.isFinite(breakoutX) && Number.isFinite(breakoutY);
     const breakoutThreshold = Math.max(TILE_SIZE * 0.32, this.localUnitBodyRadius(unit) * 0.9 + 4);
     const breakoutDist = hasBreakout ? Math.hypot(breakoutX - ux, breakoutY - uy) : 0;
-    const finalDist = Math.hypot(override.x - ux, override.y - uy);
-    const useBreakout = hasBreakout
-      && breakoutDist > breakoutThreshold
-      && finalDist > breakoutThreshold * 1.35;
+    const useBreakout = hasBreakout && breakoutDist > breakoutThreshold;
 
     return {
       currentX: useBreakout ? breakoutX : override.x,
@@ -211,7 +217,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
   }
 
   localFormationSpacingForIds(unitIds: string[]) {
-    return 33;
     if (!this.room?.state?.units) return TILE_SIZE * 3.0;
 
     let maxRadius = TILE_SIZE * 0.42;
@@ -222,6 +227,26 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     }
 
     return Math.max(TILE_SIZE * 0.8, maxRadius * 2 + 2);
+  }
+
+  getUsableCachedWaypoint(
+    cache: LocalUnitPathCache | undefined,
+    ux: number,
+    uy: number,
+    unitRadius: number
+  ) {
+    if (!cache || cache.idx >= cache.cells.length) return null;
+    const maxIdx = Math.min(cache.cells.length - 1, cache.idx + 3);
+    for (let i = cache.idx; i <= maxIdx; i++) {
+      const cell = cache.cells[i];
+      if (!this.isPathWalkableForRadius(cell.x, cell.y, unitRadius)) continue;
+      const world = this.gridToWorld(cell.x, cell.y);
+      if (Math.hypot(world.x - ux, world.y - uy) <= TILE_SIZE * 3.0) {
+        cache.idx = i;
+        return cache;
+      }
+    }
+    return null;
   }
 
   localFormationSlot(centerX: number, centerY: number, gridIndex: number, totalUnits: number, spacing: number, angle = 0) {
@@ -535,16 +560,21 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const recalcIntervalMs = this.getUnitPathRecalcIntervalMs(unitCount);
     this.pruneSharedMovePathCache(now);
 
+    let cache = this.unitClientPathCache.get(unitId);
     const resolvedGoal = this.resolvePathGoal(rawGoalGX, rawGoalGY, useRadius, tx, ty);
     if (!resolvedGoal) {
+      const fallbackCache = this.getUsableCachedWaypoint(cache, ux, uy, useRadius);
+      if (fallbackCache) {
+        fallbackCache.updatedAt = now;
+        return this.gridToWorld(fallbackCache.cells[fallbackCache.idx].x, fallbackCache.cells[fallbackCache.idx].y);
+      }
       this.unitClientPathCache.delete(unitId);
-      return null;
+      return Math.hypot(tx - ux, ty - uy) <= TILE_SIZE * 0.9 ? { x: tx, y: ty } : null;
     }
 
     const goalGX = resolvedGoal.gx;
     const goalGY = resolvedGoal.gy;
     const manualTarget = this.getLocalUnitManualTarget(unitId);
-    let cache = this.unitClientPathCache.get(unitId);
 
     const nextCell = cache && cache.idx < cache.cells.length
       ? cache.cells[Math.max(0, Math.min(cache.idx, cache.cells.length - 1))]
@@ -568,7 +598,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       } else {
         const sharedPathKey = this.getSharedMovePathKey(startGX, startGY, goalGX, goalGY, radiusBucket, unitCount);
         const sharedEntry = sharedPathKey ? this.sharedMovePathCache.get(sharedPathKey) : null;
-        let cells = sharedEntry?.cells ?? null;
+        let cells: { x: number; y: number }[] | null = sharedEntry?.cells ?? null;
         if (!cells || cells.length === 0) {
           cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
           if (sharedPathKey && cells && cells.length > 0) {
@@ -579,48 +609,57 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         }
 
         if (!cells || cells.length === 0) {
-          this.unitClientPathCache.delete(unitId);
-          if (Math.hypot(tx - ux, ty - uy) <= TILE_SIZE * 0.9) {
-            return { x: tx, y: ty };
+          const fallbackCache = this.getUsableCachedWaypoint(existingCache, ux, uy, useRadius);
+          if (fallbackCache) {
+            fallbackCache.updatedAt = now;
+            cache = fallbackCache;
+            this.unitClientPathCache.set(unitId, fallbackCache);
+          } else {
+            this.unitClientPathCache.delete(unitId);
+            if (Math.hypot(tx - ux, ty - uy) <= TILE_SIZE * 0.9) {
+              return { x: tx, y: ty };
+            }
+            return null;
           }
-          return null;
+        } else {
+          const resolvedCells = cells;
+
+          const goalDirX = tx - ux;
+          const goalDirY = ty - uy;
+          const goalDirLen = Math.hypot(goalDirX, goalDirY);
+          const dirNX = goalDirLen > 0.001 ? goalDirX / goalDirLen : 0;
+          const dirNY = goalDirLen > 0.001 ? goalDirY / goalDirLen : 0;
+
+          const startSearchIdx = (existingCache && existingCache.cells === resolvedCells) ? existingCache.idx : 0;
+          let bestIdx = startSearchIdx;
+          let bestDistance = Number.POSITIVE_INFINITY;
+          let bestForwardIdx = -1;
+          let bestForwardDistance = Number.POSITIVE_INFINITY;
+
+          for (let i = startSearchIdx; i < resolvedCells.length; i++) {
+            const world = this.gridToWorld(resolvedCells[i].x, resolvedCells[i].y);
+            const dist = Math.hypot(world.x - ux, world.y - uy);
+            const forwardDot = (world.x - ux) * dirNX + (world.y - uy) * dirNY;
+            if (dist < bestDistance) {
+              bestDistance = dist;
+              bestIdx = i;
+            }
+            if (forwardDot >= -TILE_SIZE * 0.2 && dist < bestForwardDistance) {
+              bestForwardDistance = dist;
+              bestForwardIdx = i;
+            }
+          }
+
+          cache = {
+            goalGX,
+            goalGY,
+            radiusBucket,
+            cells: resolvedCells,
+            idx: bestForwardIdx >= 0 ? bestForwardIdx : bestIdx,
+            updatedAt: now,
+          };
+          this.unitClientPathCache.set(unitId, cache);
         }
-
-        const goalDirX = tx - ux;
-        const goalDirY = ty - uy;
-        const goalDirLen = Math.hypot(goalDirX, goalDirY);
-        const dirNX = goalDirLen > 0.001 ? goalDirX / goalDirLen : 0;
-        const dirNY = goalDirLen > 0.001 ? goalDirY / goalDirLen : 0;
-        
-        const startSearchIdx = (existingCache && existingCache.cells === cells) ? existingCache.idx : 0;
-        let bestIdx = startSearchIdx;
-        let bestDistance = Number.POSITIVE_INFINITY;
-        let bestForwardIdx = -1;
-        let bestForwardDistance = Number.POSITIVE_INFINITY;
-
-        for (let i = startSearchIdx; i < cells.length; i++) {
-          const world = this.gridToWorld(cells[i].x, cells[i].y);
-          const dist = Math.hypot(world.x - ux, world.y - uy);
-          const forwardDot = (world.x - ux) * dirNX + (world.y - uy) * dirNY;
-          if (dist < bestDistance) {
-            bestDistance = dist;
-            bestIdx = i;
-          }
-          if (forwardDot >= -TILE_SIZE * 0.2 && dist < bestForwardDistance) {
-            bestForwardDistance = dist;
-            bestForwardIdx = i;
-          }
-        }
-
-        cache = {
-          goalGX,
-          goalGY,
-          radiusBucket,
-          cells,
-          idx: bestForwardIdx >= 0 ? bestForwardIdx : bestIdx,
-          updatedAt: now,
-        };
-        this.unitClientPathCache.set(unitId, cache);
       }
     }
 
@@ -647,6 +686,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const forwardNX = dirLen > 0.001 ? dirX / dirLen : 0;
       const forwardNY = dirLen > 0.001 ? dirY / dirLen : 0;
       const forwardDot = (ux - baseWorld.x) * forwardNX + (uy - baseWorld.y) * forwardNY;
+      const passedCurrentCell = forwardDot >= TILE_SIZE * 0.28;
 
       if (cache.idx < cache.cells.length - 1) {
         const nextNextCell = cache.idx + 2 < cache.cells.length
@@ -660,7 +700,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           useRadius,
         );
         const distToNext = Math.hypot(nextWorld.x - ux, nextWorld.y - uy);
-        if (distToWaypoint <= TILE_SIZE * 0.75 || distToNext + TILE_SIZE * 0.12 < distToWaypoint || forwardDot >= -TILE_SIZE * 0.15) {
+        if (distToWaypoint <= TILE_SIZE * 0.55 || distToNext + TILE_SIZE * 0.18 < distToWaypoint || passedCurrentCell) {
           cache.idx += 1;
           continue;
         }
@@ -668,7 +708,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         return { x: tx, y: ty };
       }
 
-      if (distToWaypoint <= TILE_SIZE * 0.75 || forwardDot >= -TILE_SIZE * 0.15) {
+      if (distToWaypoint <= TILE_SIZE * 0.55 || passedCurrentCell) {
         cache.idx += 1;
         continue;
       }
