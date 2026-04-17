@@ -16,6 +16,8 @@ type LocalManualTarget = {
   directSteer: false;
   kind: "override";
   leaderAlive: true;
+  laneLateral: number;
+  laneDepth: number;
 };
 
 export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
@@ -131,6 +133,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       directSteer: false,
       kind: "override" as const,
       leaderAlive: true,
+      laneLateral: Number(override.laneLateral ?? 0),
+      laneDepth: Number(override.laneDepth ?? 0),
     };
   }
 
@@ -321,12 +325,18 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     for (const id of ids) {
       const slot = assignments.get(id);
       if (!slot) continue;
+      const offsetX = slot.x - targetX;
+      const offsetY = slot.y - targetY;
+      const laneLateral = offsetX * (-Math.sin(angle)) + offsetY * Math.cos(angle);
+      const laneDepth = -(offsetX * Math.cos(angle) + offsetY * Math.sin(angle));
 
       this.localUnitTargetOverride.set(id, {
         x: slot.x,
         y: slot.y,
         setAt: now,
         isAuto: isAutoSegment,
+        laneLateral,
+        laneDepth,
       });
       this.localUnitMovePriority.set(id, priority++);
       this.localUnitPathRadiusOverride.set(id, this.localUnitBodyRadius(
@@ -408,6 +418,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
 
     const goalGX = resolvedGoal.gx;
     const goalGY = resolvedGoal.gy;
+    const manualTarget = this.getLocalUnitManualTarget(unitId);
     let cache = this.unitClientPathCache.get(unitId);
 
     const nextCell = cache && cache.idx < cache.cells.length
@@ -491,8 +502,46 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
 
     while (cache.idx < cache.cells.length) {
       const cell = cache.cells[cache.idx];
-      const world = this.gridToWorld(cell.x, cell.y);
-      const distToWaypoint = Math.hypot(world.x - ux, world.y - uy);
+      const baseWorld = this.gridToWorld(cell.x, cell.y);
+      let worldX = baseWorld.x;
+      let worldY = baseWorld.y;
+
+      if (manualTarget && cache.cells.length > 1) {
+        const nextCellForDir = cache.idx < cache.cells.length - 1
+          ? cache.cells[cache.idx + 1]
+          : { x: goalGX, y: goalGY };
+        const nextBaseWorld = this.gridToWorld(nextCellForDir.x, nextCellForDir.y);
+        const dirX = nextBaseWorld.x - baseWorld.x;
+        const dirY = nextBaseWorld.y - baseWorld.y;
+        const dirLen = Math.hypot(dirX, dirY);
+        const forwardX = dirLen > 0.001 ? dirX / dirLen : Math.cos(this.lastCommandGroupAngle);
+        const forwardY = dirLen > 0.001 ? dirY / dirLen : Math.sin(this.lastCommandGroupAngle);
+        const perpX = -forwardY;
+        const perpY = forwardX;
+        const distToGoal = Math.hypot(tx - ux, ty - uy);
+        const blend = Phaser.Math.Clamp((distToGoal - TILE_SIZE * 1.5) / Math.max(TILE_SIZE * 3, this.lastCommandGroupRadius), 0, 1);
+        let laneOffsetX = (manualTarget.laneLateral * perpX - manualTarget.laneDepth * forwardX) * blend;
+        let laneOffsetY = (manualTarget.laneLateral * perpY - manualTarget.laneDepth * forwardY) * blend;
+
+        if (this.clearanceGrid && this.clearanceGrid.length > 0) {
+          const gridIdx = Math.floor(baseWorld.y / TILE_SIZE) * this.gridW + Math.floor(baseWorld.x / TILE_SIZE);
+          const clearanceTiles = this.clearanceGrid[gridIdx];
+          if (clearanceTiles !== undefined) {
+            const maxOffset = Math.max(TILE_SIZE * 0.1, clearanceTiles * TILE_SIZE - useRadius - 6);
+            const offsetLen = Math.hypot(laneOffsetX, laneOffsetY);
+            if (offsetLen > maxOffset && offsetLen > 0.001) {
+              const scale = maxOffset / offsetLen;
+              laneOffsetX *= scale;
+              laneOffsetY *= scale;
+            }
+          }
+        }
+
+        worldX += laneOffsetX;
+        worldY += laneOffsetY;
+      }
+
+      const distToWaypoint = Math.hypot(worldX - ux, worldY - uy);
 
       if (cache.idx < cache.cells.length - 1) {
         const nextWorld = this.gridToWorld(cache.cells[cache.idx + 1].x, cache.cells[cache.idx + 1].y);
@@ -510,7 +559,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         continue;
       }
 
-      return world;
+      return { x: worldX, y: worldY };
     }
 
     return Math.hypot(tx - ux, ty - uy) > TILE_SIZE * 0.18 ? { x: tx, y: ty } : null;
