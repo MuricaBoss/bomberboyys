@@ -81,6 +81,57 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     return `sm:${startSX},${startSY}->${goalSX},${goalSY}:r${radiusBucket}`;
   }
 
+  getLaneAdjustedWaypoint(
+    baseWorld: { x: number; y: number },
+    nextBaseWorld: { x: number; y: number },
+    manualTarget: LocalManualTarget | null,
+    distToGoal: number,
+    useRadius: number
+  ) {
+    let worldX = baseWorld.x;
+    let worldY = baseWorld.y;
+    if (!manualTarget) return { x: worldX, y: worldY };
+
+    const dirX = nextBaseWorld.x - baseWorld.x;
+    const dirY = nextBaseWorld.y - baseWorld.y;
+    const dirLen = Math.hypot(dirX, dirY);
+    const forwardX = dirLen > 0.001 ? dirX / dirLen : Math.cos(this.lastCommandGroupAngle);
+    const forwardY = dirLen > 0.001 ? dirY / dirLen : Math.sin(this.lastCommandGroupAngle);
+    const perpX = -forwardY;
+    const perpY = forwardX;
+    const blend = Phaser.Math.Clamp((distToGoal - TILE_SIZE * 1.5) / Math.max(TILE_SIZE * 3, this.lastCommandGroupRadius), 0, 1);
+    let laneOffsetX = (manualTarget.laneLateral * perpX) * blend;
+    let laneOffsetY = (manualTarget.laneLateral * perpY) * blend;
+
+    if (this.clearanceGrid && this.clearanceGrid.length > 0) {
+      const gridIdx = Math.floor(baseWorld.y / TILE_SIZE) * this.gridW + Math.floor(baseWorld.x / TILE_SIZE);
+      const clearanceTiles = this.clearanceGrid[gridIdx];
+      if (clearanceTiles !== undefined) {
+        const maxOffset = Math.max(TILE_SIZE * 0.1, clearanceTiles * TILE_SIZE - useRadius - 6);
+        const offsetLen = Math.hypot(laneOffsetX, laneOffsetY);
+        if (offsetLen > maxOffset && offsetLen > 0.001) {
+          const scale = maxOffset / offsetLen;
+          laneOffsetX *= scale;
+          laneOffsetY *= scale;
+        }
+      }
+    }
+
+    let scale = 1;
+    while (scale > 0.2) {
+      const testX = baseWorld.x + laneOffsetX * scale;
+      const testY = baseWorld.y + laneOffsetY * scale;
+      if (this.canOccupyTerrainOnly(testX, testY, Math.max(TILE_SIZE * 0.18, useRadius * 0.9))) {
+        worldX = testX;
+        worldY = testY;
+        break;
+      }
+      scale *= 0.7;
+    }
+
+    return { x: worldX, y: worldY };
+  }
+
   shouldDeferPathRecalc(unitId: string, unitCount: number, cache: { updatedAt: number } | undefined, now: number, recalcIntervalMs: number) {
     if (!cache) return false;
     const stride = this.getUnitPathFrameStride(unitCount);
@@ -503,48 +554,28 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     while (cache.idx < cache.cells.length) {
       const cell = cache.cells[cache.idx];
       const baseWorld = this.gridToWorld(cell.x, cell.y);
-      let worldX = baseWorld.x;
-      let worldY = baseWorld.y;
-
-      if (manualTarget && cache.cells.length > 1) {
-        const nextCellForDir = cache.idx < cache.cells.length - 1
-          ? cache.cells[cache.idx + 1]
-          : { x: goalGX, y: goalGY };
-        const nextBaseWorld = this.gridToWorld(nextCellForDir.x, nextCellForDir.y);
-        const dirX = nextBaseWorld.x - baseWorld.x;
-        const dirY = nextBaseWorld.y - baseWorld.y;
-        const dirLen = Math.hypot(dirX, dirY);
-        const forwardX = dirLen > 0.001 ? dirX / dirLen : Math.cos(this.lastCommandGroupAngle);
-        const forwardY = dirLen > 0.001 ? dirY / dirLen : Math.sin(this.lastCommandGroupAngle);
-        const perpX = -forwardY;
-        const perpY = forwardX;
-        const distToGoal = Math.hypot(tx - ux, ty - uy);
-        const blend = Phaser.Math.Clamp((distToGoal - TILE_SIZE * 1.5) / Math.max(TILE_SIZE * 3, this.lastCommandGroupRadius), 0, 1);
-        let laneOffsetX = (manualTarget.laneLateral * perpX - manualTarget.laneDepth * forwardX) * blend;
-        let laneOffsetY = (manualTarget.laneLateral * perpY - manualTarget.laneDepth * forwardY) * blend;
-
-        if (this.clearanceGrid && this.clearanceGrid.length > 0) {
-          const gridIdx = Math.floor(baseWorld.y / TILE_SIZE) * this.gridW + Math.floor(baseWorld.x / TILE_SIZE);
-          const clearanceTiles = this.clearanceGrid[gridIdx];
-          if (clearanceTiles !== undefined) {
-            const maxOffset = Math.max(TILE_SIZE * 0.1, clearanceTiles * TILE_SIZE - useRadius - 6);
-            const offsetLen = Math.hypot(laneOffsetX, laneOffsetY);
-            if (offsetLen > maxOffset && offsetLen > 0.001) {
-              const scale = maxOffset / offsetLen;
-              laneOffsetX *= scale;
-              laneOffsetY *= scale;
-            }
-          }
-        }
-
-        worldX += laneOffsetX;
-        worldY += laneOffsetY;
-      }
+      const nextCellForDir = cache.idx < cache.cells.length - 1
+        ? cache.cells[cache.idx + 1]
+        : { x: goalGX, y: goalGY };
+      const nextBaseWorld = this.gridToWorld(nextCellForDir.x, nextCellForDir.y);
+      const distToGoal = Math.hypot(tx - ux, ty - uy);
+      const world = this.getLaneAdjustedWaypoint(baseWorld, nextBaseWorld, manualTarget, distToGoal, useRadius);
+      const worldX = world.x;
+      const worldY = world.y;
 
       const distToWaypoint = Math.hypot(worldX - ux, worldY - uy);
 
       if (cache.idx < cache.cells.length - 1) {
-        const nextWorld = this.gridToWorld(cache.cells[cache.idx + 1].x, cache.cells[cache.idx + 1].y);
+        const nextNextCell = cache.idx + 2 < cache.cells.length
+          ? cache.cells[cache.idx + 2]
+          : { x: goalGX, y: goalGY };
+        const nextWorld = this.getLaneAdjustedWaypoint(
+          nextBaseWorld,
+          this.gridToWorld(nextNextCell.x, nextNextCell.y),
+          manualTarget,
+          distToGoal,
+          useRadius,
+        );
         const distToNext = Math.hypot(nextWorld.x - ux, nextWorld.y - uy);
         if (distToWaypoint <= TILE_SIZE * 0.38 || distToNext + TILE_SIZE * 0.12 < distToWaypoint) {
           cache.idx += 1;
