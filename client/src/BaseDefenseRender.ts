@@ -105,11 +105,24 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
   }
 
   getTankTextureKeyByDir(dir: number) {
-    return this.getTankTextureKey(RTS_TANK_TEXTURE_BY_DIR[dir] ?? RTS_TANK_TEXTURE_KEYS.e);
+    return this.getTankBodyTextureKey();
   }
 
   getTankBaseTextureKeyByDir(dir: number) {
     return RTS_TANK_TEXTURE_BY_DIR[dir] ?? RTS_TANK_TEXTURE_KEYS.e;
+  }
+
+  getTankBodyTextureKey() {
+    return this.getTankTextureKey("tank_body_sheet");
+  }
+
+  getTankTurretTextureKey() {
+    return this.getTankTextureKey("tank_turret_sheet");
+  }
+
+  getTankFrameByDir(dir: number) {
+    const frameByDir = [3, 6, 5, 4, 7, 0, 1, 2];
+    return frameByDir[dir] ?? 3;
   }
 
   getSoldierSheetRowByDir(dir: number) {

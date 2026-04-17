@@ -23,10 +23,15 @@ export function ensureTankEntity(scene: any, current: unknown, x: number, y: num
   // Build 292: Check pool first
   const pooled = scene.tankPool?.pop();
   if (pooled) {
-    return pooled.setPosition(x, y).setVisible(true).setActive(true);
+    return pooled
+      .setPosition(x, y)
+      .setTexture(scene.getTankBodyTextureKey(), scene.getTankFrameByDir(dir))
+      .clearTint()
+      .setVisible(true)
+      .setActive(true);
   }
 
-  return scene.add.image(x, y, scene.getTankTextureKeyByDir(dir))
+  return scene.add.image(x, y, scene.getTankBodyTextureKey(), scene.getTankFrameByDir(dir))
     .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
     .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
 }

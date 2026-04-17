@@ -52,6 +52,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   unitHpTexts: { [id: string]: Phaser.GameObjects.Text } = {};
   unitShadowEntities: { [id: string]: Phaser.GameObjects.Ellipse } = {};
   tankShadowEntities: { [id: string]: Phaser.GameObjects.Image } = {};
+  tankTurretEntities: { [id: string]: Phaser.GameObjects.Image } = {};
   structureEntities: { [id: string]: Phaser.GameObjects.Rectangle | Phaser.GameObjects.Image } = {};
   structureTexts: { [id: string]: Phaser.GameObjects.Text } = {};
   structureHpTexts: { [id: string]: Phaser.GameObjects.Text } = {};

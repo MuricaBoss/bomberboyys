@@ -3,7 +3,7 @@ import { TILE_SIZE } from "./constants";
 export class PhysicsTuner {
   // Build 364: Real-time adjustable parameters
   public repulsionRange = 22; // Unit Spacing (px)
-  public repulsionForce = 1000; // Repel Stiffness
+  public repulsionForce = 5000; // Repel Stiffness
   public formationSpacing = 33; // Target Group Gap
   public syncThreshold = 44; // Sync Drift Limit
   public snapAmount = 0.05; // Server Sync %
@@ -19,8 +19,8 @@ export class PhysicsTuner {
 
   // Build 388: Separate Repulsion Spacing for Tanks vs Soldiers
   // Build 429: Reduced to prevent explosion at high speed
-  public soldierRepulsionRange = 15;
-  public tankRepulsionRange = 65;
+  public soldierRepulsionRange = 55;
+  public tankRepulsionRange = 118;
 
   private container: HTMLDivElement | null = null;
 

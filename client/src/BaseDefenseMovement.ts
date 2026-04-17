@@ -921,7 +921,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         let dist = Math.hypot(dx, dy);
 
         const uType = String(u.type || "");
-        const padding = uType === "tank" ? (tuner?.tankRepulsionRange ?? 65) : (tuner?.soldierRepulsionRange ?? 15);
+        const padding = uType === "tank" ? (tuner?.tankRepulsionRange ?? 118) : (tuner?.soldierRepulsionRange ?? 55);
         const minDist = myRadius + oRadius + padding;
         if (dist >= minDist) continue;
 
@@ -932,7 +932,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           dist = 0.1;
         }
 
-        const baseForce = tuner ? tuner.repulsionForce : 2800;
+        const baseForce = tuner ? tuner.repulsionForce : 5000;
         const ratio = 1.0 - dist / minDist;
         let pushStrength = ratio * ratio * baseForce;
         if (dist < (myRadius + oRadius)) pushStrength *= 1.15;

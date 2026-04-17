@@ -52,6 +52,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   // Build 292: Unit & Shadow Pools for stutter-free spawning
   public soldierPool: Phaser.GameObjects.Sprite[] = [];
   public tankPool: Phaser.GameObjects.Image[] = [];
+  public tankTurretPool: Phaser.GameObjects.Image[] = [];
   public tankShadowPool: Phaser.GameObjects.Image[] = [];
 
   constructor() {
@@ -86,14 +87,14 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.war_factory, tier), `${path}/buildings/war_factory.png`);
     this.load.image(getTieredTextureKey(RTS_BUILDING_TEXTURE_KEYS.vaina, tier), `${path}/buildings/vaina.webp`);
 
-    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.n, tier), `${path}/tanks/tank_ready_n.png`);
-    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.ne, tier), `${path}/tanks/tank_ready_ne.png`);
-    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.e, tier), `${path}/tanks/tank_ready_e.png`);
-    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.se, tier), `${path}/tanks/tank_ready_se.png`);
-    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.s, tier), `${path}/tanks/tank_ready_s.png`);
-    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.sw, tier), `${path}/tanks/tank_ready_sw.png`);
-    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.w, tier), `${path}/tanks/tank_ready_w.png`);
-    this.load.image(getTieredTextureKey(RTS_TANK_TEXTURE_KEYS.nw, tier), `${path}/tanks/tank_ready_nw.png`);
+    this.load.spritesheet(getTieredTextureKey("tank_body_sheet", tier), `${path}/tanks/tank_body_sheet.png`, {
+      frameWidth: 256,
+      frameHeight: 256,
+    });
+    this.load.spritesheet(getTieredTextureKey("tank_turret_sheet", tier), `${path}/tanks/tank_turret_sheet.png`, {
+      frameWidth: 256,
+      frameHeight: 256,
+    });
 
     this.load.spritesheet(getTieredTextureKey(RTS_SOLDIER_SPRITESHEET_KEYS.run, tier), `${path}/soldier/run.png`, {
       frameWidth: soldierRunFrameSize,
@@ -135,7 +136,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       const unit = state.units?.get ? state.units.get(id) : state.units?.[id];
       if (!unit) continue;
       if (entity instanceof Phaser.GameObjects.Image && unit.type === "tank") {
-        entity.setTexture(this.getTankTextureKeyByDir(this.unitFacing.get(id) ?? Number(unit.dir || 0)));
+        const dir = this.unitFacing.get(id) ?? Number(unit.dir || 0);
+        entity.setTexture(this.getTankBodyTextureKey(), this.getTankFrameByDir(dir));
       } else if (entity instanceof Phaser.GameObjects.Sprite && unit.type === "soldier") {
         const dir = this.unitFacing.get(id) ?? Number(unit.dir || 0);
         entity.setTexture(this.getSoldierSheetTextureKey("run"), this.getSoldierIdleFrame(dir));
@@ -1143,19 +1145,17 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
         this.soldierPool.push(s);
     }
     for (let i = 0; i < 50; i++) {
-        const t = this.add.image(0, 0, this.getTankTextureKeyByDir(2))
+        const t = this.add.image(0, 0, this.getTankBodyTextureKey(), this.getTankFrameByDir(2))
             .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
             .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE)
             .setVisible(false).setActive(false);
         this.tankPool.push(t);
-        
-        const sh = this.add.image(0, 0, this.getTankShadowTextureKey(2))
+
+        const turret = this.add.image(0, 0, this.getTankTurretTextureKey(), this.getTankFrameByDir(2))
             .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
-            .setAlpha(0.45)
-            .setTint(0x000000)
             .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE)
             .setVisible(false).setActive(false);
-        this.tankShadowPool.push(sh);
+        this.tankTurretPool.push(turret);
     }
   }
 
@@ -1627,6 +1627,13 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
           delete this.tankShadowEntities[id];
           shadow.setVisible(false).setActive(false);
           this.tankShadowPool.push(shadow);
+        }
+
+        const turret = this.tankTurretEntities[id];
+        if (turret) {
+          delete this.tankTurretEntities[id];
+          turret.setVisible(false).setActive(false);
+          this.tankTurretPool.push(turret);
         }
         
         this.unitFacing.delete(id);

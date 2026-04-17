@@ -1,6 +1,6 @@
 import Phaser from "phaser";
-import { RTS_TANK_DISPLAY_SIZE, RTS_TANK_ORIGIN_Y, WORLD_DEPTH_SHADOW_GAP, WORLD_DEPTH_UNIT_OFFSET } from "./constants";
-import { getUnitAnimationLod, shouldProcessUnitVisual, shouldRenderTankShadow } from "./BaseDefenseUnitVisualLod";
+import { RTS_TANK_DISPLAY_SIZE, RTS_TANK_ORIGIN_Y, WORLD_DEPTH_UNIT_OFFSET } from "./constants";
+import { getUnitAnimationLod, shouldProcessUnitVisual } from "./BaseDefenseUnitVisualLod";
 
 type TankVisualArgs = {
   camView: Phaser.Geom.Rectangle;
@@ -34,11 +34,16 @@ export function updateTankVisual(scene: any, args: TankVisualArgs) {
   const activeDir = debounceReady ? dir : (tState.dir ?? dir);
 
   if (shouldTick || needsInitialSync || tState.dir !== activeDir || tState.dead !== isDead || tState.lod !== lod) {
-    const texKey = scene.getTankTextureKeyByDir(activeDir);
+    const texKey = scene.getTankBodyTextureKey();
+    const frame = scene.getTankFrameByDir(activeDir);
     if (tState.key !== texKey) {
-      tank.setTexture(texKey);
+      tank.setTexture(texKey, frame);
       tank.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
       tState.key = texKey;
+    }
+    if (tState.frame !== frame) {
+      tank.setFrame(frame);
+      tState.frame = frame;
     }
     if (tState.dead !== isDead) {
       if (isDead) tank.setTint(0x444444);
@@ -50,56 +55,49 @@ export function updateTankVisual(scene: any, args: TankVisualArgs) {
     (tank as any)._rState = tState;
   }
 
-  const shadowPos = scene.getTankShadowPosition(tank, activeDir);
-  const shadowVisible = visible && shouldRenderTankShadow(scene, tank.x, tank.y, isSelected);
   let shadow = scene.tankShadowEntities[id];
-  if (!shadow && shadowVisible) {
-    const shadowKey = scene.getTankShadowTextureKey(activeDir);
-    
-    // Build 292: Check pool first
-    const pooled = scene.tankShadowPool?.pop();
-    if (pooled) {
-      shadow = pooled.setPosition(shadowPos.x, shadowPos.y).setTexture(shadowKey).setVisible(true).setActive(true);
-    } else {
-      shadow = scene.add.image(shadowPos.x, shadowPos.y, shadowKey)
-        .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
-        .setAlpha(0.45)
-        .setTint(0x000000)
-        .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
-    }
-    scene.tankShadowEntities[id] = shadow;
-    (shadow as any)._rState = { key: shadowKey };
+  if (shadow) {
+    shadow.setVisible(false).setActive(false);
+    delete scene.tankShadowEntities[id];
+    scene.tankShadowPool?.push(shadow);
   }
 
-  if (shadow) {
-    const sState = (shadow as any)._rState || {};
-    if (sState.vis !== shadowVisible) {
-      shadow.setVisible(shadowVisible);
-      sState.vis = shadowVisible;
-    }
-    if (shadowVisible) {
-      // Build 289: Throttle tank shadow position/depth updates to every 3rd frame.
-      if (scene.game.loop.frame % 3 === 0) {
-        shadow.setPosition(shadowPos.x, shadowPos.y);
-        if (shouldTick || sState.dir === undefined || sState.lod !== lod) {
-          const shadowKey = scene.getTankShadowTextureKey(activeDir);
-          if (sState.key !== shadowKey) {
-            shadow.setTexture(shadowKey);
-            shadow.setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
-            sState.key = shadowKey;
-          }
-          sState.dir = activeDir;
-        }
-        sState.lod = lod;
-        
-        // Build 288 Fix: Use a dedicated depth range for ALL shadows to ensure batching.
-        // Shadows are now separated from bodies in the Z-buffer, allowing 40 draw calls to merge into 2-16.
-        const shadowDepth = WORLD_DEPTH_UNIT_OFFSET - 2.0; // Force well below any possible body
-        scene.applyWorldDepth(shadow, tank.y, shadowDepth);
-      }
-    }
-    (shadow as any)._rState = sState;
+  const atkTargetId = scene.unitAttackTarget?.get?.(id) ?? scene.unitAttackTarget?.get(id);
+  const atkTarget = atkTargetId
+    ? (scene.room?.state?.units?.get ? scene.room.state.units.get(atkTargetId) : scene.room?.state?.units?.[atkTargetId])
+      || (scene.room?.state?.structures?.get ? scene.room.state.structures.get(atkTargetId) : scene.room?.state?.structures?.[atkTargetId])
+      || (scene.room?.state?.cores?.get ? scene.room.state.cores.get(atkTargetId) : scene.room?.state?.cores?.[atkTargetId])
+    : null;
+  const aimX = Number(atkTarget?.x ?? unit?.targetX ?? tank.x);
+  const aimY = Number(atkTarget?.y ?? unit?.targetY ?? tank.y);
+  const aimDir = Math.atan2(aimY - tank.y, aimX - tank.x);
+  const aimDir8 = scene.angleToDir8(aimDir);
+  let turret = scene.tankTurretEntities[id];
+  if (!turret) {
+    const pooled = scene.tankTurretPool?.pop();
+    turret = pooled
+      ? pooled
+        .setPosition(tank.x, tank.y)
+        .setTexture(scene.getTankTurretTextureKey(), scene.getTankFrameByDir(aimDir8))
+        .clearTint()
+        .setVisible(true)
+        .setActive(true)
+      : scene.add.image(tank.x, tank.y, scene.getTankTurretTextureKey(), scene.getTankFrameByDir(aimDir8))
+        .setOrigin(0.5, RTS_TANK_ORIGIN_Y)
+        .setDisplaySize(RTS_TANK_DISPLAY_SIZE, RTS_TANK_DISPLAY_SIZE);
+    scene.tankTurretEntities[id] = turret;
   }
+  const turretState = (turret as any)._rState || {};
+  if (turretState.frame !== scene.getTankFrameByDir(aimDir8) || turretState.dead !== isDead) {
+    turret.setTexture(scene.getTankTurretTextureKey(), scene.getTankFrameByDir(aimDir8));
+    if (isDead) turret.setTint(0x444444);
+    else turret.clearTint();
+    turretState.frame = scene.getTankFrameByDir(aimDir8);
+    turretState.dead = isDead;
+    (turret as any)._rState = turretState;
+  }
+  turret.setPosition(tank.x, tank.y).setVisible(visible);
+  scene.applyWorldDepth(turret, tank.y, WORLD_DEPTH_UNIT_OFFSET + 0.003);
 
   if (visible && camView.contains(tank.x, tank.y) && (shouldTick || isSelected || lod === "full")) {
     scene.maybeFireUnitProjectile(id, unit, tank, isFriendly, visible, dir, true);
