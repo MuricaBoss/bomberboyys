@@ -591,12 +591,14 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         const goalDirLen = Math.hypot(goalDirX, goalDirY);
         const dirNX = goalDirLen > 0.001 ? goalDirX / goalDirLen : 0;
         const dirNY = goalDirLen > 0.001 ? goalDirY / goalDirLen : 0;
-        let bestIdx = 0;
+        
+        const startSearchIdx = (existingCache && existingCache.cells === cells) ? existingCache.idx : 0;
+        let bestIdx = startSearchIdx;
         let bestDistance = Number.POSITIVE_INFINITY;
         let bestForwardIdx = -1;
         let bestForwardDistance = Number.POSITIVE_INFINITY;
 
-        for (let i = 0; i < cells.length; i++) {
+        for (let i = startSearchIdx; i < cells.length; i++) {
           const world = this.gridToWorld(cells[i].x, cells[i].y);
           const dist = Math.hypot(world.x - ux, world.y - uy);
           const forwardDot = (world.x - ux) * dirNX + (world.y - uy) * dirNY;
