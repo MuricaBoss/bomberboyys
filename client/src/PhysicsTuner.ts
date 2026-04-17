@@ -1,0 +1,178 @@
+import { TILE_SIZE } from "./constants";
+
+export class PhysicsTuner {
+  // Build 364: Real-time adjustable parameters
+  public repulsionRange = 22; // Unit Spacing (px)
+  public repulsionForce = 5000; // Repel Stiffness
+  public formationSpacing = 33; // Target Group Gap
+  public syncThreshold = 44; // Sync Drift Limit
+  public snapAmount = 0.05; // Server Sync %
+  public wallAvoidanceRange = 4; // Obstacle Warn Dist
+  public wallAvoidanceForce = 1504; // Obstacle Repel Power
+  public pathSpread = 18; // Lane Width on Paths
+
+  // Build 385: Separate Lane Management for Tanks vs Soldiers
+  public soldierLaneCount = 3;
+  public soldierLaneSpacing = 44;
+  public tankLaneCount = 3;
+  public tankLaneSpacing = 107;
+
+  // Build 388: Separate Repulsion Spacing for Tanks vs Soldiers
+  // Build 429: Reduced to prevent explosion at high speed
+  public soldierRepulsionRange = 55;
+  public tankRepulsionRange = 118;
+
+  private container: HTMLDivElement | null = null;
+
+  constructor() {
+    if (typeof document !== "undefined") {
+      this.createToggle();
+      this.createUI();
+    }
+  }
+
+  private createUI() {
+    this.container = document.createElement("div");
+    Object.assign(this.container.style, {
+      position: "fixed",
+      top: "120px",
+      right: "20px",
+      width: "240px",
+      padding: "16px",
+      backgroundColor: "rgba(0, 0, 0, 0.75)",
+      backdropFilter: "blur(10px)",
+      color: "#fff",
+      fontFamily: "'Outfit', sans-serif, Arial",
+      fontSize: "12px",
+      borderRadius: "12px",
+      border: "1px solid rgba(255, 255, 255, 0.1)",
+      zIndex: "9999",
+      pointerEvents: "auto",
+      boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+      display: "none", // Build 392: Hidden by default
+      flexDirection: "column",
+      gap: "12px"
+    });
+
+    this.container.innerHTML = `
+      <div style="font-weight: 700; font-size: 14px; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px;">PHYSICS TUNER</div>
+      ${this.createSliderHTML("Unit Spacing (px)", "repulsionRange", 10, 250, Math.round(this.repulsionRange))}
+      ${this.createSliderHTML("Repel Stiffness", "repulsionForce", 5000, 400000, this.repulsionForce)}
+      ${this.createSliderHTML("Target Group Gap", "spacing", 10, 200, Math.round(this.formationSpacing))}
+      ${this.createSliderHTML("Sync Drift Limit", "syncLimit", 10, 300, Math.round(this.syncThreshold))}
+      ${this.createSliderHTML("Server Sync %", "snap", 1, 100, Math.round(this.snapAmount * 100))}
+      ${this.createSliderHTML("Lane Width on Paths", "pathSpread", 0, 200, this.pathSpread)}
+      ${this.createSliderHTML("Obstacle Warn Dist", "wallRange", 0, 200, Math.round(this.wallAvoidanceRange))}
+      ${this.createSliderHTML("Obstacle Repel Power", "wallForce", 100, 50000, this.wallAvoidanceForce)}
+      
+      <div style="font-weight: 700; font-size: 11px; margin-top: 6px; border-bottom: 1px solid rgba(255,255,255,0.1); color: #4ade80;">SOLDIER FORMATION</div>
+      ${this.createSliderHTML("Soldier Spacing", "sSpace", 10, 200, this.soldierRepulsionRange)}
+      ${this.createSliderHTML("Soldier Lanes", "sLanes", 1, 8, this.soldierLaneCount)}
+      ${this.createSliderHTML("Soldier Lane Gap", "sGap", 8, 128, this.soldierLaneSpacing)}
+
+      <div style="font-weight: 700; font-size: 11px; margin-top: 6px; border-bottom: 1px solid rgba(255,255,255,0.1); color: #60a5fa;">TANK FORMATION</div>
+      ${this.createSliderHTML("Tank Spacing", "tSpace", 10, 250, this.tankRepulsionRange)}
+      ${this.createSliderHTML("Tank Lanes", "tLanes", 1, 5, this.tankLaneCount)}
+      ${this.createSliderHTML("Tank Lane Gap", "tGap", 16, 200, this.tankLaneSpacing)}
+
+      <div style="font-size: 10px; opacity: 0.6; text-align: center; margin-top: 4px;">Adjust values to see real-time impact</div>
+    `;
+
+    document.body.appendChild(this.container);
+
+    this.setupListeners();
+  }
+
+  private createToggle() {
+    const btn = document.createElement("div");
+    btn.id = "physics-tuner-toggle";
+    Object.assign(btn.style, {
+      position: "fixed",
+      top: "80px",
+      right: "20px",
+      padding: "8px 12px",
+      backgroundColor: "rgba(0, 0, 0, 0.6)",
+      backdropFilter: "blur(10px)",
+      color: "#4ade80",
+      fontFamily: "'Outfit', sans-serif, Arial",
+      fontSize: "11px",
+      fontWeight: "700",
+      letterSpacing: "1px",
+      borderRadius: "8px",
+      border: "1px solid rgba(74, 222, 128, 0.3)",
+      zIndex: "10000",
+      cursor: "pointer",
+      pointerEvents: "auto",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+      transition: "all 0.2s ease"
+    });
+    btn.innerText = "TUNER";
+
+    btn.onmouseover = () => {
+      btn.style.backgroundColor = "rgba(74, 222, 128, 0.2)";
+      btn.style.boxShadow = "0 4px 16px rgba(74, 222, 128, 0.4)";
+    };
+    btn.onmouseout = () => {
+      btn.style.backgroundColor = "rgba(0, 0, 0, 0.6)";
+      btn.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3)";
+    };
+
+    btn.onclick = () => {
+      if (!this.container) return;
+      const isHidden = this.container.style.display === "none";
+      this.container.style.display = isHidden ? "flex" : "none";
+      btn.style.color = isHidden ? "#fff" : "#4ade80";
+      btn.style.borderColor = isHidden ? "rgba(255,255,255,0.5)" : "rgba(74, 222, 128, 0.3)";
+    };
+
+    document.body.appendChild(btn);
+  }
+
+  private createSliderHTML(label: string, id: string, min: number, max: number, value: number) {
+    return `
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <div style="display: flex; justify-content: space-between;">
+          <label>${label}</label>
+          <span id="val-${id}">${value}</span>
+        </div>
+        <input type="range" id="input-${id}" min="${min}" max="${max}" value="${value}" style="width: 100%; accent-color: #4ade80; cursor: pointer;">
+      </div>
+    `;
+  }
+
+  private setupListeners() {
+    const listen = (id: string, callback: (val: number) => void) => {
+      const input = document.getElementById(`input-${id}`) as HTMLInputElement;
+      const display = document.getElementById(`val-${id}`);
+      if (input && display) {
+        input.addEventListener("input", () => {
+          const val = Number(input.value);
+          display.innerText = val.toString();
+          callback(val);
+        });
+      }
+    };
+
+    listen("repulsionRange", (v) => this.repulsionRange = v);
+    listen("repulsionForce", (v) => this.repulsionForce = v);
+    listen("spacing", (v) => this.formationSpacing = v);
+    listen("syncLimit", (v) => this.syncThreshold = v);
+    listen("snap", (v) => this.snapAmount = v / 100);
+    listen("pathSpread", (v) => this.pathSpread = v);
+    listen("wallRange", (v) => this.wallAvoidanceRange = v);
+    listen("wallForce", (v) => this.wallAvoidanceForce = v);
+
+    listen("sLanes", (v) => this.soldierLaneCount = v);
+    listen("sGap", (v) => this.soldierLaneSpacing = v);
+    listen("sSpace", (v) => this.soldierRepulsionRange = v);
+    listen("tLanes", (v) => this.tankLaneCount = v);
+    listen("tGap", (v) => this.tankLaneSpacing = v);
+    listen("tSpace", (v) => this.tankRepulsionRange = v);
+  }
+
+  public destroy() {
+    if (this.container && this.container.parentNode) {
+      this.container.parentNode.removeChild(this.container);
+    }
+  }
+}

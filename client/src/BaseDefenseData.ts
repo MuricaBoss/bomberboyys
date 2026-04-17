@@ -25,11 +25,11 @@ import {
 } from "./constants";
 import { getGraphicsProfile, getGraphicsQuality, getTieredTextureKey } from "./graphicsQuality";
 import { UnitGrid } from "./UnitGrid";
-
+import { PhysicsTuner } from "./PhysicsTuner";
 
 
 export class BaseDefenseScene_Data extends Phaser.Scene {
-
+  physicsTuner!: PhysicsTuner;
   phaserHudEnabled = false;
   localOnly = false;
   desktopMobileFallback = false;
@@ -179,8 +179,6 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   localUnitTargetOverride = new Map<string, {
     x: number;
     y: number;
-    breakoutX?: number;
-    breakoutY?: number;
     setAt: number;
     isAuto?: boolean;
     laneLateral?: number;
