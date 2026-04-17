@@ -311,7 +311,12 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       this.localUnitArrivalPos?.delete(id);
     }
 
+    const now = Date.now();
+    const firstU = this.room.state.units.get ? this.room.state.units.get(ids[0]) : this.room.state.units?.[ids[0]];
     const isTankGroup = firstU?.type === "tank";
+    // Build 232: Use a shared high-level path for the whole group instead of individual A* for everyone.
+    // This allows column movement on "Locked Rails".
+    const sharedPathKey = `path_${now}_${Math.random().toString(36).substr(2, 5)}`;
     const pathRadius = isTankGroup ? 24 : 10;
     let sharedPathCenterX = targetX;
     let sharedPathCenterY = targetY;
@@ -345,9 +350,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
 
     const startGrid = this.worldToGrid(pathStartCX, pathStartCY);
     const goalGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
-    const now = Date.now();
     
-    const firstU = this.room.state.units.get ? this.room.state.units.get(ids[0]) : this.room.state.units?.[ids[0]];
     // Build 468: Overhaul to Persistent Paths. Generate 1-5 locked lanes.
     const laneKeys: string[] = [];
     const laneCount = Math.max(1, Math.min(3, Math.ceil(ids.length / 25)));
