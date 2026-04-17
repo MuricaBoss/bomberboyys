@@ -24,7 +24,6 @@ import {
   PRODUCED_UNIT_EXIT_GRACE_MS, FOG_CELL_SIZE, FOG_UPDATE_MS, MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM,
 } from "./constants";
 import { BaseDefenseScene_Input } from "./BaseDefenseInput";
-import { PhysicsTuner } from "./PhysicsTuner";
 
 export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
   toggleDetailedPaths() {}
@@ -102,9 +101,6 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
     this.createBuildPanel();
     this.createMobileHud();
     this.keyP = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.P) || null;
-    if (!this.physicsTuner) {
-      this.physicsTuner = new PhysicsTuner();
-    }
     this.hidePhaserHud();
     this.createActionPanelDom();
     this.updateActionPanelDom();
@@ -133,7 +129,6 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       this.destroyMobileHudDom();
       this.destroyClientClockDom();
       this.destroySelectionBoxDom();
-      this.physicsTuner?.destroy();
       if (this.gestureBlockHandler) {
         window.removeEventListener("gesturestart", this.gestureBlockHandler as EventListener);
         window.removeEventListener("gesturechange", this.gestureBlockHandler as EventListener);
@@ -383,7 +378,6 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
       { id: "tank", label: "TANK" },
       { id: "paths", label: "PATHS" },
       { id: "profile", label: "PROF" },
-      { id: "tuner", label: "PHYS" },
     ];
 
     for (const def of defs) {
@@ -455,8 +449,6 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
           this.toggleDetailedPaths();
         } else if (def.id === "profile") {
           this.toggleProfiling();
-        } else if (def.id === "tuner") {
-          this.physicsTuner?.toggle();
         }
         this.updateActionPanelDom();
       });
@@ -521,7 +513,6 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
         || (id === "dev" && !!me?.devMode)
         || (id === "paths" && this.showDetailedPaths)
         || (id === "profile" && this.profilingActive)
-        || (id === "tuner" && !!this.physicsTuner?.isVisible())
         || id === this.selectedBuild;
       const disabledReason = this.getActionButtonBlockedReason(id, me);
       const enabled = !disabledReason;

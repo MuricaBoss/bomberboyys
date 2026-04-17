@@ -224,7 +224,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
   }
 
   localFormationSpacingForIds(unitIds: string[]) {
-    if (this.physicsTuner) return this.physicsTuner.formationSpacing;
     if (!this.room?.state?.units) return TILE_SIZE * 3.0;
 
     let hasTank = false;
@@ -882,107 +881,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const ignoreSid = producedExitGraceActive ? this.getStructureIdAt(Math.floor(s.x / TILE_SIZE), Math.floor(s.y / TILE_SIZE)) : undefined;
     const isJammedGhost = this.localUnitGhostMode.has(uid);
 
-    if (!isJammedGhost && this.room?.state?.units?.forEach) {
-      const me = this.room.state.players?.get ? this.room.state.players.get(this.currentPlayerId) : this.room.state.players?.[this.currentPlayerId];
-      const myTeam = me?.team;
-      const myRadius = this.localUnitBodyRadius(u);
-      const tuner = this.physicsTuner;
-      const unitCount = Number((this.room?.state?.units as { size?: number } | undefined)?.size ?? 0);
-      const crowdScale = unitCount >= 80 ? 1.15 : 1.8;
-      const searchRadius = tuner ? tuner.repulsionRange * crowdScale : (unitCount >= 80 ? TILE_SIZE * 2.8 : TILE_SIZE * 3.6);
-      const neighborLimit = this.getCrowdRepulsionNeighborLimit(unitCount);
-      const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
-      let processedNeighbors = 0;
-
-      for (const oid of potentialNeighbors) {
-        if (oid === id || producedExitGraceActive) continue;
-        const ou = this.room.state.units.get ? this.room.state.units.get(oid) : (this.room.state.units as any)?.[oid];
-        if (!ou || (ou.hp ?? 0) <= 0) continue;
-        if (myTeam && ou.team !== myTeam) continue;
-        processedNeighbors += 1;
-        if (processedNeighbors > neighborLimit) break;
-
-        const myDistToTarget = toTLen;
-        const ouX = Number(ou.x);
-        const ouY = Number(ou.y);
-        const ouTX = Number(ou.targetX ?? ouX);
-        const ouTY = Number(ou.targetY ?? ouY);
-        const ouDistToTarget = Math.hypot(ouX - ouTX, ouY - ouTY);
-        if (u.aiState === "idle" && ou.aiState === "idle" && myDistToTarget < 12 && ouDistToTarget < 12) {
-          continue;
-        }
-
-        const ors = this.localUnitRenderState.get(oid);
-        const ox = Number(ors?.x ?? ou.x);
-        const oy = Number(ors?.y ?? ou.y);
-        const oRadius = this.localUnitBodyRadius(ou);
-        let dx = s.x - ox;
-        let dy = s.y - oy;
-        let dist = Math.hypot(dx, dy);
-
-        const uType = String(u.type || "");
-        const padding = uType === "tank" ? (tuner?.tankRepulsionRange ?? 118) : (tuner?.soldierRepulsionRange ?? 55);
-        const minDist = myRadius + oRadius + padding;
-        if (dist >= minDist) continue;
-
-        if (dist < 0.1) {
-          const ang = Math.random() * Math.PI * 2;
-          dx = Math.cos(ang) * 0.1;
-          dy = Math.sin(ang) * 0.1;
-          dist = 0.1;
-        }
-
-        const baseForce = tuner ? tuner.repulsionForce : 5000;
-        const ratio = 1.0 - dist / minDist;
-        let pushStrength = ratio * ratio * baseForce;
-        if (dist < (myRadius + oRadius)) pushStrength *= 1.15;
-        else if (ratio > 0.5) pushStrength *= 1.03;
-
-        steerForce.x += (dx / dist) * pushStrength;
-        steerForce.y += (dy / dist) * pushStrength;
-      }
-    }
-
-    if (!isJammedGhost) {
-      const gx = Math.floor(s.x / TILE_SIZE);
-      const gy = Math.floor(s.y / TILE_SIZE);
-      const tuner = this.physicsTuner;
-      const wallR = tuner ? tuner.wallAvoidanceRange : this.localUnitBodyRadius(u) + TILE_SIZE * 1.8;
-      const baseWForce = tuner ? tuner.wallAvoidanceForce : 18000;
-
-      for (let dx = -2; dx <= 2; dx++) {
-        for (let dy = -2; dy <= 2; dy++) {
-          const cx = gx + dx;
-          const cy = gy + dy;
-          if (this.tileAt(cx, cy) !== 0 || (this.hasStructureAt(cx, cy) && this.getStructureIdAt(cx, cy) !== ignoreSid) || this.hasCoreAt(cx, cy)) {
-            const tileMinX = cx * TILE_SIZE;
-            const tileMaxX = (cx + 1) * TILE_SIZE;
-            const tileMinY = cy * TILE_SIZE;
-            const tileMaxY = (cy + 1) * TILE_SIZE;
-
-            const closestX = Math.max(tileMinX, Math.min(s.x, tileMaxX));
-            const closestY = Math.max(tileMinY, Math.min(s.y, tileMaxY));
-
-            let wdx = s.x - closestX;
-            let wdy = s.y - closestY;
-            let wdist = Math.hypot(wdx, wdy);
-            if (wdist < 1.0) {
-              const tileCX = (cx + 0.5) * TILE_SIZE;
-              const tileCY = (cy + 0.5) * TILE_SIZE;
-              wdx = s.x - tileCX;
-              wdy = s.y - tileCY;
-              wdist = Math.hypot(wdx, wdy) || 0.1;
-            }
-
-            if (wdist < wallR) {
-              const pushStrength = (1.0 - wdist / wallR) * baseWForce;
-              steerForce.x += (wdx / wdist) * pushStrength;
-              steerForce.y += (wdy / wdist) * pushStrength;
-            }
-          }
-        }
-      }
-    }
+    // Build 509: All crowd repulsion and wall avoidance forces removed for simplified movement.
 
     s.vx += steerForce.x * dt;
     s.vy += steerForce.y * dt;
@@ -1015,9 +914,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const errX = Number(u.x) - s.x;
     const errY = Number(u.y) - s.y;
     const err = Math.hypot(errX, errY);
-    const tuner = this.physicsTuner;
-    const threshold = tuner ? tuner.syncThreshold : TILE_SIZE * 2.5;
-    const snap = tuner ? tuner.snapAmount : 0.02;
+    const threshold = TILE_SIZE * 2.5;
+    const snap = 0.02;
     if (err > threshold) {
       s.x = Number(u.x);
       s.y = Number(u.y);
