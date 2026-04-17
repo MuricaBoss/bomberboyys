@@ -96,6 +96,29 @@ rsync -az --delete \
 
 Huomio: `--delete` poistaa palvelimelta tiedostoja, joita ei enää ole lokaalissa repossa. Komentoa kannattaa käyttää vain oikeasta projektihakemistosta.
 
+### 4.3.1 Nopea deploy-komento
+
+Nopein vakiojulkaisu client-muutoksille:
+
+```bash
+./scripts/deploy-fast.sh
+```
+
+Tama:
+
+- nostaa build-numeron
+- buildaa clientin lokaalisti
+- tarkistaa serverin TypeScriptin
+- synkkaa repoon kuuluvat tiedostot palvelimelle
+- rebuildaa vain `client`-kontin
+- tulostaa lyhyet statusrivit ja lopuksi julkisen version
+
+Jos haluat pakottaa myos server-kontin rebuildin:
+
+```bash
+./scripts/deploy-fast.sh full
+```
+
 ### 4.4 Rakenna ja käynnistä kontit
 
 ```bash
