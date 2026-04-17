@@ -227,17 +227,7 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       return;
     }
     if (type === "command_units") {
-      const unitIds = Array.isArray(data?.unitIds) ? data.unitIds.map((id: any) => String(id)) : [];
-      const targetX = Number(data?.targetX);
-      const targetY = Number(data?.targetY);
-      if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) return;
-      for (const unitId of unitIds) {
-        const unit = state.units.get(unitId);
-        if (!unit) continue;
-        if (String(unit.ownerId || "") !== this.currentPlayerId) continue;
-        unit.targetX = targetX;
-        unit.targetY = targetY;
-      }
+      this.applyLocalUnitCommands(state, data);
       return;
     }
     if (type === "unit_client_pose_batch") {
@@ -254,7 +244,62 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
         if (Number.isFinite(Number(pose?.tx))) unit.targetX = Number(pose.tx);
         if (Number.isFinite(Number(pose?.ty))) unit.targetY = Number(pose.ty);
         if (Number.isFinite(Number(pose?.dir))) unit.dir = Number(pose.dir);
+        if (pose?.final) {
+          const finalX = Number.isFinite(x) ? x : Number(unit.x);
+          const finalY = Number.isFinite(y) ? y : Number(unit.y);
+          unit.x = finalX;
+          unit.y = finalY;
+          unit.targetX = finalX;
+          unit.targetY = finalY;
+          unit.aiState = "idle";
+          unit.manualUntil = 0;
+          continue;
+        }
+
+        const distToTarget = Math.hypot(Number(unit.targetX) - Number(unit.x), Number(unit.targetY) - Number(unit.y));
+        unit.aiState = distToTarget > TILE_SIZE * 0.2 ? "walking" : "idle";
+        if (distToTarget <= TILE_SIZE * 0.2) {
+          unit.x = Number(unit.targetX);
+          unit.y = Number(unit.targetY);
+          unit.manualUntil = 0;
+        }
       }
+    }
+  }
+
+  applyLocalUnitCommands(state: any, data: any) {
+    if (Array.isArray(data?.commands)) {
+      for (const command of data.commands.slice(0, 256)) {
+        const unitId = String(command?.unitId || "");
+        const targetX = Number(command?.targetX);
+        const targetY = Number(command?.targetY);
+        if (!unitId || !Number.isFinite(targetX) || !Number.isFinite(targetY)) continue;
+
+        const unit = state.units.get(unitId);
+        if (!unit) continue;
+        if (String(unit.ownerId || "") !== this.currentPlayerId) continue;
+
+        unit.targetX = targetX;
+        unit.targetY = targetY;
+        unit.aiState = "walking";
+        unit.manualUntil = 0;
+      }
+      return;
+    }
+
+    const unitIds = Array.isArray(data?.unitIds) ? data.unitIds.map((id: any) => String(id)) : [];
+    const targetX = Number(data?.targetX);
+    const targetY = Number(data?.targetY);
+    if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) return;
+
+    for (const unitId of unitIds) {
+      const unit = state.units.get(unitId);
+      if (!unit) continue;
+      if (String(unit.ownerId || "") !== this.currentPlayerId) continue;
+      unit.targetX = targetX;
+      unit.targetY = targetY;
+      unit.aiState = "walking";
+      unit.manualUntil = 0;
     }
   }
 

@@ -123,23 +123,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     this.onMessage("move_unit", (client, data) => {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
-
-      if (data.unitIds && Array.isArray(data.unitIds)) {
-        // Build 449: Validate shared target once
-        const rawTarget = { x: Number(data.targetX ?? data.x), y: Number(data.targetY ?? data.y) };
-        const validTarget = this.validateWorldTarget(rawTarget.x, rawTarget.y);
-
-        data.unitIds.forEach((uid: string) => {
-          const unit = this.state.units.get(uid);
-          if (unit && unit.ownerId === client.sessionId) {
-            unit.targetX = validTarget.x;
-            unit.targetY = validTarget.y;
-            unit.aiState = "walking";
-            unit.manualUntil = 0;
-            this.unitPaths.delete(uid);
-          }
-        });
-      }
+      this.applyUnitMoveCommands(client.sessionId, data);
     });
 
     this.onMessage("anchor_base", (client) => {
@@ -383,21 +367,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     this.onMessage("command_units", (client, data) => {
         const player = this.state.players.get(client.sessionId);
         if (!player) return;
-        if (data.unitIds && Array.isArray(data.unitIds)) {
-            // Build 449: Validate shared target
-            const validTarget = this.validateWorldTarget(Number(data.targetX), Number(data.targetY));
-
-            data.unitIds.forEach((uid: string) => {
-                const unit = this.state.units.get(uid);
-                if (unit && unit.ownerId === client.sessionId) {
-                    unit.targetX = validTarget.x;
-                    unit.targetY = validTarget.y;
-                    unit.aiState = "walking";
-                    unit.manualUntil = 0; // Build 457: User command overrides spawn guidance
-                    this.unitPaths.delete(uid);
-                }
-            });
-        }
+        this.applyUnitMoveCommands(client.sessionId, data);
     });
 
     this.onMessage("produce_build_kit", (client, data) => {
@@ -627,6 +597,49 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
       x: best.gx * TILE_SIZE + TILE_SIZE / 2,
       y: best.gy * TILE_SIZE + TILE_SIZE / 2
     };
+  }
+
+  applyUnitMoveCommands(ownerId: string, data: any) {
+    if (Array.isArray(data?.commands)) {
+      data.commands.slice(0, 256).forEach((command: any) => {
+        const unitId = String(command?.unitId || "");
+        const rawX = Number(command?.targetX);
+        const rawY = Number(command?.targetY);
+        if (!unitId || !Number.isFinite(rawX) || !Number.isFinite(rawY)) return;
+
+        const unit = this.state.units.get(unitId);
+        if (!unit || unit.ownerId !== ownerId) return;
+
+        const validTarget = this.validateWorldTarget(rawX, rawY);
+        unit.targetX = validTarget.x;
+        unit.targetY = validTarget.y;
+        unit.aiState = "walking";
+        unit.manualUntil = 0;
+        this.unitPaths.delete(unitId);
+        this.nearTargetSince.delete(unitId);
+      });
+      return;
+    }
+
+    if (!Array.isArray(data?.unitIds)) return;
+
+    const rawX = Number(data?.targetX ?? data?.x);
+    const rawY = Number(data?.targetY ?? data?.y);
+    if (!Number.isFinite(rawX) || !Number.isFinite(rawY)) return;
+
+    const validTarget = this.validateWorldTarget(rawX, rawY);
+    data.unitIds.forEach((uid: string) => {
+      const unitId = String(uid || "");
+      const unit = this.state.units.get(unitId);
+      if (!unit || unit.ownerId !== ownerId) return;
+
+      unit.targetX = validTarget.x;
+      unit.targetY = validTarget.y;
+      unit.aiState = "walking";
+      unit.manualUntil = 0;
+      this.unitPaths.delete(unitId);
+      this.nearTargetSince.delete(unitId);
+    });
   }
 
   onDispose() {
