@@ -16,12 +16,14 @@ type LocalManualTarget = {
   directSteer: false;
   kind: "override";
   leaderAlive: true;
-  laneLateral: number;
-  laneDepth: number;
 };
 
 export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
   pendingFinalPoses: any[] = [];
+  
+  // Build 524: Caching for performance
+  private cachedUnitArray: any[] = [];
+  private lastFrameUnitsCachedAt: number = -1;
 
   stringHash(input: string) {
     let hash = 0;
@@ -33,17 +35,18 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
   }
 
   getUnitPathRecalcIntervalMs(unitCount: number) {
-    if (unitCount >= 120) return 520;
-    if (unitCount >= 80) return 420;
-    if (unitCount >= 40) return 320;
-    return 260;
+    if (unitCount >= 120) return 600;
+    if (unitCount >= 80) return 500;
+    if (unitCount >= 40) return 400;
+    return 300;
   }
 
   getUnitPathFrameStride(unitCount: number) {
-    if (unitCount >= 120) return 4;
-    if (unitCount >= 80) return 3;
-    if (unitCount >= 40) return 2;
-    return 1;
+    // Build 521: Stagger recalculations over up to 10 frames to optimize CPU
+    if (unitCount >= 100) return 10;
+    if (unitCount >= 60) return 6;
+    if (unitCount >= 30) return 4;
+    return 2;
   }
 
   getCrowdRepulsionNeighborLimit(unitCount: number) {
@@ -51,6 +54,18 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     if (unitCount >= 80) return 14;
     if (unitCount >= 40) return 18;
     return 24;
+  }
+
+  getPathCost(cells: { x: number; y: number }[]) {
+    if (!cells || cells.length <= 1) return 0;
+    let cost = 0;
+    for (let i = 1; i < cells.length; i++) {
+        const dx = Math.abs(cells[i].x - cells[i - 1].x);
+        const dy = Math.abs(cells[i].y - cells[i - 1].y);
+        if (dx > 0 && dy > 0) cost += 1.4142;
+        else cost += 1.0;
+    }
+    return cost;
   }
 
   pruneSharedMovePathCache(now: number) {
@@ -88,48 +103,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     distToGoal: number,
     useRadius: number
   ) {
-    let worldX = baseWorld.x;
-    let worldY = baseWorld.y;
-    if (!manualTarget) return { x: worldX, y: worldY };
-
-    const dirX = nextBaseWorld.x - baseWorld.x;
-    const dirY = nextBaseWorld.y - baseWorld.y;
-    const dirLen = Math.hypot(dirX, dirY);
-    const forwardX = dirLen > 0.001 ? dirX / dirLen : Math.cos(this.lastCommandGroupAngle);
-    const forwardY = dirLen > 0.001 ? dirY / dirLen : Math.sin(this.lastCommandGroupAngle);
-    const perpX = -forwardY;
-    const perpY = forwardX;
-    const blend = Phaser.Math.Clamp((distToGoal - TILE_SIZE * 1.5) / Math.max(TILE_SIZE * 3, this.lastCommandGroupRadius), 0, 1);
-    let laneOffsetX = (manualTarget.laneLateral * perpX) * blend;
-    let laneOffsetY = (manualTarget.laneLateral * perpY) * blend;
-
-    if (this.clearanceGrid && this.clearanceGrid.length > 0) {
-      const gridIdx = Math.floor(baseWorld.y / TILE_SIZE) * this.gridW + Math.floor(baseWorld.x / TILE_SIZE);
-      const clearanceTiles = this.clearanceGrid[gridIdx];
-      if (clearanceTiles !== undefined) {
-        const maxOffset = Math.max(TILE_SIZE * 0.1, clearanceTiles * TILE_SIZE - useRadius - 6);
-        const offsetLen = Math.hypot(laneOffsetX, laneOffsetY);
-        if (offsetLen > maxOffset && offsetLen > 0.001) {
-          const scale = maxOffset / offsetLen;
-          laneOffsetX *= scale;
-          laneOffsetY *= scale;
-        }
-      }
-    }
-
-    let scale = 1;
-    while (scale > 0.2) {
-      const testX = baseWorld.x + laneOffsetX * scale;
-      const testY = baseWorld.y + laneOffsetY * scale;
-      if (this.canOccupyTerrainOnly(testX, testY, Math.max(TILE_SIZE * 0.18, useRadius * 0.9))) {
-        worldX = testX;
-        worldY = testY;
-        break;
-      }
-      scale *= 0.7;
-    }
-
-    return { x: worldX, y: worldY };
+    // Build 510: Lanes removed. Return base world waypoint directly.
+    return { x: baseWorld.x, y: baseWorld.y };
   }
 
   getVisiblePathShortcut(
@@ -144,6 +119,12 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const maxLookAhead = 8;
     let best: { x: number; y: number } | null = null;
     const maxIdx = Math.min(cache.cells.length - 1, cache.idx + maxLookAhead);
+    
+    // Build 519: First check if the final target is directly visible
+    if (this.lineOfSightClear(ux, uy, tx, ty)) {
+       return { x: tx, y: ty };
+    }
+
     for (let i = maxIdx; i >= cache.idx; i--) {
       const cell = cache.cells[i];
       const baseWorld = this.gridToWorld(cell.x, cell.y);
@@ -211,8 +192,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       directSteer: false,
       kind: "override" as const,
       leaderAlive: true,
-      laneLateral: Number(override.laneLateral ?? 0),
-      laneDepth: Number(override.laneDepth ?? 0),
     };
   }
 
@@ -238,8 +217,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       else hasSoldier = true;
     }
 
-    if (hasTank) return 130;
-    if (hasHarvester) return 80;
+    if (hasTank) return 65;
+    if (hasHarvester) return 60;
     if (hasSoldier) return 30;
     return TILE_SIZE * 0.8;
   }
@@ -324,15 +303,19 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     };
 
     for (let i = 0; i < ids.length; i++) {
-      const unit = this.room.state.units.get ? this.room.state.units.get(ids[i]) : this.room.state.units?.[ids[i]];
+      const unitId = ids[i];
+      const unit = this.room.state.units.get ? this.room.state.units.get(unitId) : this.room.state.units?.[unitId];
       const unitRadius = this.localUnitBodyRadius(unit);
-      const slotRadius = Math.max(unitRadius + 4, slotRadiusBase);
+      
+      // Build 518: Revert to uniform spacing for the grid 'base' to prevent overlapping/stall issues,
+      // but keep the reduced tank spacing (65) if any tanks are present.
+      const unitSlotRadius = Math.max(unitRadius + 4, spacing * 0.34);
+      
       let slot: { x: number; y: number } | null = null;
-
       while (!slot && gridIndex < maxSlotIndex) {
         const base = this.localFormationSlot(targetX, targetY, gridIndex, ids.length, spacing, angle);
-        slot = this.resolveLocalFormationSlot(base.x, base.y, slotRadius, ids[i], reserved, selectedSet, (sx, sy) => {
-          return slotCandidateIsFree(sx, sy, slotRadius);
+        slot = this.resolveLocalFormationSlot(base.x, base.y, unitSlotRadius, unitId, reserved, selectedSet, (sx, sy) => {
+          return slotCandidateIsFree(sx, sy, unitSlotRadius);
         });
         gridIndex++;
       }
@@ -340,13 +323,13 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       if (!slot) {
         const base = this.localFormationSlot(targetX, targetY, i, ids.length, spacing, angle);
         slot = {
-          x: Phaser.Math.Clamp(base.x, slotRadius, this.room.state.mapWidth * TILE_SIZE - slotRadius),
-          y: Phaser.Math.Clamp(base.y, slotRadius, this.room.state.mapHeight * TILE_SIZE - slotRadius),
+          x: Phaser.Math.Clamp(base.x, unitSlotRadius, this.room.state.mapWidth * TILE_SIZE - unitSlotRadius),
+          y: Phaser.Math.Clamp(base.y, unitSlotRadius, this.room.state.mapHeight * TILE_SIZE - unitSlotRadius),
         };
       }
 
-      reserved.push({ x: slot.x, y: slot.y, radius: slotRadius });
-      slots.push({ x: slot.x, y: slot.y, r: slotRadius });
+      reserved.push({ x: slot.x, y: slot.y, radius: unitSlotRadius });
+      slots.push({ x: slot.x, y: slot.y, r: unitSlotRadius });
     }
 
     const assignments = new Map<string, { x: number; y: number }>();
@@ -410,18 +393,11 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     for (const id of ids) {
       const slot = assignments.get(id);
       if (!slot) continue;
-      const offsetX = slot.x - targetX;
-      const offsetY = slot.y - targetY;
-      const laneLateral = offsetX * (-Math.sin(angle)) + offsetY * Math.cos(angle);
-      const laneDepth = -(offsetX * Math.cos(angle) + offsetY * Math.sin(angle));
-
       this.localUnitTargetOverride.set(id, {
         x: slot.x,
         y: slot.y,
         setAt: now,
         isAuto: isAutoSegment,
-        laneLateral,
-        laneDepth,
       });
       this.localUnitMovePriority.set(id, priority++);
       this.localUnitPathRadiusOverride.set(id, this.localUnitBodyRadius(
@@ -528,11 +504,29 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       } else {
         const sharedPathKey = this.getSharedMovePathKey(startGX, startGY, goalGX, goalGY, radiusBucket, unitCount);
         const sharedEntry = sharedPathKey ? this.sharedMovePathCache.get(sharedPathKey) : null;
+        
         let cells = sharedEntry?.cells ?? null;
-        if (!cells || cells.length === 0) {
-          cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
-          if (sharedPathKey && cells && cells.length > 0) {
-            this.sharedMovePathCache.set(sharedPathKey, { cells, updatedAt: now });
+        let cost = sharedEntry?.cost ?? 0;
+        
+        const directDist = Math.hypot(goalGX - startGX, goalGY - startGY);
+        const isSuspiciousDetour = sharedEntry && cost > directDist * 2.5;
+
+        if (!cells || cells.length === 0 || isSuspiciousDetour) {
+          const newCells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
+          const newCost = this.getPathCost(newCells || []);
+          
+          if (newCells && newCells.length > 0) {
+            // Build 512: If we found a significantly better path (20% shorter), update shared cache
+            const isBetter = !sharedEntry || newCost < cost * 0.8;
+            if (sharedPathKey && isBetter) {
+              this.sharedMovePathCache.set(sharedPathKey, { cells: newCells, cost: newCost, updatedAt: now });
+            }
+            cells = newCells;
+            cost = newCost;
+          } else if (sharedEntry) {
+            // Fallback to shared if local failed
+            cells = sharedEntry.cells;
+            cost = sharedEntry.cost;
           }
         } else {
           sharedEntry!.updatedAt = now;
@@ -584,7 +578,14 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
 
     if (!cache) return null;
     cache.updatedAt = now;
-
+    
+    // Build 519: Prioritize direct line-of-sight to the individual slot.
+    // This prevents units from clumping at a shared path "bottleneck" waypoint.
+    if (this.lineOfSightClear(ux, uy, tx, ty)) {
+       this.unitClientPathCache.delete(unitId); // Clear path, we are on direct final approach
+       return { x: tx, y: ty };
+    }
+    
     const shortcut = this.getVisiblePathShortcut(cache, ux, uy, tx, ty, manualTarget, useRadius);
     if (shortcut) return shortcut;
 
@@ -782,8 +783,11 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         e.y = s.y;
         s.lastAt = performance.now();
         if (serverIdle) {
-          this.unitSlotLocked.delete(id);
-          this.localUnitArrivalPos.delete(id);
+          const distToServer = Math.hypot(Number(u.x) - arrivalPos.x, Number(u.y) - arrivalPos.y);
+          if (distToServer > TILE_SIZE * 2) {
+            this.unitSlotLocked.delete(id);
+            this.localUnitArrivalPos.delete(id);
+          }
         } else if (nowMs - this.lastUnitPoseSentAt > 140) {
           const dir = this.unitFacing.get(id) ?? Number(u.dir ?? 1);
           this.pendingFinalPoses.push({
@@ -815,9 +819,9 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     if (manualTarget && distToSlot <= Math.max(TILE_SIZE * 0.24, this.localUnitBodyRadius(u) * 0.75 + 4)) {
       const velSpeed = Math.hypot(s.vx, s.vy);
       const arrivalDir = velSpeed > 0.2
-        ? this.angleToDir8(Math.atan2(s.vy, s.vx))
+        ? Math.atan2(s.vy, s.vx)
         : (distToSlot > 0.5
-          ? this.angleToDir8(Math.atan2(manualTarget.finalY - s.y, manualTarget.finalX - s.x))
+          ? Math.atan2(manualTarget.finalY - s.y, manualTarget.finalX - s.x)
           : Number(u.dir ?? 1));
 
       this.unitFacing.set(id, arrivalDir);
@@ -911,6 +915,65 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       s.vy *= 0.8;
     }
 
+    // Build 521/524: Simple Overlap Avoidance (Rightmost-Push)
+    // Build 524 Optimizations: Staggered across frames and cached unit list.
+    const frame = Number(this.game?.loop?.frame ?? 0);
+    if (moving && ((frame + this.stringHash(uid)) % 10 === 0)) {
+        // Cache unit list once per frame for all units to share
+        if (this.lastFrameUnitsCachedAt !== frame) {
+            this.cachedUnitArray = Array.from(this.room?.state?.units?.values() ?? []);
+            this.lastFrameUnitsCachedAt = frame;
+        }
+
+        const units = this.cachedUnitArray;
+        // Check even fewer neighbors to keep it ultra-performant O(N)
+        const checkCount = units.length < 80 ? 6 : 3;
+        const startIdx = (this.stringHash(uid) + frame) % units.length;
+        const radiusA = r;
+        const velX = s.vx;
+        const velY = s.vy;
+        const speedSq = velX * velX + velY * velY;
+        
+        if (speedSq > 1) { // Reduced threshold to allow slower movement separation
+            const speed = Math.sqrt(speedSq);
+            const dirX = velX / speed;
+            const dirY = velY / speed;
+            const rightX = -dirY;
+            const rightY = dirX;
+
+            for (let i = 0; i < checkCount; i++) {
+                const other = units[(startIdx + i) % units.length];
+                if (!other || String(other.id) === uid || (other.hp ?? 0) <= 0) continue;
+                const otherRS = this.localUnitRenderState.get(String(other.id));
+                if (!otherRS) continue;
+                
+                const dx = s.x - otherRS.x;
+                const dy = s.y - otherRS.y;
+                const distSq = dx * dx + dy * dy;
+                const radiusB = this.localUnitBodyRadius(other);
+                const minDist = (radiusA + radiusB) * this.overlapPushDistanceScale;
+                
+                // Cheap square distance check first
+                if (distSq < minDist * minDist) {
+                    // Project both onto the 'right' vector relative to MY movement
+                    const projA = s.x * rightX + s.y * rightY;
+                    const projB = otherRS.x * rightX + otherRS.y * rightY;
+                    
+                    if (projA > projB) {
+                        // I am the rightmost, so I push further right
+                        const pushForce = this.overlapPushStrength; 
+                        const nx2 = s.x + rightX * pushForce;
+                        const ny2 = s.y + rightY * pushForce;
+                        if (this.canOccupyLocalUnit(nx2, ny2, radiusA, uid)) {
+                            s.x = nx2;
+                            s.y = ny2;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     const errX = Number(u.x) - s.x;
     const errY = Number(u.y) - s.y;
     const err = Math.hypot(errX, errY);
@@ -921,7 +984,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       s.y = Number(u.y);
       s.vx = 0;
       s.vy = 0;
-    } else {
+    } else if (err > 1.0) {
       s.x += errX * snap;
       s.y += errY * snap;
     }
@@ -947,7 +1010,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
 
     const velSpeedSq = s.vx * s.vx + s.vy * s.vy;
     if (velSpeedSq > 64) {
-      const moveDir = this.angleToDir8(Math.atan2(s.vy, s.vx));
+      const moveDir = Math.atan2(s.vy, s.vx);
       this.unitFacing.set(id, moveDir);
     }
 

@@ -25,11 +25,12 @@ export function updateSoldierVisual(scene: any, args: SoldierVisualArgs) {
   const moving = (renderState && Math.hypot(renderState.vx, renderState.vy) > 10)
     || (unit.aiState === "walking" && !scene.hasLocalUnitManualCommand(id));
 
-  // Build 443: Sprite Debounce (0.1s)
+  // Build 514: Sprite Debounce (0.1s) - Radian aware
   // Prevent direction/state flipping by requiring 100ms of consistent request.
   const now = scene.time.now;
-  if (sState.targetDir !== dir || sState.targetMoving !== moving) {
-    sState.targetDir = dir;
+  const d8 = (dir >= 0 && dir <= 7 && Number.isInteger(dir)) ? dir : scene.angleToDir8(dir);
+  if (sState.targetDir8 !== d8 || sState.targetMoving !== moving) {
+    sState.targetDir8 = d8;
     sState.targetMoving = moving;
     sState.targetDirAt = now;
   }

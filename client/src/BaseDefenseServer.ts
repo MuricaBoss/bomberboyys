@@ -448,7 +448,7 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       if (movingNow) hasMoving = true;
       const committedDir = (this as any).unitFacing?.get(id);
       const dir = (committedDir !== undefined) ? committedDir : (Math.hypot(vx, vy) > 0.1
-        ? this.angleToDir8(Math.atan2(vy, vx))
+        ? Math.atan2(vy, vx)
         : (u.dir ?? 0));
       const prev = this.lastUnitPoseState.get(id);
       const changed = !prev

@@ -45,6 +45,10 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   unitDirVote = new Map<string, { dir: number; count: number }>();
   unitDirSnapshot = new Map<string, number[]>();
   unitSlotLocked = new Set<string>();
+  
+  // Build 525: Tweakable overlap avoidance parameters
+  overlapPushStrength = 8.0;
+  overlapPushDistanceScale = 0.92;
 
   unitSelectionRings: { [id: string]: Phaser.GameObjects.Rectangle } = {};
   unitHpTexts: { [id: string]: Phaser.GameObjects.Text } = {};
@@ -159,7 +163,7 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     idx: number;
     updatedAt: number;
   }>();
-  sharedMovePathCache = new Map<string, { cells: { x: number; y: number }[]; updatedAt: number }>();
+  sharedMovePathCache = new Map<string, { cells: { x: number; y: number }[]; cost: number; updatedAt: number }>();
   lastSharedMovePathPruneAt = 0;
   localUnitRenderState = new Map<string, { x: number; y: number; vx: number; vy: number; lastAt: number; jamRefX?: number; jamRefY?: number }>();
   unitEnemyIcons = new Map<string, Phaser.GameObjects.Graphics>();

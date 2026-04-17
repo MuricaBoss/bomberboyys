@@ -459,19 +459,7 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       }
     }
 
-    // Build 374: Mark stuck units (GhostMode) as static obstacles to clog detection
-    if (this.localUnitGhostMode) {
-      this.localUnitGhostMode.forEach(id => {
-        const rs = this.localUnitRenderState.get(id);
-        if (rs) {
-          const gx = Math.floor(rs.x / TILE_SIZE);
-          const gy = Math.floor(rs.y / TILE_SIZE);
-          if (gx >= 0 && gx < this.gridW && gy >= 0 && gy < this.gridH) {
-            this.obstacleGrid![gy * this.gridW + gx] = 1;
-          }
-        }
-      });
-    }
+    // Build 510: Stuck units no longer act as obstacles on the client.
   }
 
   updateVisionGrid() {

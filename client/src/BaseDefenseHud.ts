@@ -26,6 +26,7 @@ import {
 import { BaseDefenseScene_Input } from "./BaseDefenseInput";
 
 export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
+  private tweakPanelRootEl: HTMLDivElement | null = null;
   toggleDetailedPaths() {}
 
   createSafetyBorders() {
@@ -352,6 +353,7 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
 
   createActionPanelDom() {
     this.destroyActionPanelDom();
+    this.createTweakPanelDom();
     const root = document.createElement("div");
     root.style.position = "absolute";
     root.style.left = "12px";
@@ -463,7 +465,73 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
     this.actionPanelRootEl = root;
   }
 
+  createTweakPanelDom() {
+    this.destroyTweakPanelDom();
+    const root = document.createElement("div");
+    root.id = "tweak-panel-root";
+    root.style.position = "absolute";
+    root.style.right = "12px";
+    root.style.bottom = "max(12px, env(safe-area-inset-bottom))";
+    root.style.width = "220px";
+    root.style.padding = "10px";
+    root.style.borderRadius = "8px";
+    root.style.background = "rgba(0,0,0,0.78)";
+    root.style.color = "#fff";
+    root.style.font = "700 12px Arial, sans-serif";
+    root.style.zIndex = "10002";
+    root.style.pointerEvents = "auto";
+    root.style.display = "none"; // Hidden by default, shown by update logic
+
+    const title = document.createElement("div");
+    title.textContent = "FORMATION TWEAKS";
+    title.style.marginBottom = "10px";
+    title.style.color = "#99ffd0";
+    title.style.fontSize = "14px";
+    root.appendChild(title);
+
+    const createSlider = (label: string, min: number, max: number, step: number, value: number, onChange: (val: number) => void) => {
+      const wrap = document.createElement("div");
+      wrap.style.marginBottom = "8px";
+      const lbl = document.createElement("div");
+      lbl.style.marginBottom = "4px";
+      lbl.textContent = `${label}: ${value}`;
+      wrap.appendChild(lbl);
+
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = String(min);
+      slider.max = String(max);
+      slider.step = String(step);
+      slider.value = String(value);
+      slider.style.width = "100%";
+      slider.addEventListener("input", () => {
+        const val = parseFloat(slider.value);
+        lbl.textContent = `${label}: ${val}`;
+        onChange(val);
+      });
+      wrap.appendChild(slider);
+      return wrap;
+    };
+
+    root.appendChild(createSlider("Push Power", 0, 40, 0.5, this.overlapPushStrength, (v) => this.overlapPushStrength = v));
+    root.appendChild(createSlider("Repulsion Dist", 0.5, 2.0, 0.02, this.overlapPushDistanceScale, (v) => this.overlapPushDistanceScale = v));
+
+    this.getOverlayHostEl().appendChild(root);
+    this.tweakPanelRootEl = root;
+  }
+
+  destroyTweakPanelDom() {
+    if (!this.tweakPanelRootEl) return;
+    this.tweakPanelRootEl.remove();
+    this.tweakPanelRootEl = null;
+  }
+
   destroyActionPanelDom() {
+    this.destroyActionPanelDomOriginal();
+    this.destroyTweakPanelDom();
+  }
+
+  destroyActionPanelDomOriginal() {
     this.unbindDomBuildDragListeners();
     this.actionPanelButtons.clear();
     this.actionPanelReasonLabels.clear();
@@ -527,6 +595,10 @@ export class BaseDefenseScene_Hud extends BaseDefenseScene_Input {
         reasonLabel.textContent = disabledReason;
         reasonLabel.style.visibility = disabledReason ? "visible" : "hidden";
       }
+    }
+
+    if (this.tweakPanelRootEl) {
+      this.tweakPanelRootEl.style.display = (me && me.devMode) ? "block" : "none";
     }
   }
 

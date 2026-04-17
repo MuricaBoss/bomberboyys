@@ -350,7 +350,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
             // Priority: Facing movement direction (already handled by movement loop)
         } else if (Math.hypot(dx, dy) > 0.1) {
             // Facing target (only when stationary or at target)
-            shooter.dir = this.angleToDir8(Math.atan2(dy, dx));
+            shooter.dir = Math.atan2(dy, dx);
         }
 
         this.broadcast("unit_damaged", { victimId, shooterId: data.shooterId });
@@ -473,7 +473,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
                   const speed = (unit.speed * deltaTime) / 1000;
                   unit.x += (dx / dist) * speed;
                   unit.y += (dy / dist) * speed;
-                  unit.dir = this.angleToDir8(Math.atan2(dy, dx));
+                  unit.dir = Math.atan2(dy, dx);
               } else {
                   unit.aiState = "idle";
               }
@@ -547,7 +547,7 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
           const speed = (unit.speed * deltaTime) / 1000;
           unit.x += (dx / dist) * speed;
           unit.y += (dy / dist) * speed;
-          unit.dir = this.angleToDir8(Math.atan2(dy, dx));
+          unit.dir = Math.atan2(dy, dx);
         } else {
           if (path && path.length > 0) {
             path.shift();
@@ -895,21 +895,49 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     spawnSlots.forEach((slot) => markOpen(slot.gx, slot.gy, 2));
     markOpen(centerX, centerY, 3);
 
+    const blockSeeds: { gx: number, gy: number }[] = [];
+    const seedCount = Math.floor((width * height) / 110); 
+    for (let i = 0; i < seedCount; i++) {
+        const gx = 1 + Math.floor(Math.random() * (width - 2));
+        const gy = 1 + Math.floor(Math.random() * (height - 2));
+        if (!keepOpen.has(`${gx},${gy}`)) {
+            blockSeeds.push({ gx, gy });
+        }
+    }
+
+    const tempMap = new Uint8Array(width * height);
+    // Fill borders
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        let tile = 0;
-        const border = x === 0 || y === 0 || x === width - 1 || y === height - 1;
-        if (border) {
-          tile = 1;
-        } else if (!keepOpen.has(`${x},${y}`)) {
-        const symmetricBlock = ((x % 6 === 0) && (y % 4 === 0)) || ((x % 6 === 3) && (y % 5 === 2));
-        const centerCover = Math.abs(x - centerX) <= 6 && Math.abs(y - centerY) <= 6 && ((x + y) % 4 === 0);
-        if (symmetricBlock || centerCover) tile = 1;
+        if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
+          tempMap[y * width + x] = 1;
+        }
       }
-      this.state.map.push(tile);
+    }
+
+    // Grow clusters
+    blockSeeds.forEach(seed => {
+        tempMap[seed.gy * width + seed.gx] = 1;
+        const growthSize = 3 + Math.floor(Math.random() * 3);
+        let currX = seed.gx;
+        let currY = seed.gy;
+        for (let j = 0; j < growthSize; j++) {
+            const dir = Math.floor(Math.random() * 4);
+            if (dir === 0) currX++;
+            else if (dir === 1) currX--;
+            else if (dir === 2) currY++;
+            else currY--;
+            
+            if (currX > 0 && currX < width - 1 && currY > 0 && currY < height - 1 && !keepOpen.has(`${currX},${currY}`)) {
+                tempMap[currY * width + currX] = 1;
+            }
+        }
+    });
+
+    for (let i = 0; i < width * height; i++) {
+      this.state.map.push(tempMap[i]);
     }
   }
-}
 
   spawnResourceNodes() {
     this.state.resources.clear();
@@ -1167,98 +1195,106 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
       }
     }
     
-    // Check for friendly units blocking the path
-    if (team) {
-      // GHOST MODE: if we are close to the target slot, we ignore our own units
-      if (targetGX !== undefined && targetGY !== undefined) {
-        if (Math.hypot(gx - targetGX, gy - targetGY) <= 3) {
-           return false;
-        }
-      }
-
-      for (const [uid, u] of this.state.units) {
-        if (uid === ignoreUnitId || (u.hp ?? 0) <= 0 || u.team !== team) continue;
-        if (u.aiState !== "idle") continue; // Do not detour around moving friendlies
-        const ugx = Math.floor(Number(u.x) / TILE_SIZE);
-        const ugy = Math.floor(Number(u.y) / TILE_SIZE);
-        if (ugx === gx && ugy === gy) {
-          return true; // Path is blocked by a friendly unit
-        }
-      }
-    }
+    // Build 510: Units no longer block each other's paths on the server.
+    return false;
     
     return false;
   }
 
-  findPathGrid(sgx: number, sgy: number, egx: number, egy: number, ignoreUnitId?: string, team?: string): { x: number, y: number }[] | null {
-    if (sgx === egx && sgy === egy) return null;
-    const dxInit = Math.abs(egx-sgx);
-    const dyInit = Math.abs(egy-sgy);
-    const hInit = dxInit + dyInit + (1.4 - 2) * Math.min(dxInit, dyInit);
-    const openSet: any[] = [{ x: sgx, y: sgy, g: 0, f: hInit, parent: null }];
-    const closedSet = new Set<string>();
-    let count = 0;
+  isLineBlockedGrid(x0: number, y0: number, x1: number, y1: number): { x: number, y: number } | null {
+    let dx = Math.abs(x1 - x0);
+    let dy = Math.abs(y1 - y0);
+    let x = x0;
+    let y = y0;
+    let n = 1 + dx + dy;
+    let x_inc = (x1 > x0) ? 1 : -1;
+    let y_inc = (y1 > y0) ? 1 : -1;
+    let error = dx - dy;
+    dx *= 2;
+    dy *= 2;
 
-    while (openSet.length > 0 && count < 5000) {
-      count++;
-      
-      // Build 496: Optimization. O(N) search instead of O(N log N) sorting for large open sets.
-      let bestIdx = 0;
-      for (let i = 1; i < openSet.length; i++) {
-        if (openSet[i].f < openSet[bestIdx].f) bestIdx = i;
-      }
-      
-      const current = openSet.splice(bestIdx, 1)[0];
-      const key = `${current.x},${current.y}`;
-      if (current.x === egx && current.y === egy) {
-        const path = [];
-        let temp = current;
-        while (temp) {
-          path.push({ x: temp.x * TILE_SIZE + TILE_SIZE/2, y: temp.y * TILE_SIZE + TILE_SIZE/2 });
-          temp = temp.parent;
-        }
-        return path.reverse();
-      }
-      closedSet.add(key);
-
-      const neighbors = [
-        { x: current.x + 1, y: current.y, d: false }, { x: current.x - 1, y: current.y, d: false },
-        { x: current.x, y: current.y + 1, d: false }, { x: current.x, y: current.y - 1, d: false },
-        { x: current.x + 1, y: current.y + 1, d: true }, { x: current.x - 1, y: current.y - 1, d: true },
-        { x: current.x + 1, y: current.y - 1, d: true }, { x: current.x - 1, y: current.y + 1, d: true }
-      ];
-
-      for (const n of neighbors) {
-        if (n.x < 0 || n.x >= this.state.mapWidth || n.y < 0 || n.y >= this.state.mapHeight) continue;
-        if (closedSet.has(`${n.x},${n.y}`)) continue;
-        
-        // Prevent corner cutting: if diagonal, check if adjacent straight tiles are blocked
-        if (n.d) {
-          if (this.isTileBlocked(current.x, n.y, ignoreUnitId, team, egx, egy)) continue;
-          if (this.isTileBlocked(n.x, current.y, ignoreUnitId, team, egx, egy)) continue;
-        }
-
-        if (this.isTileBlocked(n.x, n.y, ignoreUnitId, team, egx, egy)) {
-          // Allow the final destination to be occupied to prevent target unreachability,
-          // but completely avoid routing through occupied intermediate tiles.
-          if (n.x !== egx || n.y !== egy) continue;
-        }
-
-        const g = current.g + (n.d ? 1.4 : 1);
-        const dx = Math.abs(egx - n.x);
-        const dy = Math.abs(egy - n.y);
-        const h = dx + dy + (1.4 - 2) * Math.min(dx, dy);
-        const f = g + h;
-        const existing = openSet.find(o => o.x === n.x && o.y === n.y);
-        if (!existing) {
-          openSet.push({ ...n, g, f, parent: current });
-        } else if (g < existing.g) {
-          existing.g = g;
-          existing.f = f;
-          existing.parent = current;
-        }
+    for (; n > 0; --n) {
+      if (this.isTileBlocked(x, y)) return { x, y };
+      if (error > 0) {
+        x += x_inc;
+        error -= dy;
+      } else {
+        y += y_inc;
+        error += dx;
       }
     }
     return null;
+  }
+
+  findPathGrid(sgx: number, sgy: number, egx: number, egy: number, ignoreUnitId?: string, team?: string): { x: number, y: number }[] | null {
+    if (sgx === egx && sgy === egy) return null;
+    
+    const path: { x: number, y: number }[] = [];
+    let currX = sgx;
+    let currY = sgy;
+    let lastX = sgx;
+    let lastY = sgy;
+    
+    // Limits to prevent infinite loops in complex mazes
+    for (let step = 0; step < 12; step++) {
+      const hit = this.isLineBlockedGrid(currX, currY, egx, egy);
+      if (!hit) {
+        path.push({ x: egx * TILE_SIZE + TILE_SIZE / 2, y: egy * TILE_SIZE + TILE_SIZE / 2 });
+        return path;
+      }
+      
+      // Found obstacle. Calculate detour points.
+      // Search for bypass points in perpendicular directions.
+      const dx = egx - currX;
+      const dy = egy - currY;
+      
+      // Perpendicular vectors
+      const px1 = -dy;
+      const py1 = dx;
+      const px2 = dy;
+      const py2 = -dx;
+      
+      const getDetour = (px: number, py: number) => {
+        const mag = Math.hypot(px, py);
+        if (mag === 0) return null;
+        const npx = px / mag;
+        const npy = py / mag;
+        
+        let found = null;
+        for (let d = 1; d < 8; d++) {
+            const bx = Math.round(hit.x + npx * d);
+            const by = Math.round(hit.y + npy * d);
+            if (this.isInsideMap(bx, by) && !this.isTileBlocked(bx, by)) {
+                found = { x: bx, y: by };
+                break;
+            }
+        }
+        return found;
+      };
+
+      const d1 = getDetour(px1, py1);
+      const d2 = getDetour(px2, py2);
+      
+      if (!d1 && !d2) return null; // Trapped
+      
+      let winner = d1;
+      if (d1 && d2) {
+        const dist1 = Math.hypot(d1.x - currX, d1.y - currY) + Math.hypot(egx - d1.x, egy - d1.y);
+        const dist2 = Math.hypot(d2.x - currX, d2.y - currY) + Math.hypot(egx - d2.x, egy - d2.y);
+        winner = dist1 < dist2 ? d1 : d2;
+      } else if (!d1) {
+        winner = d2;
+      }
+      
+      if (!winner || (winner.x === lastX && winner.y === lastY)) return null;
+      
+      path.push({ x: winner.x * TILE_SIZE + TILE_SIZE / 2, y: winner.y * TILE_SIZE + TILE_SIZE / 2 });
+      lastX = currX;
+      lastY = currY;
+      currX = winner.x;
+      currY = winner.y;
+    }
+    
+    return path.length > 0 ? path : null;
   }
 }

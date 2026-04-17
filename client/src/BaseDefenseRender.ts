@@ -121,16 +121,19 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
   }
 
   getTankFrameByDir(dir: number) {
-    const frameByDir = [3, 6, 5, 4, 7, 0, 1, 2];
-    return frameByDir[dir] ?? 3;
+    const d8 = (dir >= 0 && dir <= 7 && Number.isInteger(dir)) ? dir : this.angleToDir8(dir);
+    const frameByDir = [7, 6, 5, 4, 3, 2, 1, 0];
+    return frameByDir[d8] ?? 3;
   }
 
   getSoldierSheetRowByDir(dir: number) {
-    return RTS_SOLDIER_ROW_BY_DIR[dir] ?? RTS_SOLDIER_ROW_BY_DIR[0];
+    const d8 = (dir >= 0 && dir <= 7 && Number.isInteger(dir)) ? dir : this.angleToDir8(dir);
+    return RTS_SOLDIER_ROW_BY_DIR[d8] ?? RTS_SOLDIER_ROW_BY_DIR[0];
   }
 
   getSoldierAnimKey(action: "idle" | "run" | "shoot", dir: number) {
-    return `soldier_${action}_${dir}_${this.getGraphicsProfile().unitTier}`;
+    const d8 = (dir >= 0 && dir <= 7 && Number.isInteger(dir)) ? dir : this.angleToDir8(dir);
+    return `soldier_${action}_${d8}_${this.getGraphicsProfile().unitTier}`;
   }
 
   getSoldierIdleFrame(dir: number) {
@@ -527,7 +530,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
         if (this.showDetailedPaths) {
           const cache = this.unitClientPathCache.get(unitId);
           if (cache && cache.cells.length > 0) {
-            g.lineStyle(1.2, 0xffaa33, 0.45);
+            g.lineStyle(2.5, 0xff7733, 0.8);
             g.beginPath();
             g.moveTo(ux, uy);
             for (let ci = cache.idx; ci < cache.cells.length; ci++) {
@@ -537,7 +540,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
             g.lineTo(sx, sy);
             g.strokePath();
           } else {
-            g.lineStyle(1.2, 0xffaa33, 0.38);
+            g.lineStyle(2.5, 0xff7733, 0.7);
             g.beginPath(); g.moveTo(ux, uy); g.lineTo(sx, sy); g.strokePath();
           }
         }
@@ -565,7 +568,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
           
           if (Math.hypot(finalTX - avgX, finalTY - avgY) > TILE_SIZE * 1.5) {
             // Draw a single bright line to the ultimate destination
-            g.lineStyle(2, 0x00ffcc, 0.6); // Cyan guide line
+            g.lineStyle(4.5, 0x00ccaa, 0.85); // Darker, thicker Cyan guide line
             g.beginPath();
             g.moveTo(avgX, avgY);
             g.lineTo(finalTX, finalTY);
@@ -640,7 +643,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
         const cache = this.unitClientPathCache.get(unitId);
         if (cache && cache.cells.length > 0) {
           // Draw path segments
-          g.lineStyle(1.2, 0x00ffcc, 0.35 * alpha);
+          g.lineStyle(2.5, 0x00ccaa, 0.7 * alpha);
           g.beginPath();
           g.moveTo(ux, uy);
           for (let ci = cache.idx; ci < cache.cells.length; ci++) {
@@ -652,7 +655,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
           g.strokePath();
         } else {
           // Fallback: straight line
-          g.lineStyle(1.2, 0x00ffcc, 0.3 * alpha);
+          g.lineStyle(2.5, 0x00ccaa, 0.6 * alpha);
           g.beginPath();
           g.moveTo(ux, uy);
           g.lineTo(slotPos.x, slotPos.y);
@@ -669,7 +672,7 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
           const arrowLen = 6;
           const tipX = slotPos.x;
           const tipY = slotPos.y;
-          g.fillStyle(0x00ffcc, 0.5 * alpha);
+          g.fillStyle(0x00ccaa, 0.8 * alpha);
           g.fillTriangle(
             tipX, tipY,
             tipX - nx * arrowLen - ny * arrowLen * 0.5, tipY - ny * arrowLen + nx * arrowLen * 0.5,
