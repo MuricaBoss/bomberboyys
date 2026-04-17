@@ -227,14 +227,22 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     if (this.physicsTuner) return this.physicsTuner.formationSpacing;
     if (!this.room?.state?.units) return TILE_SIZE * 3.0;
 
-    let maxRadius = TILE_SIZE * 0.42;
+    let hasTank = false;
+    let hasHarvester = false;
+    let hasSoldier = false;
     for (const id of unitIds) {
       const unit = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
       if (!unit || (unit.hp ?? 0) <= 0) continue;
-      maxRadius = Math.max(maxRadius, this.localFormationRadiusForUnit(unit));
+      const type = String(unit.type || "");
+      if (type === "tank") hasTank = true;
+      else if (type === "harvester") hasHarvester = true;
+      else hasSoldier = true;
     }
 
-    return Math.max(TILE_SIZE * 0.8, maxRadius * 2 + 2);
+    if (hasTank) return 130;
+    if (hasHarvester) return 80;
+    if (hasSoldier) return 30;
+    return TILE_SIZE * 0.8;
   }
 
   localFormationSlot(centerX: number, centerY: number, gridIndex: number, totalUnits: number, spacing: number, angle = 0) {
