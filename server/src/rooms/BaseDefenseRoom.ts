@@ -1199,10 +1199,16 @@ export class BaseDefenseRoom extends Room<BaseDefenseState> {
     const closedSet = new Set<string>();
     let count = 0;
 
-    while (openSet.length > 0 && count < 250) {
+    while (openSet.length > 0 && count < 5000) {
       count++;
-      openSet.sort((a, b) => a.f - b.f);
-      const current = openSet.shift();
+      
+      // Build 496: Optimization. O(N) search instead of O(N log N) sorting for large open sets.
+      let bestIdx = 0;
+      for (let i = 1; i < openSet.length; i++) {
+        if (openSet[i].f < openSet[bestIdx].f) bestIdx = i;
+      }
+      
+      const current = openSet.splice(bestIdx, 1)[0];
       const key = `${current.x},${current.y}`;
       if (current.x === egx && current.y === egy) {
         const path = [];

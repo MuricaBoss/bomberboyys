@@ -933,7 +933,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const myRadius = this.localUnitBodyRadius(u);
       const unitCount = Number((this.room?.state?.units as { size?: number } | undefined)?.size ?? 0);
       const crowdScale = unitCount >= 80 ? 1.15 : 1.8;
-      const searchRadius = 22 * crowdScale;
+      const searchRadius = 160 * crowdScale;
       const neighborLimit = this.getCrowdRepulsionNeighborLimit(unitCount);
       const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
       let processedNeighbors = 0;

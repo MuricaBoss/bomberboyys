@@ -1059,9 +1059,10 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
     let closestNode = { x: startGX, y: startGY };
     let minH = h(startGX, startGY);
 
-    while (open.length > 0 && iters < 800) {
+    while (open.length > 0 && iters < 5000) {
       iters++;
       let best = 0;
+      // Build 496: Still O(N) but the increased budget allows for long-distance path completion on 140x140 maps.
       for (let i = 1; i < open.length; i++) {
         if (open[i].f < open[best].f) best = i;
       }
@@ -1101,7 +1102,6 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
         }
         if (!inBounds(nx, ny)) continue;
         if (!this.isPathWalkableForRadius(nx, ny, unitRadius)) continue;
-        // Unit-unit avoidance disabled: only static walkability blocks path nodes.
         const nKey = key(nx, ny);
         if (closed.has(nKey)) continue;
 
