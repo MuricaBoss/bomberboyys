@@ -13,7 +13,7 @@ type LocalManualTarget = {
   finalY: number;
   setAt: number;
   isAuto: boolean;
-  directSteer: false;
+  directSteer: boolean;
   kind: "override";
   leaderAlive: true;
   laneLateral: number;
@@ -201,7 +201,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       finalY: override.y,
       setAt: override.setAt,
       isAuto: !!override.isAuto,
-      directSteer: false,
+      directSteer: useBreakout,
       kind: "override" as const,
       leaderAlive: true,
       laneLateral: useBreakout ? 0 : Number(override.laneLateral ?? 0),
@@ -935,12 +935,14 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       return;
     }
 
-    const wp = this.getClientUnitWaypoint(
-      id,
-      { x: s.x, y: s.y, targetX: tx, targetY: ty, type: u.type },
-      nowMs,
-      this.localUnitBodyRadius(u),
-    );
+    const wp = manualTarget?.directSteer
+      ? { x: tx, y: ty }
+      : this.getClientUnitWaypoint(
+        id,
+        { x: s.x, y: s.y, targetX: tx, targetY: ty, type: u.type },
+        nowMs,
+        this.localUnitBodyRadius(u),
+      );
     const navX = Number(wp?.x ?? tx);
     const navY = Number(wp?.y ?? ty);
 
