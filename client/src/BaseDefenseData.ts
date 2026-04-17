@@ -25,11 +25,11 @@ import {
 } from "./constants";
 import { getGraphicsProfile, getGraphicsQuality, getTieredTextureKey } from "./graphicsQuality";
 import { UnitGrid } from "./UnitGrid";
-import { PhysicsTuner } from "./PhysicsTuner";
+
 
 
 export class BaseDefenseScene_Data extends Phaser.Scene {
-  physicsTuner!: PhysicsTuner;
+
   phaserHudEnabled = false;
   localOnly = false;
   desktopMobileFallback = false;

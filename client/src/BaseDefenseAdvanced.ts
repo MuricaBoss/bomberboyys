@@ -33,7 +33,7 @@ import {
 } from "./graphicsQuality";
 import { ensureSoldierEntity, syncSoldierRuntime } from "./BaseDefenseSoldierRuntime";
 import { ensureTankEntity, syncTankRuntime } from "./BaseDefenseTankRuntime";
-import { PhysicsTuner } from "./PhysicsTuner";
+
 
 export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   public tankTrailState = new Map<string, any>();
@@ -144,7 +144,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
   }
 
   async create() {
-    this.physicsTuner = new PhysicsTuner();
+
     this.clientClockStartedAt = Date.now();
     this.ensureSoldierAnimations();
     this.cameras.main.setRoundPixels(shouldRoundPixels(getGraphicsQuality()));

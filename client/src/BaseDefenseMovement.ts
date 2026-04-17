@@ -211,7 +211,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
   }
 
   localFormationSpacingForIds(unitIds: string[]) {
-    if (this.physicsTuner) return this.physicsTuner.formationSpacing;
+    return 33;
     if (!this.room?.state?.units) return TILE_SIZE * 3.0;
 
     let maxRadius = TILE_SIZE * 0.42;
@@ -922,10 +922,9 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const me = this.room.state.players?.get ? this.room.state.players.get(this.currentPlayerId) : this.room.state.players?.[this.currentPlayerId];
       const myTeam = me?.team;
       const myRadius = this.localUnitBodyRadius(u);
-      const tuner = this.physicsTuner;
       const unitCount = Number((this.room?.state?.units as { size?: number } | undefined)?.size ?? 0);
       const crowdScale = unitCount >= 80 ? 1.15 : 1.8;
-      const searchRadius = tuner ? tuner.repulsionRange * crowdScale : (unitCount >= 80 ? TILE_SIZE * 4.2 : TILE_SIZE * 6.0);
+      const searchRadius = 22 * crowdScale;
       const neighborLimit = this.getCrowdRepulsionNeighborLimit(unitCount);
       const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
       let processedNeighbors = 0;
@@ -957,7 +956,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         let dist = Math.hypot(dx, dy);
 
         const uType = String(u.type || "");
-        const padding = uType === "tank" ? (tuner?.tankRepulsionRange ?? 120) : (tuner?.soldierRepulsionRange ?? 48);
+        const padding = uType === "tank" ? 118 : 55;
         const minDist = myRadius + oRadius + padding;
         if (dist >= minDist) continue;
 
@@ -968,7 +967,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           dist = 0.1;
         }
 
-        const baseForce = tuner ? tuner.repulsionForce : 100000;
+        const baseForce = 5000;
         const ratio = 1.0 - dist / minDist;
         let pushStrength = ratio * ratio * baseForce;
         if (dist < (myRadius + oRadius)) pushStrength *= 2.0;
@@ -982,9 +981,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     if (!isJammedGhost) {
       const gx = Math.floor(s.x / TILE_SIZE);
       const gy = Math.floor(s.y / TILE_SIZE);
-      const tuner = this.physicsTuner;
-      const wallR = tuner ? tuner.wallAvoidanceRange : this.localUnitBodyRadius(u) + TILE_SIZE * 1.8;
-      const baseWForce = tuner ? tuner.wallAvoidanceForce : 35000;
+      const wallR = 4;
+      const baseWForce = 1504;
 
       for (let dx = -2; dx <= 2; dx++) {
         for (let dy = -2; dy <= 2; dy++) {
@@ -1051,9 +1049,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const errX = Number(u.x) - s.x;
     const errY = Number(u.y) - s.y;
     const err = Math.hypot(errX, errY);
-    const tuner = this.physicsTuner;
-    const threshold = tuner ? tuner.syncThreshold : TILE_SIZE * 2.5;
-    const snap = tuner ? tuner.snapAmount : 0.02;
+    const threshold = 44;
+    const snap = 0.05;
     if (err > threshold) {
       s.x = Number(u.x);
       s.y = Number(u.y);
