@@ -881,7 +881,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const tuner = this.physicsTuner;
       const unitCount = Number((this.room?.state?.units as { size?: number } | undefined)?.size ?? 0);
       const crowdScale = unitCount >= 80 ? 1.15 : 1.8;
-      const searchRadius = tuner ? tuner.repulsionRange * crowdScale : (unitCount >= 80 ? TILE_SIZE * 3.1 : TILE_SIZE * 4.0);
+      const searchRadius = tuner ? tuner.repulsionRange * crowdScale : (unitCount >= 80 ? TILE_SIZE * 2.8 : TILE_SIZE * 3.6);
       const neighborLimit = this.getCrowdRepulsionNeighborLimit(unitCount);
       const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
       let processedNeighbors = 0;
@@ -913,7 +913,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         let dist = Math.hypot(dx, dy);
 
         const uType = String(u.type || "");
-        const padding = uType === "tank" ? (tuner?.tankRepulsionRange ?? 84) : (tuner?.soldierRepulsionRange ?? 30);
+        const padding = uType === "tank" ? (tuner?.tankRepulsionRange ?? 72) : (tuner?.soldierRepulsionRange ?? 22);
         const minDist = myRadius + oRadius + padding;
         if (dist >= minDist) continue;
 
@@ -924,11 +924,11 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
           dist = 0.1;
         }
 
-        const baseForce = tuner ? tuner.repulsionForce : 22000;
+        const baseForce = tuner ? tuner.repulsionForce : 14000;
         const ratio = 1.0 - dist / minDist;
         let pushStrength = ratio * ratio * baseForce;
-        if (dist < (myRadius + oRadius)) pushStrength *= 1.35;
-        else if (ratio > 0.5) pushStrength *= 1.1;
+        if (dist < (myRadius + oRadius)) pushStrength *= 1.15;
+        else if (ratio > 0.5) pushStrength *= 1.03;
 
         steerForce.x += (dx / dist) * pushStrength;
         steerForce.y += (dy / dist) * pushStrength;
