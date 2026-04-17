@@ -174,9 +174,23 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const override = this.localUnitTargetOverride.get(id);
     if (!override) return null;
 
+    const unit = this.room?.state?.units?.get ? this.room.state.units.get(id) : this.room?.state?.units?.[id];
+    const state = this.localUnitRenderState.get(id);
+    const ux = Number(state?.x ?? unit?.x ?? override.x);
+    const uy = Number(state?.y ?? unit?.y ?? override.y);
+    const breakoutX = Number(override.breakoutX ?? Number.NaN);
+    const breakoutY = Number(override.breakoutY ?? Number.NaN);
+    const hasBreakout = Number.isFinite(breakoutX) && Number.isFinite(breakoutY);
+    const breakoutThreshold = Math.max(TILE_SIZE * 0.32, this.localUnitBodyRadius(unit) * 0.9 + 4);
+    const breakoutDist = hasBreakout ? Math.hypot(breakoutX - ux, breakoutY - uy) : 0;
+    const finalDist = Math.hypot(override.x - ux, override.y - uy);
+    const useBreakout = hasBreakout
+      && breakoutDist > breakoutThreshold
+      && finalDist > breakoutThreshold * 1.35;
+
     return {
-      currentX: override.x,
-      currentY: override.y,
+      currentX: useBreakout ? breakoutX : override.x,
+      currentY: useBreakout ? breakoutY : override.y,
       finalX: override.x,
       finalY: override.y,
       setAt: override.setAt,
@@ -184,8 +198,8 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       directSteer: false,
       kind: "override" as const,
       leaderAlive: true,
-      laneLateral: Number(override.laneLateral ?? 0),
-      laneDepth: Number(override.laneDepth ?? 0),
+      laneLateral: useBreakout ? 0 : Number(override.laneLateral ?? 0),
+      laneDepth: useBreakout ? 0 : Number(override.laneDepth ?? 0),
     };
   }
 
@@ -224,6 +238,47 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const rx = lateralOffset * (-sin) + (-depthOffset) * cos;
     const ry = lateralOffset * cos + (-depthOffset) * sin;
     return { x: centerX + rx, y: centerY + ry };
+  }
+
+  getLocalBreakoutTarget(
+    unitId: string,
+    unitX: number,
+    unitY: number,
+    laneLateral: number,
+    laneDepth: number,
+    angle: number,
+    spacing: number,
+    radius: number,
+    reserved: Array<{ x: number; y: number; radius: number }>,
+    ignoreIds: Set<string>
+  ) {
+    const forwardX = Math.cos(angle);
+    const forwardY = Math.sin(angle);
+    const perpX = -forwardY;
+    const perpY = forwardX;
+    const breakoutForward = Phaser.Math.Clamp(
+      spacing * 0.9 + Math.max(0, -laneDepth) * 0.22,
+      TILE_SIZE * 0.8,
+      TILE_SIZE * 2.4,
+    );
+    const breakoutLateral = Phaser.Math.Clamp(
+      laneLateral,
+      -Math.max(spacing * 1.75, TILE_SIZE * 1.2),
+      Math.max(spacing * 1.75, TILE_SIZE * 1.2),
+    );
+
+    const desiredX = unitX + forwardX * breakoutForward + perpX * breakoutLateral;
+    const desiredY = unitY + forwardY * breakoutForward + perpY * breakoutLateral;
+
+    return this.resolveLocalFormationSlot(
+      desiredX,
+      desiredY,
+      radius,
+      unitId,
+      reserved,
+      ignoreIds,
+      (sx, sy) => this.canOccupyTerrainOnly(sx, sy, Math.max(TILE_SIZE * 0.18, radius)),
+    );
   }
 
   issueLocalUnitMoveCommand(targetX: number, targetY: number, isAutoSegment = false) {
@@ -373,28 +428,47 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const now = Date.now();
     const payload: Array<{ unitId: string; targetX: number; targetY: number }> = [];
     let priority = 0;
+    const breakoutReserved: Array<{ x: number; y: number; radius: number }> = [];
     for (const id of ids) {
       const slot = assignments.get(id);
       if (!slot) continue;
+      const unit = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
+      const renderState = this.localUnitRenderState.get(id);
+      const unitX = Number(renderState?.x ?? unit?.x ?? slot.x);
+      const unitY = Number(renderState?.y ?? unit?.y ?? slot.y);
       const offsetX = slot.x - targetX;
       const offsetY = slot.y - targetY;
       const laneLateral = offsetX * (-Math.sin(angle)) + offsetY * Math.cos(angle);
       const laneDepth = -(offsetX * Math.cos(angle) + offsetY * Math.sin(angle));
+      const unitRadius = this.localUnitBodyRadius(unit);
+      const breakoutRadius = Math.max(unitRadius + 4, slotRadiusBase);
+      const breakout = this.getLocalBreakoutTarget(
+        id,
+        unitX,
+        unitY,
+        laneLateral,
+        laneDepth,
+        angle,
+        spacing,
+        breakoutRadius,
+        breakoutReserved,
+        selectedSet,
+      );
+      if (breakout) breakoutReserved.push({ x: breakout.x, y: breakout.y, radius: breakoutRadius });
 
       this.localUnitTargetOverride.set(id, {
         x: slot.x,
         y: slot.y,
+        breakoutX: breakout?.x,
+        breakoutY: breakout?.y,
         setAt: now,
         isAuto: isAutoSegment,
         laneLateral,
         laneDepth,
       });
       this.localUnitMovePriority.set(id, priority++);
-      this.localUnitPathRadiusOverride.set(id, this.localUnitBodyRadius(
-        this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id],
-      ));
+      this.localUnitPathRadiusOverride.set(id, unitRadius);
 
-      const unit = this.room.state.units.get ? this.room.state.units.get(id) : this.room.state.units?.[id];
       if (unit) {
         unit.targetX = slot.x;
         unit.targetY = slot.y;

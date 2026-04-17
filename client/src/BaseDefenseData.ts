@@ -179,6 +179,8 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   localUnitTargetOverride = new Map<string, {
     x: number;
     y: number;
+    breakoutX?: number;
+    breakoutY?: number;
     setAt: number;
     isAuto?: boolean;
     laneLateral?: number;
