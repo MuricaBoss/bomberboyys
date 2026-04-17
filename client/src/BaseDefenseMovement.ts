@@ -150,6 +150,46 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     return { x: centerX + rx, y: centerY + ry };
   }
 
+  // Build 487: 'String Pulling' logic. Checks if a straight line between nodes is obstacle-free.
+  isLineOfSightWalkable(a: { x: number, y: number }, b: { x: number, y: number }, radius: number) {
+    const dist = Math.hypot(b.x - a.x, b.y - a.y);
+    // Sample every half-tile to verify path
+    const steps = Math.max(2, Math.ceil(dist / (TILE_SIZE * 0.5)));
+    for (let i = 1; i <= steps; i++) {
+      const px = a.x + (b.x - a.x) * (i / steps);
+      const py = a.y + (b.y - a.y) * (i / steps);
+      const ogx = Math.floor(px / TILE_SIZE);
+      const ogy = Math.floor(py / TILE_SIZE);
+      if (!this.isPathWalkableForRadius(ogx, ogy, radius)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Build 487: Post-processes A* nodes by skipping intermediate points if a shortcut is possible.
+  smoothPath(path: { x: number, y: number }[], radius: number) {
+    if (path.length <= 2) return path;
+    const result: { x: number, y: number }[] = [path[0]];
+    let currentIdx = 0;
+    
+    while (currentIdx < path.length - 1) {
+      let furthestVisibleIdx = currentIdx + 1;
+      // Look ahead up to 6 nodes (roughly 6 tiles) to find shortcuts
+      for (let next = currentIdx + 2; next < Math.min(path.length, currentIdx + 7); next++) {
+        if (this.isLineOfSightWalkable(path[currentIdx], path[next], radius)) {
+          furthestVisibleIdx = next;
+        } else {
+          break; // Obstacle found, stop looking ahead from this node
+        }
+      }
+      result.push(path[furthestVisibleIdx]);
+      currentIdx = furthestVisibleIdx;
+    }
+    return result;
+  }
+
+
   getSharedMovePathKey(now: number, targetX: number, targetY: number, unitCount: number) {
     const tx = Math.round(targetX);
     const ty = Math.round(targetY);
@@ -335,18 +375,15 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       sharedPathCenterY = nearestSlot.y;
     }
 
-    // Build 464: Outlier-resistant path start. Sort by distance and pick the 90th percentile.
-    // This ensures the path starts behind the main body but ignores extreme outliers far at the base.
-    const sortedByDist = [...unitPositions].sort((a, b) => {
-      const da = Math.hypot(a.x - sharedPathCenterX, a.y - sharedPathCenterY);
-      const db = Math.hypot(b.x - sharedPathCenterX, b.y - sharedPathCenterY);
-      return db - da; // Furthest first
-    });
-    
-    // Pick the unit at the 90th percentile of distance
-    const startUnit = sortedByDist[Math.min(sortedByDist.length - 1, Math.floor(sortedByDist.length * 0.1))];
-    let pathStartCX = startUnit.x;
-    let pathStartCY = startUnit.y;
+    // Build 487: Use the group centroid as the path start for better representative direction.
+    let sumX = 0;
+    let sumY = 0;
+    for (const p of unitPositions) {
+      sumX += p.x;
+      sumY += p.y;
+    }
+    let pathStartCX = sumX / unitPositions.length;
+    let pathStartCY = sumY / unitPositions.length;
 
     const startGrid = this.worldToGrid(pathStartCX, pathStartCY);
     const goalGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
@@ -354,12 +391,14 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const gridPath = this.findPath(startGrid.gx, startGrid.gy, goalGrid.gx, goalGrid.gy, false, undefined, pathRadius);
     if (!gridPath || gridPath.length === 0) return;
 
-    // Build 486: Convert grid nodes (e.g. 10) to world pixels (e.g. 320)
-    // This allows lOffset (16px) to be added correctly in world scale.
-    const masterPath = gridPath.map(node => ({
+    // Build 486: World pixel conversion
+    let rawMasterPath = gridPath.map(node => ({
         x: node.x * TILE_SIZE + TILE_SIZE / 2,
         y: node.y * TILE_SIZE + TILE_SIZE / 2
     }));
+
+    // Build 487: 'String Pulling' smoothing pass to remove zig-zags and detours
+    const masterPath = this.smoothPath(rawMasterPath, 6);
 
     const laneKeys: string[] = [];
     const laneCount = Math.max(1, Math.min(3, Math.ceil(ids.length / 25)));
