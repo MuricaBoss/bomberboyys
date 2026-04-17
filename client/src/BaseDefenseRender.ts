@@ -452,19 +452,6 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
     const g = this.formationPreviewGraphics;
     g.clear();
 
-    // Build 468: Draw Locked Persistent Command Paths
-    this.activeCommandPaths.forEach((path, pathId) => {
-      if (path.nodes.length < 2) return;
-      g.lineStyle(2.5, 0xff8800, 0.45); // Thick orange "rails"
-      g.beginPath();
-      // Start from the first node
-      g.moveTo(path.nodes[0].x * TILE_SIZE + TILE_SIZE/2, path.nodes[0].y * TILE_SIZE + TILE_SIZE/2);
-      for (let i = 1; i < path.nodes.length; i++) {
-        g.lineTo(path.nodes[i].x * TILE_SIZE + TILE_SIZE/2, path.nodes[i].y * TILE_SIZE + TILE_SIZE/2);
-      }
-      g.strokePath();
-    });
-
     const me = this.room?.state?.players?.get
       ? this.room.state.players.get(this.currentPlayerId)
       : this.room?.state?.players?.[this.currentPlayerId];
@@ -629,9 +616,6 @@ export class BaseDefenseScene_Render extends BaseDefenseScene_Movement {
         const u = this.room?.state?.units?.get ? this.room.state.units.get(unitId) : this.room?.state?.units?.[unitId];
         if (!u || (u.hp ?? 0) <= 0) continue;
         
-        // Build 471: Don't draw individual lines for followers (keep screen clean)
-        if (this.localUnitFollowState.has(unitId)) continue;
-
         const ux = Number(rs?.x ?? u.x);
         const uy = Number(rs?.y ?? u.y);
         const dist = Math.hypot(slotPos.x - ux, slotPos.y - uy);

@@ -1194,14 +1194,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const players = state.players;
     const me = players?.get ? players.get(this.currentPlayerId) : players?.[this.currentPlayerId];
 
-    // Performance Optimization: Rebuild spatial grid for fast unit proximity lookups
-    this.unitGrid.clear();
-    state.units.forEach((u: any, id: string) => {
-      if ((u.hp ?? 0) <= 0) return;
-      const rs = this.localUnitRenderState.get(id);
-      this.unitGrid.add(id, Number(rs?.x ?? u.x), Number(rs?.y ?? u.y));
-    });
-
     if (state.players && !this.hasLoggedTeam) {
        const mTeam = me?.team;
        if (mTeam) {
@@ -1423,11 +1415,6 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     const pad = TILE_SIZE * 6; // Build 280: Standard optimized padding
     nowMs = Date.now();
 
-    // Build 238: Periodic shared path cache clearing (every 500ms) to ensure path results stay fresh
-    if (nowMs - (this as any)._lastSharedPathClearAt > 500 || (this as any)._lastSharedPathClearAt === undefined) {
-      this.sharedPathCache.clear();
-      (this as any)._lastSharedPathClearAt = nowMs;
-    }
     // Build 228: Unit counters
     let countSoldiers = 0;
     let countTanks = 0;

@@ -428,12 +428,8 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       dir: number;
       tx: number;
       ty: number;
-      sharedPathKey?: string;
-      sharedPathCenterX?: number;
-      sharedPathCenterY?: number;
       finalX?: number;
       finalY?: number;
-      pathRadius?: number;
     }> = [];
     let hasMoving = false;
     this.room.state.units.forEach((u: any, id: string) => {
@@ -443,34 +439,8 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
       const s = this.localUnitRenderState.get(id);
       if (!s) return;
       const manualTarget = this.getLocalUnitManualTarget(id) as any;
-      const distToFinal = manualTarget
-        ? Math.hypot(Number(manualTarget.finalX) - s.x, Number(manualTarget.finalY) - s.y)
-        : 0;
-      const distToSharedCenter = manualTarget?.sharedPathKey
-        ? Math.hypot(Number(manualTarget.sharedPathCenterX) - s.x, Number(manualTarget.sharedPathCenterY) - s.y)
-        : 0;
-      const finalApproachRadius = manualTarget?.sharedPathKey
-        ? Math.max(
-          TILE_SIZE * 4.5,
-          Math.hypot(
-            Number(manualTarget.sharedPathOffsetX ?? 0),
-            Number(manualTarget.sharedPathOffsetY ?? 0),
-          ) + TILE_SIZE * 2.25,
-        )
-        : 0;
-      const useSharedPathTarget = !!manualTarget?.sharedPathKey
-        && distToSharedCenter > finalApproachRadius
-        && distToFinal > TILE_SIZE * 1.35;
-      const tx = Number(
-        useSharedPathTarget
-          ? manualTarget?.sharedPathCenterX
-          : (manualTarget?.finalX ?? u.targetX ?? u.x)
-      );
-      const ty = Number(
-        useSharedPathTarget
-          ? manualTarget?.sharedPathCenterY
-          : (manualTarget?.finalY ?? u.targetY ?? u.y)
-      );
+      const tx = Number(manualTarget?.finalX ?? u.targetX ?? u.x);
+      const ty = Number(manualTarget?.finalY ?? u.targetY ?? u.y);
       const vx = Number(s.vx || 0);
       const vy = Number(s.vy || 0);
       const speedNow = Math.hypot(vx, vy);
@@ -493,12 +463,8 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
         dir,
         tx,
         ty,
-        sharedPathKey: manualTarget?.sharedPathKey ?? "",
-        sharedPathCenterX: manualTarget?.sharedPathCenterX ?? tx,
-        sharedPathCenterY: manualTarget?.sharedPathCenterY ?? ty,
         finalX: manualTarget?.finalX ?? tx,
         finalY: manualTarget?.finalY ?? ty,
-        pathRadius: manualTarget?.pathRadius ?? 0,
       });
       this.lastUnitPoseState.set(id, {
         x: s.x,
@@ -506,7 +472,6 @@ export class BaseDefenseScene_Server extends BaseDefenseScene_Map {
         dir,
         tx,
         ty,
-        sharedPathKey: manualTarget?.sharedPathKey ?? "",
         finalX: manualTarget?.finalX ?? tx,
         finalY: manualTarget?.finalY ?? ty,
       });

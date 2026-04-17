@@ -159,9 +159,9 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     cells: { x: number; y: number }[];
     idx: number;
     updatedAt: number;
-    sharedPathKey?: string;
-    laneOffset?: number;
   }>();
+  sharedMovePathCache = new Map<string, { cells: { x: number; y: number }[]; updatedAt: number }>();
+  lastSharedMovePathPruneAt = 0;
   localUnitRenderState = new Map<string, { x: number; y: number; vx: number; vy: number; lastAt: number; jamRefX?: number; jamRefY?: number }>();
   unitEnemyIcons = new Map<string, Phaser.GameObjects.Graphics>();
   structureEnemyIcons = new Map<string, Phaser.GameObjects.Graphics>();
@@ -173,7 +173,6 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
     dir: number;
     tx: number;
     ty: number;
-    sharedPathKey?: string;
     finalX?: number;
     finalY?: number;
   }>();
@@ -230,13 +229,11 @@ export class BaseDefenseScene_Data extends Phaser.Scene {
   formationPreviewCenter: { x: number; y: number } | null = null;
   lastCommandedUnitIds: Set<string> = new Set();
   lastKnownStructureCount: number = 0;
-  activeCommandPaths: Map<string, { nodes: Array<{x: number, y: number}>, participants: Set<string> }> = new Map();
   activeSquadCount: number = 0;
   formationPreviewUntil = 0;
   moveClickMarkerSprite: Phaser.GameObjects.Image | null = null;
   moveClickMarker: { x: number; y: number; createdAt: number; expiresAt: number } | null = null;
   lastFormationReflowAt = 0;
-  sharedPathCache = new Map<string, Array<{ x: number; y: number }> | null>();
   visionSources: Array<{ x: number; y: number; r2: number }> = [];
   lastAutoEngageAt = 0;
   autoEngagedUnitIds = new Set<string>();

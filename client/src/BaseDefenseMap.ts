@@ -416,9 +416,9 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
       // Build 462: Invalidate path cache if structure count changes (dynamic avoidance)
       const currentCount = structures.size || Object.keys(structures).length || 0;
       if (currentCount !== this.lastKnownStructureCount) {
-        console.log(`[BaseDefenseMap] Structure count changed (${this.lastKnownStructureCount} -> ${currentCount}). Clearing path cache.`);
         this.lastKnownStructureCount = currentCount;
-        this.sharedPathCache.clear();
+        this.sharedMovePathCache.clear();
+        this.unitClientPathCache.clear();
       }
 
       const processStructure = (s: any) => {
@@ -1133,297 +1133,81 @@ export class BaseDefenseScene_Map extends BaseDefenseScene_Data {
   }
 
   getClientUnitWaypoint(unitId: string, unit: any, now: number, unitRadius = this.localUnitBodyRadius(unit)) {
-    // Build 471: Performance Optimization. 
-    // If unit is in a follow squad, skip all path processing (thinking).
-    if (this.localUnitFollowState.has(unitId)) return null;
-
     const ux = Number(unit?.x ?? 0);
     const uy = Number(unit?.y ?? 0);
     const tx = Number(unit?.targetX ?? ux);
     const ty = Number(unit?.targetY ?? uy);
-    const startGX = Math.floor(Number(unit?.x ?? 0) / TILE_SIZE);
-    const startGY = Math.floor(Number(unit?.y ?? 0) / TILE_SIZE);
-    
-    // Build 242: Remove the 220px intermediate segmenting. Path straight to the goal.
-    let effectiveTX = tx;
-    let effectiveTY = ty;
-    
-    const goalGX = Math.floor(effectiveTX / TILE_SIZE);
-    const goalGY = Math.floor(effectiveTY / TILE_SIZE);
-
+    const startGX = Math.floor(ux / TILE_SIZE);
+    const startGY = Math.floor(uy / TILE_SIZE);
+    const goalGX = Math.floor(tx / TILE_SIZE);
+    const goalGY = Math.floor(ty / TILE_SIZE);
     const radiusOverride = this.localUnitPathRadiusOverride.get(unitId);
     const useRadius = radiusOverride ?? unitRadius;
     const radiusBucket = Math.max(4, Math.round(useRadius / 4) * 4);
 
-    let isJammed = this.localUnitGhostMode?.has(unitId) ?? false;
-    const hasSharedPath = !isJammed && !!unit.sharedPathKey;
-
     let cache = this.unitClientPathCache.get(unitId);
-    // Build 456: If unit follows a pre-computed shared lane path, skip the expensive 520ms timer.
-    // Only recalc if goal tile changed, path exhausted, or unit got jammed.
-    const sharedPathStillValid = hasSharedPath && this.sharedPathCache.has(unit.sharedPathKey);
+    const nextCell = cache && cache.idx < cache.cells.length
+      ? cache.cells[Math.max(0, Math.min(cache.idx, cache.cells.length - 1))]
+      : null;
+    const nextCellBlocked = !!nextCell && !this.isPathWalkableForRadius(nextCell.x, nextCell.y, useRadius);
     const needRecalc = !cache
       || cache.goalGX !== goalGX
       || cache.goalGY !== goalGY
       || cache.radiusBucket !== radiusBucket
-      || (!sharedPathStillValid && (now - cache.updatedAt) > 520)
       || cache.idx >= cache.cells.length
-      || isJammed; // Build 373: Force unique path if jammed
+      || nextCellBlocked
+      || (now - Number(cache.updatedAt ?? 0)) > 400;
 
     if (needRecalc) {
-      // Build 456: For shared paths, use the existing sharedPathKey directly.
-      // Fall back to sector-based key for solo-navigating units.
-      const pathCacheKey = unit.sharedPathKey || `sector_${Math.floor(goalGX / 4)}_${Math.floor(goalGY / 4)}_r${radiusBucket}`;
-
-      // Build 373: Stuck units bypass shared cache to find an individual detour
-      let cells = !isJammed ? this.sharedPathCache.get(pathCacheKey) : null;
-      
-      if (!cells) {
-        cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
-        if (cells && cells.length > 0) {
-          this.sharedPathCache.set(pathCacheKey, cells);
-        }
-      }
-
+      const cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
       if (!cells || cells.length === 0) {
         this.unitClientPathCache.delete(unitId);
-        return null;
+        return Math.hypot(tx - ux, ty - uy) > TILE_SIZE * 0.18 ? { x: tx, y: ty } : null;
       }
-      // Build 427: Smart Path Entry — Find the closest FORWARD waypoint to prevent running backwards.
-      const centerX = goalGX * TILE_SIZE + TILE_SIZE / 2;
-      const centerY = goalGY * TILE_SIZE + TILE_SIZE / 2;
-      const railOffsetX = (unit.targetX ?? tx) - centerX;
-      const railOffsetY = (unit.targetY ?? ty) - centerY;
-      
-      const effectiveTX = (unit?.targetX ?? tx);
-      const effectiveTY = (unit?.targetY ?? ty);
-      const goalDirX = effectiveTX - ux;
-      const goalDirY = effectiveTY - uy;
-      const goalDirLen = Math.hypot(goalDirX, goalDirY);
-      const gdNX = goalDirLen > 0.001 ? goalDirX / goalDirLen : 0;
-      const gdNY = goalDirLen > 0.001 ? goalDirY / goalDirLen : 0;
-      
+
       let bestIdx = 0;
-      let minD = Infinity;
-      let bestForwardIdx = -1;
-      let bestForwardDist = Infinity;
-
-      // Build 456: Start search at current index (no backward look for shared-path units).
-      // For fresh entry, start from 0.
-      // Build 461: Start search at current index. If jammed, we reset to 0 to look for rescue.
-      const searchStart = (cache && !isJammed) ? cache.idx : 0;
-
-      // Build 462: Path Validation. If we have a cached index, check if the NEXT waypoint is still walkable.
-      // If a building was placed on our path, we force isJammed to recalc.
-      if (cache && !isJammed) {
-        const checkIdx = Math.min(cells.length - 1, cache.idx + 1);
-        const checkWP = cells[checkIdx];
-        if (!this.isPathWalkableForRadius(checkWP.x, checkWP.y, useRadius)) {
-            isJammed = true;
-            console.log(`[BaseDefenseMap] Path blocked at waypoint ${checkIdx}. Recalculating.`);
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < cells.length; i++) {
+        const world = this.gridToWorld(cells[i].x, cells[i].y);
+        const dist = Math.hypot(world.x - ux, world.y - uy);
+        if (dist < bestDistance) {
+          bestDistance = dist;
+          bestIdx = i;
         }
       }
 
-    // Build 468: Locked Path Navigation.
-    // If we have a persistent path assignment, use it strictly.
-    if (unit.persistentPathId) {
-      const pPath = this.activeCommandPaths.get(unit.persistentPathId);
-      if (pPath) {
-        cells = pPath.nodes.map(n => ({ x: n.x, y: n.y }));
-        // Ensure index exists
-        let pathIdx = cache?.idx ?? -1;
-        if (pathIdx === -1) {
-            // First time joining: find best forward node
-            const distToGoal = Math.hypot(centerX - ux, centerY - uy);
-            let bestFID = -1;
-            let bestFD = Infinity;
-            for (let i = 0; i < cells.length; i++) {
-                const wx = cells[i].x * TILE_SIZE + TILE_SIZE/2;
-                const wy = cells[i].y * TILE_SIZE + TILE_SIZE/2;
-                const d = Math.hypot(wx - ux, wy - uy);
-                const fDot = (wx - ux) * gdNX + (wy - uy) * gdNY;
-                const distToG = Math.hypot(centerX - wx, centerY - wy);
-                if (fDot > 0 && distToG < distToGoal - 2 && d < bestFD) {
-                    bestFD = d;
-                    bestFID = i;
-                }
-            }
-            pathIdx = bestFID === -1 ? 0 : bestFID;
-        }
-        
-        cache = { goalGX, goalGY, radiusBucket, cells, idx: pathIdx, updatedAt: now };
-        this.unitClientPathCache.set(unitId, cache);
-      }
-    }
-
-    if (!cache) {
-      // Build 455: Synchronous shared path retrieval.
-      const sharedPath = this.sharedPathCache.get(unit.sharedPathKey || "");
-      if (sharedPath) {
-        cells = sharedPath.map(n => ({ x: n.x, y: n.y }));
-      }
-
-      if (!cells || cells.length === 0) {
-        // Individual fallback
-        const res = this.findPath(startGX, startGY, goalGX, goalGY, false, undefined, radiusBucket);
-        if (res) cells = res;
-      }
-      
-      if (!cells || cells.length === 0) return null;
-
-      let bIdx = -1;
-      let minD = Infinity;
-      let bForwardIdx = -1;
-      let bForwardDist = Infinity;
-
-      const searchLimit = (searchStart === 0 || isJammed) ? cells.length : Math.min(cells.length, searchStart + 64);
-      
-      const distToGoal = Math.hypot(centerX - ux, centerY - uy);
-
-      for (let i = (isJammed ? 0 : searchStart); i < searchLimit; i++) {
-        const wx = cells[i].x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
-        const wy = cells[i].y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
-        const d = Math.hypot(wx - ux, wy - uy);
-        
-        const forwardDot = (cells[i].x * TILE_SIZE + TILE_SIZE / 2 - ux) * gdNX
-          + (cells[i].y * TILE_SIZE + TILE_SIZE / 2 - uy) * gdNY;
-          
-        const dotThreshold = (searchStart === 0 || isJammed) ? 4 : -TILE_SIZE * 0.4;
-
-        const wpDistToGoal = Math.hypot(centerX - wx, centerY - wy);
-        
-        // Build 473: Relax 'isCloser' for persistent paths. 
-        // This stops units from walking BACKWARDS to reach index 0 if they are slightly ahead of it.
-        const isCloser = (unit.persistentPathId || searchStart > 0) ? true : (wpDistToGoal < distToGoal - 4);
-
-        if (forwardDot >= dotThreshold && isCloser && d < bForwardDist) {
-          bForwardDist = d;
-          bForwardIdx = i;
-        }
-        
-        if (d < minD) {
-          minD = d;
-          bIdx = i;
-        }
-        if (bForwardIdx >= 0 && d > bForwardDist + TILE_SIZE * 2) break;
-      }
-      
-      if (searchStart === 0 && bForwardIdx === -1 && !unit.persistentPathId) {
-          isJammed = true;
-      }
-
-      if (bForwardIdx === -1) {
-        // Build 473: If we found no forward node, don't just stay at index 0. 
-        // Use the closest node available (minD).
-        bIdx = Math.max(bIdx, searchStart);
-      } else {
-        bIdx = bForwardIdx;
-      }
-      
-      cache = { goalGX, goalGY, radiusBucket, cells, idx: bIdx, updatedAt: now };
+      cache = { goalGX, goalGY, radiusBucket, cells, idx: bestIdx, updatedAt: now };
       this.unitClientPathCache.set(unitId, cache);
     }
-    } // End of if (needRecalc)
 
     if (!cache) return null;
-
-    const centerX = goalGX * TILE_SIZE + TILE_SIZE / 2;
-    const centerY = goalGY * TILE_SIZE + TILE_SIZE / 2;
-    const railOffsetX = (unit.targetX ?? tx) - centerX;
-    const railOffsetY = (unit.targetY ?? ty) - centerY;
-
-    if (cache.idx >= cache.cells.length - 1) {
-      const lastCell = cache.cells[cache.cells.length - 1];
-      const finalWX = lastCell.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
-      const finalWY = lastCell.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
-      const distToFinal = Math.hypot(finalWX - ux, finalWY - uy);
-
-      // Build 472: Only clear rail if VERY close to final slot (8px instead of immediate)
-      if (distToFinal < 8) {
-        if (unit.persistentPathId) {
-          const pPath = this.activeCommandPaths.get(unit.persistentPathId);
-          if (pPath) {
-            pPath.participants.delete(unitId);
-            if (pPath.participants.size === 0) {
-              this.activeCommandPaths.delete(unit.persistentPathId);
-            }
-          }
-          unit.persistentPathId = undefined;
-        }
-        return null;
-      }
-    }
+    cache.updatedAt = now;
 
     while (cache.idx < cache.cells.length) {
-      const c = cache.cells[cache.idx];
-      let wx = c.x * TILE_SIZE + TILE_SIZE / 2;
-      let wy = c.y * TILE_SIZE + TILE_SIZE / 2;
+      const cell = cache.cells[cache.idx];
+      const world = this.gridToWorld(cell.x, cell.y);
+      const distToWaypoint = Math.hypot(world.x - ux, world.y - uy);
 
-      // Build 241: "Imaginary Rails"
-      wx += railOffsetX;
-      wy += railOffsetY;
-
-      // Build 247: Smart Funneling — Use the NavMesh clearance grid to squeeze the formation through gaps.
-      if (this.clearanceGrid && this.clearanceGrid.length > 0) {
-        const gridIdx = Math.floor(wy / TILE_SIZE) * this.gridW + Math.floor(wx / TILE_SIZE);
-        const clearanceTiles = this.clearanceGrid[gridIdx];
-        if (clearanceTiles !== undefined) {
-          // Calculate max allowed distance from center of path (clearance - unitRadius - small margin)
-          // clearanceTiles is distance to nearest wall in tiles.
-          const maxDistPx = Math.max(TILE_SIZE * 0.1, (clearanceTiles * TILE_SIZE) - unitRadius - 6);
-          const currentOffsetDist = Math.hypot(railOffsetX, railOffsetY);
-          
-          if (currentOffsetDist > maxDistPx) {
-            const scale = maxDistPx / currentOffsetDist;
-            wx = c.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX * scale;
-            wy = c.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY * scale;
-          }
-        }
-      }
-
-      // Build 463: Path Entry LOS Check. 
-      // If our straight line to the first/target waypoint is blocked, we need a local rescue path.
-      const distToWp = Math.hypot(wx - ux, wy - uy);
-      if (distToWp > TILE_SIZE * 0.5) {
-        if (!this.lineOfSightClear(ux, uy, wx, wy)) {
-          // Blocked by structure or terrain! Generate a short individual path to the join point.
-          const localEntryPath = this.findPath(
-            Math.floor(ux / TILE_SIZE), Math.floor(uy / TILE_SIZE),
-            Math.floor(wx / TILE_SIZE), Math.floor(wy / TILE_SIZE),
-            false, unitId, useRadius
-          );
-          if (localEntryPath && localEntryPath.length > 1) {
-            // Steering target is the first node of the rescue path
-            const nextNode = localEntryPath[1];
-            return this.gridToWorld(nextNode.x, nextNode.y);
-          }
-        }
-      }
-
-      // Build 477: Fluid Cornering & Node Skipping
-      // Use a larger threshold for persistent rails (round corners instead of hitting them)
-      const arrivalThreshold = unit.persistentPathId ? TILE_SIZE * 0.85 : TILE_SIZE * 0.45;
-
-      // Build 477: Node Skipping
-      // If the NEXT node is already closer to us than the current one, jump to it!
       if (cache.idx < cache.cells.length - 1) {
-        const nextC = cache.cells[cache.idx + 1];
-        const nx = nextC.x * TILE_SIZE + TILE_SIZE / 2 + railOffsetX;
-        const ny = nextC.y * TILE_SIZE + TILE_SIZE / 2 + railOffsetY;
-        const distToNext = Math.hypot(nx - ux, ny - uy);
-        if (distToNext < distToWp) {
+        const nextWorld = this.gridToWorld(cache.cells[cache.idx + 1].x, cache.cells[cache.idx + 1].y);
+        const distToNext = Math.hypot(nextWorld.x - ux, nextWorld.y - uy);
+        if (distToWaypoint <= TILE_SIZE * 0.38 || distToNext + TILE_SIZE * 0.12 < distToWaypoint) {
           cache.idx += 1;
-          continue; 
+          continue;
         }
+      } else if (Math.hypot(tx - ux, ty - uy) <= TILE_SIZE * 2.5 && this.lineOfSightClear(ux, uy, tx, ty)) {
+        return { x: tx, y: ty };
       }
 
-      if (distToWp <= arrivalThreshold) {
+      if (distToWaypoint <= TILE_SIZE * 0.38) {
         cache.idx += 1;
-      } else {
-        return { x: wx, y: wy };
+        continue;
       }
+
+      return world;
     }
-    return null;
+
+    return Math.hypot(tx - ux, ty - uy) > TILE_SIZE * 0.18 ? { x: tx, y: ty } : null;
   }
 
   recalcPathToTarget() {

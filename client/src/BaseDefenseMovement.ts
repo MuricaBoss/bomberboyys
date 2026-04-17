@@ -16,16 +16,77 @@ type LocalManualTarget = {
   directSteer: false;
   kind: "override";
   leaderAlive: true;
-  sharedPathKey: "";
-  sharedPathCenterX: number;
-  sharedPathCenterY: number;
-  sharedPathOffsetX: number;
-  sharedPathOffsetY: number;
-  pathRadius: number;
 };
 
 export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
   pendingFinalPoses: any[] = [];
+
+  stringHash(input: string) {
+    let hash = 0;
+    for (let i = 0; i < input.length; i++) {
+      hash = ((hash << 5) - hash) + input.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash);
+  }
+
+  getUnitPathRecalcIntervalMs(unitCount: number) {
+    if (unitCount >= 120) return 520;
+    if (unitCount >= 80) return 420;
+    if (unitCount >= 40) return 320;
+    return 260;
+  }
+
+  getUnitPathFrameStride(unitCount: number) {
+    if (unitCount >= 120) return 4;
+    if (unitCount >= 80) return 3;
+    if (unitCount >= 40) return 2;
+    return 1;
+  }
+
+  getCrowdRepulsionNeighborLimit(unitCount: number) {
+    if (unitCount >= 120) return 10;
+    if (unitCount >= 80) return 14;
+    if (unitCount >= 40) return 18;
+    return 24;
+  }
+
+  pruneSharedMovePathCache(now: number) {
+    if (now - this.lastSharedMovePathPruneAt < 1500) return;
+    this.lastSharedMovePathPruneAt = now;
+
+    const maxAgeMs = 7000;
+    const maxEntries = 96;
+    for (const [key, entry] of this.sharedMovePathCache.entries()) {
+      if ((now - entry.updatedAt) > maxAgeMs) this.sharedMovePathCache.delete(key);
+    }
+
+    if (this.sharedMovePathCache.size <= maxEntries) return;
+    const entries = Array.from(this.sharedMovePathCache.entries())
+      .sort((a, b) => a[1].updatedAt - b[1].updatedAt);
+    for (let i = 0; i < entries.length - maxEntries; i++) {
+      this.sharedMovePathCache.delete(entries[i][0]);
+    }
+  }
+
+  getSharedMovePathKey(startGX: number, startGY: number, goalGX: number, goalGY: number, radiusBucket: number, unitCount: number) {
+    if (unitCount < 24) return null;
+    const sectorSize = unitCount >= 80 ? 8 : 6;
+    const startSX = Math.floor(startGX / sectorSize);
+    const startSY = Math.floor(startGY / sectorSize);
+    const goalSX = Math.floor(goalGX / sectorSize);
+    const goalSY = Math.floor(goalGY / sectorSize);
+    return `sm:${startSX},${startSY}->${goalSX},${goalSY}:r${radiusBucket}`;
+  }
+
+  shouldDeferPathRecalc(unitId: string, unitCount: number, cache: { updatedAt: number } | undefined, now: number, recalcIntervalMs: number) {
+    if (!cache) return false;
+    const stride = this.getUnitPathFrameStride(unitCount);
+    if (stride <= 1) return false;
+    if ((now - cache.updatedAt) > (recalcIntervalMs * 1.8)) return false;
+    const frame = Number(this.game?.loop?.frame ?? 0);
+    return ((frame + this.stringHash(unitId)) % stride) !== 0;
+  }
 
   sendClientUnitPoses(now: number) {
     if (this.pendingFinalPoses.length > 0) {
@@ -70,12 +131,6 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       directSteer: false,
       kind: "override" as const,
       leaderAlive: true,
-      sharedPathKey: "",
-      sharedPathCenterX: override.x,
-      sharedPathCenterY: override.y,
-      sharedPathOffsetX: 0,
-      sharedPathOffsetY: 0,
-      pathRadius: 0,
     };
   }
 
@@ -341,6 +396,9 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const radiusOverride = this.localUnitPathRadiusOverride.get(unitId);
     const useRadius = radiusOverride ?? unitRadius;
     const radiusBucket = Math.max(4, Math.round(useRadius / 4) * 4);
+    const unitCount = Number((this.room?.state?.units as { size?: number } | undefined)?.size ?? 0);
+    const recalcIntervalMs = this.getUnitPathRecalcIntervalMs(unitCount);
+    this.pruneSharedMovePathCache(now);
 
     const resolvedGoal = this.resolvePathGoal(rawGoalGX, rawGoalGY, useRadius, tx, ty);
     if (!resolvedGoal) {
@@ -356,7 +414,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       ? cache.cells[Math.max(0, Math.min(cache.idx, cache.cells.length - 1))]
       : null;
     const nextCellBlocked = !!nextCell && !this.isPathWalkableForRadius(nextCell.x, nextCell.y, useRadius);
-    const cacheExpired = (now - Number(cache?.updatedAt ?? 0)) > 260;
+    const cacheExpired = (now - Number(cache?.updatedAt ?? 0)) > recalcIntervalMs;
 
     const needRecalc = !cache
       || cache.goalGX !== goalGX
@@ -367,48 +425,65 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       || cacheExpired;
 
     if (needRecalc) {
-      const cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
-      if (!cells || cells.length === 0) {
-        this.unitClientPathCache.delete(unitId);
-        if (Math.hypot(tx - ux, ty - uy) <= TILE_SIZE * 0.9) {
-          return { x: tx, y: ty };
+      const existingCache = cache;
+      if (!nextCellBlocked && existingCache && this.shouldDeferPathRecalc(unitId, unitCount, existingCache, now, recalcIntervalMs)) {
+        existingCache.updatedAt = now;
+        cache = existingCache;
+      } else {
+        const sharedPathKey = this.getSharedMovePathKey(startGX, startGY, goalGX, goalGY, radiusBucket, unitCount);
+        const sharedEntry = sharedPathKey ? this.sharedMovePathCache.get(sharedPathKey) : null;
+        let cells = sharedEntry?.cells ?? null;
+        if (!cells || cells.length === 0) {
+          cells = this.findPath(startGX, startGY, goalGX, goalGY, false, unitId, useRadius);
+          if (sharedPathKey && cells && cells.length > 0) {
+            this.sharedMovePathCache.set(sharedPathKey, { cells, updatedAt: now });
+          }
+        } else {
+          sharedEntry!.updatedAt = now;
         }
-        return null;
+
+        if (!cells || cells.length === 0) {
+          this.unitClientPathCache.delete(unitId);
+          if (Math.hypot(tx - ux, ty - uy) <= TILE_SIZE * 0.9) {
+            return { x: tx, y: ty };
+          }
+          return null;
+        }
+
+        const goalDirX = tx - ux;
+        const goalDirY = ty - uy;
+        const goalDirLen = Math.hypot(goalDirX, goalDirY);
+        const dirNX = goalDirLen > 0.001 ? goalDirX / goalDirLen : 0;
+        const dirNY = goalDirLen > 0.001 ? goalDirY / goalDirLen : 0;
+        let bestIdx = 0;
+        let bestDistance = Number.POSITIVE_INFINITY;
+        let bestForwardIdx = -1;
+        let bestForwardDistance = Number.POSITIVE_INFINITY;
+
+        for (let i = 0; i < cells.length; i++) {
+          const world = this.gridToWorld(cells[i].x, cells[i].y);
+          const dist = Math.hypot(world.x - ux, world.y - uy);
+          const forwardDot = (world.x - ux) * dirNX + (world.y - uy) * dirNY;
+          if (dist < bestDistance) {
+            bestDistance = dist;
+            bestIdx = i;
+          }
+          if (forwardDot >= -TILE_SIZE * 0.2 && dist < bestForwardDistance) {
+            bestForwardDistance = dist;
+            bestForwardIdx = i;
+          }
+        }
+
+        cache = {
+          goalGX,
+          goalGY,
+          radiusBucket,
+          cells,
+          idx: bestForwardIdx >= 0 ? bestForwardIdx : bestIdx,
+          updatedAt: now,
+        };
+        this.unitClientPathCache.set(unitId, cache);
       }
-
-      const goalDirX = tx - ux;
-      const goalDirY = ty - uy;
-      const goalDirLen = Math.hypot(goalDirX, goalDirY);
-      const dirNX = goalDirLen > 0.001 ? goalDirX / goalDirLen : 0;
-      const dirNY = goalDirLen > 0.001 ? goalDirY / goalDirLen : 0;
-      let bestIdx = 0;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      let bestForwardIdx = -1;
-      let bestForwardDistance = Number.POSITIVE_INFINITY;
-
-      for (let i = 0; i < cells.length; i++) {
-        const world = this.gridToWorld(cells[i].x, cells[i].y);
-        const dist = Math.hypot(world.x - ux, world.y - uy);
-        const forwardDot = (world.x - ux) * dirNX + (world.y - uy) * dirNY;
-        if (dist < bestDistance) {
-          bestDistance = dist;
-          bestIdx = i;
-        }
-        if (forwardDot >= -TILE_SIZE * 0.2 && dist < bestForwardDistance) {
-          bestForwardDistance = dist;
-          bestForwardIdx = i;
-        }
-      }
-
-      cache = {
-        goalGX,
-        goalGY,
-        radiusBucket,
-        cells,
-        idx: bestForwardIdx >= 0 ? bestForwardIdx : bestIdx,
-        updatedAt: now,
-      };
-      this.unitClientPathCache.set(unitId, cache);
     }
 
     if (!cache) return null;
@@ -694,14 +769,20 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
       const myTeam = me?.team;
       const myRadius = this.localUnitBodyRadius(u);
       const tuner = this.physicsTuner;
-      const searchRadius = tuner ? tuner.repulsionRange * 1.8 : TILE_SIZE * 6.0;
+      const unitCount = Number((this.room?.state?.units as { size?: number } | undefined)?.size ?? 0);
+      const crowdScale = unitCount >= 80 ? 1.15 : 1.8;
+      const searchRadius = tuner ? tuner.repulsionRange * crowdScale : (unitCount >= 80 ? TILE_SIZE * 4.2 : TILE_SIZE * 6.0);
+      const neighborLimit = this.getCrowdRepulsionNeighborLimit(unitCount);
       const potentialNeighbors = this.unitGrid.getNeighbors(s.x, s.y, searchRadius);
+      let processedNeighbors = 0;
 
       for (const oid of potentialNeighbors) {
         if (oid === id || producedExitGraceActive) continue;
         const ou = this.room.state.units.get ? this.room.state.units.get(oid) : (this.room.state.units as any)?.[oid];
         if (!ou || (ou.hp ?? 0) <= 0) continue;
         if (myTeam && ou.team !== myTeam) continue;
+        processedNeighbors += 1;
+        if (processedNeighbors > neighborLimit) break;
 
         const myDistToTarget = toTLen;
         const ouX = Number(ou.x);
