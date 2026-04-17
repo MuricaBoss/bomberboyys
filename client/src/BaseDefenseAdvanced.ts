@@ -819,7 +819,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (worldW <= 0) return;
     
     const screenW = cam.width;
-    const ratio = screenW / worldW;
+    const internalResScale = 0.5; // Build 480: Render at 50% res to save fill rate
+    const ratio = (screenW / worldW) * internalResScale;
     const myTeam = this.room.state.players?.get?.(this.currentPlayerId)?.team;
     
     const drawSoftVision = (vx: number, vy: number, vrad: number) => {
@@ -879,9 +880,10 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       || Math.abs(camView.x - this.lastFogCamX) >= 0.5
       || Math.abs(camView.y - this.lastFogCamY) >= 0.5;
     
-    // Build 315/479: Highly aggressive throttle (100ms) for redrawing Fog graphics to save GPU fill rate.
-    // If camera moves only slightly, we just reposition the overlay instead of redrawing.
-    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < 100) return; 
+    // Build 315/479/480: Strict throttle (100ms) for redrawing Fog graphics to save GPU fill rate.
+    // Build 480: We return REGARDLESS of camMoved to ensure fixed redraw rate.
+    // Repositioning (at Line 874) handles the 'moving camera' case efficiently without redrawing.
+    if (now - this.lastWorldFogDrawAt < 100 && !zoomChanged) return; 
 
     this.lastWorldFogDrawAt = now;
     this.lastFogCamX = camView.x;
@@ -902,7 +904,11 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     if (worldW <= 0) return;
     const ratio = screenW / worldW;
 
-    if (overlay && (overlay.width !== screenW || overlay.height !== screenH)) {
+    const internalResScale = 0.5;
+    const resW = Math.ceil(screenW * internalResScale);
+    const resH = Math.ceil(screenH * internalResScale);
+
+    if (overlay && (overlay.width !== resW || overlay.height !== resH)) {
         overlay.destroy();
         this.worldFogOverlay = null as any;
         overlay = null as any;
@@ -913,12 +919,12 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     }
 
     if (!this.worldFogOverlay) {
-      this.worldFogOverlay = this.add.renderTexture(0, 0, screenW, screenH).setOrigin(0).setScrollFactor(1).setDepth(240);
+      this.worldFogOverlay = this.add.renderTexture(0, 0, resW, resH).setOrigin(0).setScrollFactor(1).setDepth(240);
       overlay = this.worldFogOverlay;
     }
 
     if (!this.activeVisionTexture) {
-      this.activeVisionTexture = this.add.renderTexture(0, 0, screenW, screenH)
+      this.activeVisionTexture = this.add.renderTexture(0, 0, resW, resH)
         .setOrigin(0)
         .setScrollFactor(1)
         .setVisible(false);
@@ -929,7 +935,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     overlay.setDisplaySize(worldW, worldH);
     
     overlay.clear();
-    overlay.fill(0x000000, 0.88, 0, 0, screenW, screenH);
+    overlay.fill(0x000000, 0.88, 0, 0, resW, resH);
 
     const vts = this.visionTrailSprite;
     if (vts) {
