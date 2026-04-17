@@ -2,25 +2,25 @@ import { TILE_SIZE } from "./constants";
 
 export class PhysicsTuner {
   // Build 364: Real-time adjustable parameters
-  public repulsionRange = 96;
-  public repulsionForce = 12000;
-  public formationSpacing = 65;
-  public syncThreshold = 79;
-  public snapAmount = 0.05;
-  public wallAvoidanceRange = 12;
-  public wallAvoidanceForce = 400;
-  public pathSpread = 87;
+  public repulsionRange = 22; // Unit Spacing (px)
+  public repulsionForce = 5000; // Repel Stiffness
+  public formationSpacing = 33; // Target Group Gap
+  public syncThreshold = 44; // Sync Drift Limit
+  public snapAmount = 0.05; // Server Sync %
+  public wallAvoidanceRange = 4; // Obstacle Warn Dist
+  public wallAvoidanceForce = 1504; // Obstacle Repel Power
+  public pathSpread = 18; // Lane Width on Paths
 
   // Build 385: Separate Lane Management for Tanks vs Soldiers
   public soldierLaneCount = 3;
-  public soldierLaneSpacing = 32;
-  public tankLaneCount = 2;
-  public tankLaneSpacing = 64;
+  public soldierLaneSpacing = 44;
+  public tankLaneCount = 3;
+  public tankLaneSpacing = 107;
 
   // Build 388: Separate Repulsion Spacing for Tanks vs Soldiers
   // Build 429: Reduced to prevent explosion at high speed
-  public soldierRepulsionRange = 24;
-  public tankRepulsionRange = 64;
+  public soldierRepulsionRange = 55;
+  public tankRepulsionRange = 118;
 
   private container: HTMLDivElement | null = null;
 
