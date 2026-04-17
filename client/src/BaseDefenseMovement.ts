@@ -354,6 +354,10 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const masterPath = this.findPath(startGrid.gx, startGrid.gy, goalGrid.gx, goalGrid.gy, false, undefined, pathRadius);
     if (!masterPath || masterPath.length === 0) return;
 
+    const laneKeys: string[] = [];
+    const laneCount = Math.max(1, Math.min(3, Math.ceil(ids.length / 25)));
+    const laneGap = firstU?.type === "tank" ? 40 : 16;
+
     for (let l = 0; l < laneCount; l++) {
       const lOffset = (l - (laneCount - 1) / 2) * laneGap;
       const lPath: Array<{ x: number; y: number }> = [];
@@ -384,7 +388,7 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
         // This ensures the army 'squeezes' through tight corridors together.
         const ogx = Math.floor(ox / TILE_SIZE);
         const ogy = Math.floor(oy / TILE_SIZE);
-        if (!this.map.isWalkableWithRadius(ogx, ogy, 6)) {
+        if (!this.isPathWalkableForRadius(ogx, ogy, 6)) {
           ox = node.x;
           oy = node.y;
         }
