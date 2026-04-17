@@ -351,37 +351,57 @@ export class BaseDefenseScene_Movement extends BaseDefenseScene_Server {
     const startGrid = this.worldToGrid(pathStartCX, pathStartCY);
     const goalGrid = this.worldToGrid(sharedPathCenterX, sharedPathCenterY);
     
-    // Build 468: Overhaul to Persistent Paths. Generate 1-5 locked lanes.
-    const laneKeys: string[] = [];
-    const laneCount = Math.max(1, Math.min(3, Math.ceil(ids.length / 25)));
-    const laneGap = firstU?.type === "tank" ? 40 : 16;
-
-    // Perpendicular vector for parallel lanes
-    const wayDirX = sharedPathCenterX - pathStartCX;
-    const wayDirY = sharedPathCenterY - pathStartCY;
-    const wayLen = Math.hypot(wayDirX, wayDirY);
-    const pnx = wayLen > 1 ? -wayDirY / wayLen : 0;
-    const pny = wayLen > 1 ? wayDirX / wayLen : 0;
+    const masterPath = this.findPath(startGrid.gx, startGrid.gy, goalGrid.gx, goalGrid.gy, false, undefined, pathRadius);
+    if (!masterPath || masterPath.length === 0) return;
 
     for (let l = 0; l < laneCount; l++) {
       const lOffset = (l - (laneCount - 1) / 2) * laneGap;
-      const lStartGX = Math.floor((pathStartCX + pnx * lOffset) / TILE_SIZE);
-      const lStartGY = Math.floor((pathStartCY + pny * lOffset) / TILE_SIZE);
-      const lEndGX = Math.floor((sharedPathCenterX + pnx * lOffset) / TILE_SIZE);
-      const lEndGY = Math.floor((sharedPathCenterY + pny * lOffset) / TILE_SIZE);
-      
-      const lPath = this.findPath(lStartGX, lStartGY, lEndGX, lEndGY, false, undefined, pathRadius);
-      if (lPath && lPath.length > 0) {
-        const pKey = `pPath_${now}_${l}`;
-        this.activeCommandPaths.set(pKey, {
-          nodes: lPath.map(n => ({ x: n.x, y: n.y })),
-          participants: new Set()
-        });
-        laneKeys.push(pKey);
-        // Also keep in shared cache for backward compatibility in internal methods
-        const sharedPathBaseKey = this.getSharedMovePathKey(now, sharedPathCenterX, sharedPathCenterY, ids.length);
-        this.sharedPathCache.set(`${sharedPathBaseKey}_L${l}`, lPath);
+      const lPath: Array<{ x: number; y: number }> = [];
+
+      for (let i = 0; i < masterPath.length; i++) {
+        const node = masterPath[i];
+        let dx = 0;
+        let dy = 0;
+
+        // Calculate direction for perpendicular offset
+        if (i < masterPath.length - 1) {
+          dx += (masterPath[i + 1].x - node.x);
+          dy += (masterPath[i + 1].y - node.y);
+        }
+        if (i > 0) {
+          dx += (node.x - masterPath[i - 1].x);
+          dy += (node.y - masterPath[i - 1].y);
+        }
+
+        const len = Math.hypot(dx, dy);
+        const pnx = len > 0.1 ? -dy / len : 0;
+        const pny = len > 0.1 ? dx / len : 0;
+
+        let ox = node.x + pnx * lOffset;
+        let oy = node.y + pny * lOffset;
+
+        // Build 483: Nudge check. If the offset rail hits a wall, we pull it back towards the center path.
+        // This ensures the army 'squeezes' through tight corridors together.
+        const ogx = Math.floor(ox / TILE_SIZE);
+        const ogy = Math.floor(oy / TILE_SIZE);
+        if (!this.map.isWalkableWithRadius(ogx, ogy, 6)) {
+          ox = node.x;
+          oy = node.y;
+        }
+
+        lPath.push({ x: ox, y: oy });
       }
+
+      const pKey = `pPath_${now}_${l}`;
+      this.activeCommandPaths.set(pKey, {
+        nodes: lPath,
+        participants: new Set()
+      });
+      laneKeys.push(pKey);
+
+      // Keep in shared cache for backward compatibility
+      const sharedPathBaseKey = this.getSharedMovePathKey(now, sharedPathCenterX, sharedPathCenterY, ids.length);
+      this.sharedPathCache.set(`${sharedPathBaseKey}_L${l}`, lPath as any);
     }
 
     this.lastMoveLeaderCount = laneCount;
