@@ -815,6 +815,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     vtt.clear();
     
     const cam = this.cameras.main;
+    cam.preRender();
     const tl = cam.getWorldPoint(0, 0);
     const br = cam.getWorldPoint(cam.width, cam.height);
     const worldW = br.x - tl.x;
@@ -868,6 +869,7 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.worldFogOverlay.setVisible(true);
 
     const cam = this.cameras.main;
+    cam.preRender();
     const camView = cam.worldView;
     const camZoom = cam.zoom;
     
@@ -952,8 +954,8 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
     this.updateActiveVisionGraphics();
     
     if (this.activeVisionTexture) {
-        this.activeVisionTexture.setPosition(tl.x, tl.y);
-        this.activeVisionTexture.setDisplaySize(worldW, worldH);
+        this.activeVisionTexture.setPosition(0, 0);
+        this.activeVisionTexture.setDisplaySize(resW, resH);
         overlay.erase(this.activeVisionTexture);
     }
   }
