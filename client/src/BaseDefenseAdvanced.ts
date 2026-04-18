@@ -884,10 +884,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
       || Math.abs(camView.x - this.lastFogCamX) >= 0.5
       || Math.abs(camView.y - this.lastFogCamY) >= 0.5;
     
-    // Build 315/479/480: Strict throttle (100ms) for redrawing Fog graphics to save GPU fill rate.
-    // Build 480: We return REGARDLESS of camMoved to ensure fixed redraw rate.
-    // Repositioning (at Line 874) handles the 'moving camera' case efficiently without redrawing.
-    if (now - this.lastWorldFogDrawAt < 100 && !zoomChanged) return; 
+    // Kamera liikkuu: fog pitää piirtää heti, muuten se laahaa.
+    // Throttle vain silloin kun kamera ei liiku eikä zoom muutu.
+    if (!camMoved && !zoomChanged && now - this.lastWorldFogDrawAt < 100) return;
 
     this.lastWorldFogDrawAt = now;
     this.lastFogCamX = camView.x;
@@ -943,8 +942,9 @@ export class BaseDefenseScene_Advanced extends BaseDefenseScene_Hud {
 
     const vts = this.visionTrailSprite;
     if (vts) {
-        vts.setScale(4 * ratio);
-        vts.setPosition(-tl.x * ratio, -tl.y * ratio);
+        const trailScale = 4 * ratio * internalResScale;
+        vts.setScale(trailScale);
+        vts.setPosition(-tl.x * ratio * internalResScale, -tl.y * ratio * internalResScale);
         overlay.erase(vts);
     }
 
